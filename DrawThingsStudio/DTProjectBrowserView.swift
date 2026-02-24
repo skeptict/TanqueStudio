@@ -12,6 +12,9 @@ struct DTProjectBrowserView: View {
     @ObservedObject var imageGenViewModel: ImageGenerationViewModel
     @Binding var selectedSidebarItem: SidebarItem?
 
+    @State private var entryToDelete: DTGenerationEntry?
+    @State private var showDeleteConfirmation = false
+
     var body: some View {
         Group {
             if viewModel.hasFolderAccess {
@@ -21,6 +24,15 @@ struct DTProjectBrowserView: View {
             }
         }
         .navigationTitle("DT Projects")
+        .alert("Delete Generation?", isPresented: $showDeleteConfirmation, presenting: entryToDelete) { entry in
+            Button("Cancel", role: .cancel) { entryToDelete = nil }
+            Button("Delete", role: .destructive) {
+                Task { await viewModel.deleteEntry(entry) }
+                entryToDelete = nil
+            }
+        } message: { _ in
+            Text("This will permanently remove this generation and its thumbnail from the Draw Things project database. This cannot be undone.\n\nFor best results, close Draw Things before deleting.")
+        }
     }
 
     // MARK: - Grant Access
@@ -284,6 +296,20 @@ struct DTProjectBrowserView: View {
                             .onTapGesture {
                                 viewModel.selectedEntry = entry
                             }
+                            .contextMenu {
+                                Button {
+                                    viewModel.selectedEntry = entry
+                                } label: {
+                                    Label("Select", systemImage: "checkmark.circle")
+                                }
+                                Divider()
+                                Button(role: .destructive) {
+                                    entryToDelete = entry
+                                    showDeleteConfirmation = true
+                                } label: {
+                                    Label("Delete", systemImage: "trash")
+                                }
+                            }
                         }
                     }
                     .padding(16)
@@ -315,7 +341,11 @@ struct DTProjectBrowserView: View {
                 DTDetailPanel(
                     entry: entry,
                     imageGenViewModel: imageGenViewModel,
-                    selectedSidebarItem: $selectedSidebarItem
+                    selectedSidebarItem: $selectedSidebarItem,
+                    onDelete: {
+                        entryToDelete = entry
+                        showDeleteConfirmation = true
+                    }
                 )
             } else {
                 VStack(spacing: 12) {
@@ -460,6 +490,7 @@ private struct DTDetailPanel: View {
     let entry: DTGenerationEntry
     @ObservedObject var imageGenViewModel: ImageGenerationViewModel
     @Binding var selectedSidebarItem: SidebarItem?
+    let onDelete: () -> Void
 
     var body: some View {
         ScrollView {
@@ -579,6 +610,16 @@ private struct DTDetailPanel: View {
                 .frame(maxWidth: .infinity)
             }
             .buttonStyle(NeumorphicButtonStyle(isProminent: true))
+            .controlSize(.large)
+
+            Button(role: .destructive, action: onDelete) {
+                HStack {
+                    Image(systemName: "trash")
+                    Text("Delete from Project")
+                }
+                .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(NeumorphicButtonStyle())
             .controlSize(.large)
         }
         .padding(.top, 4)

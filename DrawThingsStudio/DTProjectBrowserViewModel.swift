@@ -338,6 +338,29 @@ final class DTProjectBrowserViewModel: ObservableObject {
         loadEntries()
     }
 
+    // MARK: - Delete
+
+    func deleteEntry(_ entry: DTGenerationEntry) async {
+        guard let project = selectedProject else { return }
+        let url = project.url
+        let rowid = entry.id
+        let previewId = entry.previewId
+
+        do {
+            try await Task.detached(priority: .userInitiated) {
+                try DTProjectDatabase.deleteEntry(rowid: rowid, previewId: previewId, from: url)
+            }.value
+
+            // Update in-memory state — no full reload needed
+            entries.removeAll { $0.id == rowid }
+            if selectedEntry?.id == rowid { selectedEntry = nil }
+            entryCount = max(0, entryCount - 1)
+            loadedOffset = max(0, loadedOffset - 1)
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
     // MARK: - Helpers
 
     private func folderLabel(for url: URL) -> String {

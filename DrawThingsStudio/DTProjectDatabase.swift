@@ -10,6 +10,22 @@ import Foundation
 import SQLite3
 import AppKit
 
+// MARK: - Errors
+
+enum DTProjectDatabaseError: LocalizedError {
+    case cannotOpen(String)
+    case databaseLocked
+    case deleteFailed(String)
+
+    var errorDescription: String? {
+        switch self {
+        case .cannotOpen(let msg): return "Could not open database: \(msg)"
+        case .databaseLocked:     return "Database is locked. Close Draw Things and try again."
+        case .deleteFailed(let msg): return "Delete failed: \(msg)"
+        }
+    }
+}
+
 // MARK: - Data Models
 
 struct DTLoRAEntry: Hashable {
@@ -429,6 +445,67 @@ final class DTProjectDatabase: @unchecked Sendable {
         case 2: return "Scale Alike"
         case 3: return "Nvidia GPU"
         default: return "Unknown"
+        }
+    }
+
+    // MARK: - Delete
+
+    /// Permanently delete a generation entry and its associated thumbnails.
+    /// Opens a separate read-write connection (the browsing connection is read-only).
+    /// Throws `DTProjectDatabaseError.databaseLocked` if Draw Things has the file open.
+    static func deleteEntry(rowid: Int64, previewId: Int64, from fileURL: URL) throws {
+        var writeDb: OpaquePointer?
+        let openResult = sqlite3_open_v2(
+            fileURL.path, &writeDb,
+            SQLITE_OPEN_READWRITE | SQLITE_OPEN_NOMUTEX,
+            nil
+        )
+        guard openResult == SQLITE_OK, writeDb != nil else {
+            let code = sqlite3_errcode(writeDb)
+            sqlite3_close(writeDb)
+            if code == SQLITE_BUSY || code == SQLITE_LOCKED {
+                throw DTProjectDatabaseError.databaseLocked
+            }
+            throw DTProjectDatabaseError.cannotOpen("SQLite error \(openResult)")
+        }
+        defer { sqlite3_close(writeDb) }
+
+        // BEGIN IMMEDIATE fails fast if another writer (Draw Things) holds the DB
+        let beginResult = sqlite3_exec(writeDb, "BEGIN IMMEDIATE", nil, nil, nil)
+        if beginResult == SQLITE_BUSY || beginResult == SQLITE_LOCKED {
+            throw DTProjectDatabaseError.databaseLocked
+        }
+        guard beginResult == SQLITE_OK else {
+            throw DTProjectDatabaseError.deleteFailed("Could not begin transaction (code \(beginResult))")
+        }
+
+        // Delete the main generation entry
+        var deleteOk = false
+        var stmt: OpaquePointer?
+        if sqlite3_prepare_v2(writeDb, "DELETE FROM tensorhistorynode WHERE rowid = ?", -1, &stmt, nil) == SQLITE_OK {
+            sqlite3_bind_int64(stmt, 1, rowid)
+            deleteOk = sqlite3_step(stmt) == SQLITE_DONE
+        }
+        sqlite3_finalize(stmt)
+
+        // Delete associated thumbnails (best-effort; don't abort the transaction if missing)
+        if previewId > 0 {
+            for table in ["thumbnailhistoryhalfnode", "thumbnailhistorynode"] {
+                var tStmt: OpaquePointer?
+                let sql = "DELETE FROM \(table) WHERE __pk0 = ?"
+                if sqlite3_prepare_v2(writeDb, sql, -1, &tStmt, nil) == SQLITE_OK {
+                    sqlite3_bind_int64(tStmt, 1, previewId)
+                    sqlite3_step(tStmt)
+                }
+                sqlite3_finalize(tStmt)
+            }
+        }
+
+        if deleteOk {
+            sqlite3_exec(writeDb, "COMMIT", nil, nil, nil)
+        } else {
+            sqlite3_exec(writeDb, "ROLLBACK", nil, nil, nil)
+            throw DTProjectDatabaseError.deleteFailed("Row not found or could not be deleted")
         }
     }
 }
