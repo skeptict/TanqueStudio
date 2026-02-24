@@ -31,11 +31,14 @@ final class DrawThingsAssetManager: ObservableObject {
     @Published private(set) var lastError: String?
     @Published private(set) var lastFetchDate: Date?
 
-    /// Combined model list: local models first, then unique cloud models
-    var allModels: [DrawThingsModel] {
+    /// Combined model list: local models first, then unique cloud models.
+    /// Cached — recomputed only after a fetch, not on every view body evaluation.
+    @Published private(set) var allModels: [DrawThingsModel] = []
+
+    private func updateAllModels() {
         let localFilenames = Set(models.map { $0.filename })
         let uniqueCloud = cloudCatalog.models.filter { !localFilenames.contains($0.filename) }
-        return models + uniqueCloud
+        allModels = models + uniqueCloud
     }
 
     /// Cloud models only (for displaying separately if needed)
@@ -98,6 +101,7 @@ final class DrawThingsAssetManager: ObservableObject {
             lastError = "\(prev) | LoRA fetch failed: \(error.localizedDescription)"
         }
 
+        updateAllModels()
         isLoading = false
         lastFetchDate = Date()
     }
@@ -122,11 +126,13 @@ final class DrawThingsAssetManager: ObservableObject {
     /// Fetch cloud catalog if needed (called on view load)
     func fetchCloudCatalogIfNeeded() async {
         await cloudCatalog.fetchIfNeeded()
+        updateAllModels()
     }
 
     /// Force refresh cloud catalog only
     func refreshCloudCatalog() async {
         await cloudCatalog.forceRefresh()
+        updateAllModels()
     }
 
     // MARK: - Helpers

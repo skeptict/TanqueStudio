@@ -19,6 +19,9 @@ final class ImageStorageManager: ObservableObject {
 
     private let logger = Logger(subsystem: "com.drawthingsstudio", category: "image-storage")
 
+    // Reused across calls — ISO8601DateFormatter is expensive to allocate.
+    private static let filenameFormatter = ISO8601DateFormatter()
+
     private let storageDirectory: URL
 
     @Published var savedImages: [GeneratedImage] = []
@@ -38,7 +41,7 @@ final class ImageStorageManager: ObservableObject {
         // Ensure directory exists before saving
         ensureDirectoryExists()
 
-        let timestamp = ISO8601DateFormatter().string(from: Date())
+        let timestamp = Self.filenameFormatter.string(from: Date())
             .replacingOccurrences(of: ":", with: "-")
             .replacingOccurrences(of: "T", with: "_")
         let filename = "gen_\(timestamp)_\(UUID().uuidString.prefix(8))"

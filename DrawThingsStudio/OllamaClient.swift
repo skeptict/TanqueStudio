@@ -10,7 +10,8 @@ import Combine
 import OSLog
 
 /// Client for Ollama HTTP API
-class OllamaClient: LLMProvider, ObservableObject {
+@MainActor
+final class OllamaClient: LLMProvider, ObservableObject {
 
     // MARK: - Properties
 
@@ -60,15 +61,11 @@ class OllamaClient: LLMProvider, ObservableObject {
     // MARK: - Connection Check
 
     func checkConnection() async -> Bool {
-        await MainActor.run {
-            connectionStatus = .connecting
-        }
+        connectionStatus = .connecting
 
         do {
             guard let baseURL else {
-                await MainActor.run {
-                    connectionStatus = .error("Invalid host/port configuration")
-                }
+                connectionStatus = .error("Invalid host/port configuration")
                 return false
             }
 
@@ -77,21 +74,15 @@ class OllamaClient: LLMProvider, ObservableObject {
 
             guard let httpResponse = response as? HTTPURLResponse,
                   httpResponse.statusCode == 200 else {
-                await MainActor.run {
-                    connectionStatus = .error("Invalid response")
-                }
+                connectionStatus = .error("Invalid response")
                 return false
             }
 
-            await MainActor.run {
-                connectionStatus = .connected
-            }
+            connectionStatus = .connected
             logger.info("Connected to Ollama at \(self.host):\(self.port)")
             return true
         } catch {
-            await MainActor.run {
-                connectionStatus = .error(error.localizedDescription)
-            }
+            connectionStatus = .error(error.localizedDescription)
             logger.error("Failed to connect to Ollama: \(error.localizedDescription)")
             return false
         }
@@ -120,10 +111,7 @@ class OllamaClient: LLMProvider, ObservableObject {
             )
         }
 
-        await MainActor.run {
-            self.availableModels = models
-        }
-
+        availableModels = models
         return models
     }
 

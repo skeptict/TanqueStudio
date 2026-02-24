@@ -141,7 +141,7 @@ enum InstructionSupportLevel {
 
 /// Executes StoryFlow workflows by translating instructions to Draw Things API calls
 @MainActor
-class StoryflowExecutor {
+final class StoryflowExecutor {
 
     // MARK: - Callback Types
 
@@ -167,8 +167,11 @@ class StoryflowExecutor {
 
     init(provider: any DrawThingsProvider, workingDirectory: URL? = nil) {
         self.provider = provider
-        let dir = workingDirectory ?? FileManager.default.urls(for: .picturesDirectory, in: .userDomainMask).first!
-        self.state = StoryflowExecutionState(workingDirectory: dir)
+        // Use the provided directory, or fall back to StoryflowExecutionState's default
+        // (ApplicationSupport/DrawThingsStudio/WorkflowOutput). Never use .picturesDirectory —
+        // the app is sandboxed and does not have the pictures read-write entitlement.
+        self.state = workingDirectory.map { StoryflowExecutionState(workingDirectory: $0) }
+                   ?? StoryflowExecutionState()
     }
 
     // MARK: - Support Level Check
@@ -309,7 +312,9 @@ class StoryflowExecutor {
         return (finalResult, generatedImages)
     }
 
-    /// Cancel execution
+    /// Request cancellation of the currently running workflow.
+    /// Cancellation is cooperative: if a generation request is in progress, the executor
+    /// will stop after that step completes. It does not interrupt in-flight network requests.
     func cancel() {
         isCancelled = true
     }

@@ -99,8 +99,14 @@ final class DTProjectBrowserViewModel: ObservableObject {
             }
         }
 
-        guard panel.runModal() == .OK, let url = panel.url else { return }
+        // Use async begin() instead of runModal() to avoid blocking the main thread.
+        panel.begin { [weak self] response in
+            guard response == .OK, let url = panel.url else { return }
+            self?.processNewFolder(url)
+        }
+    }
 
+    private func processNewFolder(_ url: URL) {
         // Check if this folder is already bookmarked
         if folders.contains(where: { $0.url.path == url.path }) {
             // Already have this folder — just refresh
@@ -389,9 +395,13 @@ final class DTProjectBrowserViewModel: ObservableObject {
         Dictionary(grouping: projects, by: \.folderName)
     }
 
+    private static let fileSizeFormatter: ByteCountFormatter = {
+        let f = ByteCountFormatter()
+        f.countStyle = .file
+        return f
+    }()
+
     static func formatFileSize(_ bytes: Int64) -> String {
-        let formatter = ByteCountFormatter()
-        formatter.countStyle = .file
-        return formatter.string(fromByteCount: bytes)
+        fileSizeFormatter.string(fromByteCount: bytes)
     }
 }

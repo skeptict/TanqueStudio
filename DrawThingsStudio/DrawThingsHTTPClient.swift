@@ -10,7 +10,7 @@ import AppKit
 import OSLog
 
 /// HTTP client for Draw Things image generation API
-class DrawThingsHTTPClient: DrawThingsProvider {
+final class DrawThingsHTTPClient: DrawThingsProvider {
 
     // MARK: - Properties
 
@@ -126,7 +126,7 @@ class DrawThingsHTTPClient: DrawThingsProvider {
         RequestLogger.shared.logHTTPRequest(endpoint: endpoint, body: body)
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
-        logger.debug("Sending \(isImg2Img ? "img2img" : "txt2img") request: prompt=\(prompt.prefix(50))...")
+        logger.debug("Sending \(isImg2Img ? "img2img" : "txt2img") request")
 
         onProgress?(.sampling(step: 0, totalSteps: config.steps))
 

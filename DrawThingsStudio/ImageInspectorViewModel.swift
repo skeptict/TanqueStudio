@@ -246,11 +246,10 @@ final class ImageInspectorViewModel: ObservableObject {
         isProcessing = true
         errorMessage = nil
 
-        Task {
+        Task { @MainActor in
             do {
                 let (data, _) = try await URLSession.shared.data(from: webURL)
-                let sourceName = webURL.lastPathComponent
-                loadImage(data: data, sourceName: sourceName)
+                loadImage(data: data, sourceName: webURL.lastPathComponent)
             } catch {
                 errorMessage = "Failed to download image: \(error.localizedDescription)"
                 isProcessing = false

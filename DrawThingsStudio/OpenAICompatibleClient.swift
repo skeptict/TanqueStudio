@@ -10,7 +10,8 @@ import Combine
 import OSLog
 
 /// Client for OpenAI-compatible HTTP APIs (LM Studio, Jan, etc.)
-class OpenAICompatibleClient: LLMProvider, ObservableObject {
+@MainActor
+final class OpenAICompatibleClient: LLMProvider, ObservableObject {
 
     // MARK: - Properties
 
@@ -92,15 +93,11 @@ class OpenAICompatibleClient: LLMProvider, ObservableObject {
     // MARK: - Connection Check
 
     func checkConnection() async -> Bool {
-        await MainActor.run {
-            connectionStatus = .connecting
-        }
+        connectionStatus = .connecting
 
         do {
             guard let baseURL else {
-                await MainActor.run {
-                    connectionStatus = .error("Invalid host/port configuration")
-                }
+                connectionStatus = .error("Invalid host/port configuration")
                 return false
             }
 
@@ -112,21 +109,15 @@ class OpenAICompatibleClient: LLMProvider, ObservableObject {
 
             guard let httpResponse = response as? HTTPURLResponse,
                   httpResponse.statusCode == 200 else {
-                await MainActor.run {
-                    connectionStatus = .error("Invalid response")
-                }
+                connectionStatus = .error("Invalid response")
                 return false
             }
 
-            await MainActor.run {
-                connectionStatus = .connected
-            }
+            connectionStatus = .connected
             logger.info("Connected to \(self.providerType.displayName) at \(self.host):\(self.port)")
             return true
         } catch {
-            await MainActor.run {
-                connectionStatus = .error(error.localizedDescription)
-            }
+            connectionStatus = .error(error.localizedDescription)
             logger.error("Failed to connect to \(self.providerType.displayName): \(error.localizedDescription)")
             return false
         }
@@ -157,9 +148,7 @@ class OpenAICompatibleClient: LLMProvider, ObservableObject {
             )
         }
 
-        await MainActor.run {
-            self.availableModels = models
-        }
+        availableModels = models
 
         // Set default model if we have one and current default is "default"
         if defaultModel == "default", let firstModel = models.first {

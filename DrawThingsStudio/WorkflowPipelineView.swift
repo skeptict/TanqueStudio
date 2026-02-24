@@ -27,6 +27,7 @@ struct WorkflowPipelineView: View {
                     stepIndex: index,
                     totalSteps: viewModel.steps.count,
                     availableModels: assetManager.allModels,
+                    availableLoRAs: assetManager.loras,
                     isLoadingModels: assetManager.isLoading || assetManager.isCloudLoading,
                     onRefreshModels: { Task { await assetManager.forceRefresh() } }
                 )
@@ -267,6 +268,7 @@ struct PipelineStepEditorView: View {
     let stepIndex: Int
     let totalSteps: Int
     let availableModels: [DrawThingsModel]
+    let availableLoRAs: [DrawThingsLoRA]
     let isLoadingModels: Bool
     let onRefreshModels: () -> Void
 
@@ -393,7 +395,7 @@ struct PipelineStepEditorView: View {
                 // LoRAs
                 Divider()
                 LoRAConfigurationView(
-                    availableLoRAs: DrawThingsAssetManager.shared.loras,
+                    availableLoRAs: availableLoRAs,
                     selectedLoRAs: $step.loras
                 )
 

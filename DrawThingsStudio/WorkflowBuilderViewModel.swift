@@ -11,7 +11,7 @@ import UniformTypeIdentifiers
 
 /// ViewModel managing the workflow builder state
 @MainActor
-class WorkflowBuilderViewModel: ObservableObject {
+final class WorkflowBuilderViewModel: ObservableObject {
 
     // MARK: - Published Properties
 

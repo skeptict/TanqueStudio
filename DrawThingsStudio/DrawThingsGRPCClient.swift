@@ -118,9 +118,12 @@ final class DrawThingsGRPCClient: DrawThingsProvider {
             return filesModels.map { DrawThingsModel(filename: $0) }
         }
 
-        // Strategy 2: Parse binary override data
+        // Strategy 2: Parse binary override data (offloaded to background — scanning large Data on main actor is slow)
         if echoReply.hasOverride && !echoReply.override.models.isEmpty {
-            let modelNames = extractStrings(from: echoReply.override.models, withExtensions: modelExtensions)
+            let data = echoReply.override.models
+            let modelNames = await Task.detached(priority: .userInitiated) {
+                self.extractStrings(from: data, withExtensions: modelExtensions)
+            }.value
             if !modelNames.isEmpty {
                 logger.info("Found \(modelNames.count) models from override data")
                 return modelNames.map { DrawThingsModel(filename: $0) }
@@ -148,9 +151,12 @@ final class DrawThingsGRPCClient: DrawThingsProvider {
             return filesLoRAs.map { DrawThingsLoRA(filename: $0) }
         }
 
-        // Strategy 2: Parse binary override data
+        // Strategy 2: Parse binary override data (offloaded to background — scanning large Data on main actor is slow)
         if echoReply.hasOverride && !echoReply.override.loras.isEmpty {
-            let loraNames = extractStrings(from: echoReply.override.loras, withExtensions: loraExtensions)
+            let data = echoReply.override.loras
+            let loraNames = await Task.detached(priority: .userInitiated) {
+                self.extractStrings(from: data, withExtensions: loraExtensions)
+            }.value
             if !loraNames.isEmpty {
                 logger.info("Found \(loraNames.count) LoRAs from override data")
                 return loraNames.map { DrawThingsLoRA(filename: $0) }
@@ -190,7 +196,7 @@ final class DrawThingsGRPCClient: DrawThingsProvider {
     /// Extract readable filenames from FlatBuffer binary data.
     /// FlatBuffer strings are stored as: [uint32 length][utf8 bytes][null terminator]
     /// We scan for strings that end with known file extensions.
-    private func extractStrings(from data: Data, withExtensions extensions: [String]) -> [String] {
+    private nonisolated func extractStrings(from data: Data, withExtensions extensions: [String]) -> [String] {
         guard data.count > 4 else { return [] }
 
         var results: [String] = []
