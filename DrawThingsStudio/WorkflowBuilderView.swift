@@ -9,7 +9,7 @@ import SwiftUI
 import SwiftData
 import UniformTypeIdentifiers
 
-/// Main view for building StoryFlow workflows
+/// Main view for building StoryFlow workflows (generates Storyflow pipeline JSON)
 struct WorkflowBuilderView: View {
     @ObservedObject var viewModel: WorkflowBuilderViewModel
     @Environment(\.modelContext) private var modelContext

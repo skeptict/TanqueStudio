@@ -17,6 +17,9 @@ struct ImageGenerationView: View {
     @State private var selectedPresetID: String = ""
     @State private var showingConfigImport = false
     @State private var importMessage: String?
+    @State private var showEnhanceStylePicker = false
+    @State private var showEnhanceStyleEditor = false
+    @State private var enhanceError: String?
 
     var body: some View {
         HStack(spacing: 20) {
@@ -359,7 +362,27 @@ struct ImageGenerationView: View {
 
     private var promptSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            NeuSectionHeader("Prompt", icon: "text.quote")
+            HStack {
+                NeuSectionHeader("Prompt", icon: "text.quote")
+                Spacer()
+                if viewModel.isEnhancing {
+                    ProgressView()
+                        .scaleEffect(0.7)
+                } else {
+                    Button {
+                        showEnhanceStylePicker = true
+                    } label: {
+                        Label("Enhance", systemImage: "sparkles")
+                            .font(.caption)
+                    }
+                    .buttonStyle(NeumorphicButtonStyle())
+                    .disabled(viewModel.prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .help("Enhance prompt with AI")
+                    .popover(isPresented: $showEnhanceStylePicker) {
+                        enhanceStylePickerView
+                    }
+                }
+            }
 
             TextEditor(text: $viewModel.prompt)
                 .font(.body)
@@ -376,11 +399,98 @@ struct ImageGenerationView: View {
                 )
                 .accessibilityIdentifier("generate_promptField")
 
+            if let error = enhanceError {
+                Text(error)
+                    .font(.caption)
+                    .foregroundColor(.red)
+            }
+
             NeuSectionHeader("Negative Prompt")
 
             TextField("Things to avoid...", text: $viewModel.negativePrompt)
                 .textFieldStyle(NeumorphicTextFieldStyle())
                 .accessibilityIdentifier("generate_negativePromptField")
+        }
+    }
+
+    private var enhanceStylePickerView: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Enhance Style")
+                .font(.headline)
+
+            Divider()
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: 4) {
+                    ForEach(PromptStyleManager.shared.styles) { style in
+                        Button {
+                            showEnhanceStylePicker = false
+                            runEnhance(style: style)
+                        } label: {
+                            VStack(alignment: .leading, spacing: 2) {
+                                HStack {
+                                    Image(systemName: style.icon)
+                                        .frame(width: 24)
+                                    Text(style.name)
+                                    Spacer()
+                                    if style.isBuiltIn {
+                                        Text("built-in")
+                                            .font(.caption2)
+                                            .foregroundColor(.neuTextSecondary)
+                                    }
+                                }
+                                Text(style.systemPrompt.prefix(80) + (style.systemPrompt.count > 80 ? "..." : ""))
+                                    .font(.caption2)
+                                    .foregroundColor(.neuTextSecondary)
+                                    .lineLimit(2)
+                                    .padding(.leading, 28)
+                            }
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .padding(.vertical, 4)
+                    }
+                }
+            }
+            .frame(maxHeight: 300)
+
+            Divider()
+
+            Button {
+                showEnhanceStylePicker = false
+                showEnhanceStyleEditor = true
+            } label: {
+                HStack {
+                    Image(systemName: "pencil")
+                        .frame(width: 24)
+                    Text("Edit Styles...")
+                    Spacer()
+                }
+            }
+            .buttonStyle(.plain)
+            .padding(.vertical, 4)
+        }
+        .padding()
+        .frame(width: 300)
+        .sheet(isPresented: $showEnhanceStyleEditor) {
+            PromptStyleEditorView()
+        }
+    }
+
+    private func runEnhance(style: CustomPromptStyle) {
+        enhanceError = nil
+        Task {
+            do {
+                let result = try await viewModel.enhancePrompt(viewModel.prompt, customStyle: style)
+                let trimmed = result.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !trimmed.isEmpty {
+                    viewModel.prompt = trimmed
+                } else {
+                    enhanceError = "Enhancement returned empty result"
+                }
+            } catch {
+                enhanceError = error.localizedDescription
+            }
         }
     }
 

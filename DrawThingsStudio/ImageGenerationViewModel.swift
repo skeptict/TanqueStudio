@@ -33,6 +33,9 @@ final class ImageGenerationViewModel: ObservableObject {
     @Published var connectionStatus: DrawThingsConnectionStatus = .disconnected
     @Published var errorMessage: String?
 
+    // MARK: - Prompt Enhancement
+    @Published var isEnhancing: Bool = false
+
     // MARK: - img2img Source
     @Published var inputImage: NSImage?
     @Published var inputImageName: String?
@@ -266,6 +269,25 @@ final class ImageGenerationViewModel: ObservableObject {
     func clearInputImage() {
         inputImage = nil
         inputImageName = nil
+    }
+
+    // MARK: - Prompt Enhancement
+
+    func enhancePrompt(_ prompt: String, customStyle: CustomPromptStyle) async throws -> String {
+        isEnhancing = true
+        defer { isEnhancing = false }
+
+        let settings = AppSettings.shared
+        let client = settings.createLLMClient()
+        let connected = await client.checkConnection()
+
+        let providerName = settings.providerType.displayName
+        guard connected else {
+            throw LLMError.connectionFailed("Could not connect to \(providerName). Check settings.")
+        }
+
+        let generator = WorkflowPromptGenerator(llmClient: client)
+        return try await generator.enhancePrompt(concept: prompt, systemPrompt: customStyle.systemPrompt)
     }
 
     // MARK: - Preset Loading

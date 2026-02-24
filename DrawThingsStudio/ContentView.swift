@@ -12,6 +12,7 @@ import UniformTypeIdentifiers
 struct ContentView: View {
     @State private var selectedItem: SidebarItem? = SidebarItem(rawValue: AppSettings.shared.defaultSidebarItem) ?? .imageInspector
     @StateObject private var workflowViewModel = WorkflowBuilderViewModel()
+    @StateObject private var pipelineViewModel = WorkflowPipelineViewModel()
     @StateObject private var imageGenViewModel = ImageGenerationViewModel()
     @StateObject private var imageInspectorViewModel = ImageInspectorViewModel()
     @StateObject private var storyStudioViewModel = StoryStudioViewModel()
@@ -34,7 +35,8 @@ struct ContentView: View {
                     .padding(.top, 8)
 
                 sidebarButton("Image Inspector", icon: "doc.text.magnifyingglass", item: .imageInspector)
-                sidebarButton("Workflow Builder", icon: "hammer", item: .workflow)
+                sidebarButton("Storyflow Builder", icon: "hammer", item: .workflow)
+                sidebarButton("Workflow Builder", icon: "rectangle.stack", item: .workflowBuilder)
                 sidebarButton("Generate Image", icon: "photo.badge.plus", item: .generateImage)
                 sidebarButton("Story Studio", icon: "book.pages", item: .storyStudio)
 
@@ -68,6 +70,12 @@ struct ContentView: View {
                     .opacity(selectedItem == .workflow ? 1 : 0)
                     .scaleEffect(selectedItem == .workflow ? 1 : 0.98)
                     .allowsHitTesting(selectedItem == .workflow)
+                    .neuAnimation(.spring(response: 0.18, dampingFraction: 0.8), value: selectedItem)
+
+                WorkflowPipelineView(viewModel: pipelineViewModel)
+                    .opacity(selectedItem == .workflowBuilder ? 1 : 0)
+                    .scaleEffect(selectedItem == .workflowBuilder ? 1 : 0.98)
+                    .allowsHitTesting(selectedItem == .workflowBuilder)
                     .neuAnimation(.spring(response: 0.18, dampingFraction: 0.8), value: selectedItem)
 
                 ImageGenerationView(viewModel: imageGenViewModel)
@@ -261,6 +269,7 @@ struct ContentView: View {
 
 enum SidebarItem: String, Identifiable {
     case workflow
+    case workflowBuilder
     case generateImage
     case imageInspector
     case storyStudio
