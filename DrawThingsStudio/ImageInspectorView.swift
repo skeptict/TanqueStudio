@@ -367,7 +367,8 @@ struct ImageInspectorView: View {
         panel.allowedContentTypes = [.png, .jpeg, .image]
         panel.allowsMultipleSelection = false
         panel.canChooseDirectories = false
-        if panel.runModal() == .OK, let url = panel.url {
+        panel.begin { [viewModel] response in
+            guard response == .OK, let url = panel.url else { return }
             viewModel.loadImage(url: url)
         }
     }

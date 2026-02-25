@@ -153,6 +153,7 @@ final class ImageStorageManager: ObservableObject {
                 return date1 > date2
             }
 
+        let decoder = JSONDecoder()
         var loaded: [GeneratedImage] = []
         for pngURL in pngFiles {
             guard let image = NSImage(contentsOf: pngURL) else { continue }
@@ -165,7 +166,7 @@ final class ImageStorageManager: ObservableObject {
             var inferenceTimeMs: Int?
 
             if let metadataData = try? Data(contentsOf: metadataURL),
-               let metadata = try? JSONDecoder().decode(ImageMetadata.self, from: metadataData) {
+               let metadata = try? decoder.decode(ImageMetadata.self, from: metadataData) {
                 prompt = metadata.prompt
                 negativePrompt = metadata.negativePrompt
                 config = metadata.config

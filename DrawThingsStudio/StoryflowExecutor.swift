@@ -44,7 +44,7 @@ struct StoryflowExecutionState {
     var workingDirectory: URL
 
     init(workingDirectory: URL = {
-        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first ?? URL(fileURLWithPath: NSHomeDirectory())
         return appSupport.appendingPathComponent("DrawThingsStudio/WorkflowOutput", isDirectory: true)
     }()) {
         self.workingDirectory = workingDirectory

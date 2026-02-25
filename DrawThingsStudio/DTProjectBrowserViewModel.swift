@@ -44,6 +44,7 @@ final class DTProjectBrowserViewModel: ObservableObject {
     @Published var hasFolderAccess = false
     @Published var folders: [BookmarkedFolder] = []
     @Published var errorMessage: String?
+    @Published private(set) var projectsByFolder: [String: [DTProjectInfo]] = [:]
 
     private let bookmarksKey = "dt.folderBookmarks"
     private var accessedURLs: [URL] = []   // URLs with active security scope
@@ -286,6 +287,7 @@ final class DTProjectBrowserViewModel: ObservableObject {
         }
 
         projects = allProjects.sorted { $0.modifiedDate > $1.modifiedDate }
+        projectsByFolder = Dictionary(grouping: projects, by: \.folderName)
     }
 
     // MARK: - Entry Loading
@@ -387,12 +389,6 @@ final class DTProjectBrowserViewModel: ObservableObject {
             }
         }
         return url.lastPathComponent
-    }
-
-    /// Projects grouped by their source folder label. Computed once per render cycle
-    /// rather than re-filtering inside each folderSection call.
-    var projectsByFolder: [String: [DTProjectInfo]] {
-        Dictionary(grouping: projects, by: \.folderName)
     }
 
     private static let fileSizeFormatter: ByteCountFormatter = {

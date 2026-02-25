@@ -157,9 +157,9 @@ struct PromptAssembler {
         return AssembledPrompt(
             positivePrompt: positivePrompt,
             negativePrompt: negativePrompt,
-            moodboardImages: collectMoodboardImages(scene: scene, characters: characters, settings: settings),
-            moodboardWeights: collectMoodboardWeights(scene: scene, characters: characters, settings: settings),
-            loras: collectLoRAs(scene: scene, characters: characters),
+            moodboardImages: collectMoodboardImages(scene: scene, characterMap: characterMap, settings: settings),
+            moodboardWeights: collectMoodboardWeights(scene: scene, characterMap: characterMap, settings: settings),
+            loras: collectLoRAs(scene: scene, characterMap: characterMap),
             sourceImage: nil
         )
     }
@@ -228,10 +228,9 @@ struct PromptAssembler {
     /// Collect reference images for moodboard/IP-adapter
     private static func collectMoodboardImages(
         scene: StoryScene,
-        characters: [StoryCharacter],
+        characterMap: [UUID: StoryCharacter],
         settings: [StorySetting]
     ) -> [Data] {
-        let characterMap = Dictionary(uniqueKeysWithValues: characters.map { ($0.id, $0) })
         var images: [Data] = []
 
         for presence in scene.characterPresences {
@@ -260,10 +259,9 @@ struct PromptAssembler {
     /// Collect moodboard weights corresponding to reference images
     private static func collectMoodboardWeights(
         scene: StoryScene,
-        characters: [StoryCharacter],
+        characterMap: [UUID: StoryCharacter],
         settings: [StorySetting]
     ) -> [Double] {
-        let characterMap = Dictionary(uniqueKeysWithValues: characters.map { ($0.id, $0) })
         var weights: [Double] = []
 
         for presence in scene.characterPresences {
@@ -295,9 +293,8 @@ struct PromptAssembler {
     /// Collect LoRAs from characters in the scene
     private static func collectLoRAs(
         scene: StoryScene,
-        characters: [StoryCharacter]
+        characterMap: [UUID: StoryCharacter]
     ) -> [(file: String, weight: Double)] {
-        let characterMap = Dictionary(uniqueKeysWithValues: characters.map { ($0.id, $0) })
         var loras: [(file: String, weight: Double)] = []
         var seenFiles = Set<String>()
 

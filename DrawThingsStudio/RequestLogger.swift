@@ -12,11 +12,9 @@ import DrawThingsClient
 final class RequestLogger {
     static let shared = RequestLogger()
 
-    var logFileURL: URL? {
-        FileManager.default
-            .urls(for: .applicationSupportDirectory, in: .userDomainMask).first?
-            .appendingPathComponent("DrawThingsStudio/request_log.txt")
-    }
+    let logFileURL: URL? = FileManager.default
+        .urls(for: .applicationSupportDirectory, in: .userDomainMask).first?
+        .appendingPathComponent("DrawThingsStudio/request_log.txt")
 
     private init() {
         if let url = logFileURL, !FileManager.default.fileExists(atPath: url.path) {

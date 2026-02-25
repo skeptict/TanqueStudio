@@ -28,7 +28,7 @@ enum ExportError: LocalizedError {
 }
 
 /// Handles exporting StoryFlow instructions to various formats
-class StoryflowExporter {
+final class StoryflowExporter {
 
     // MARK: - JSON Export
 
@@ -229,12 +229,16 @@ class StoryflowExporter {
         return summary
     }
 
+    private static let fileSizeFormatter: ByteCountFormatter = {
+        let f = ByteCountFormatter()
+        f.allowedUnits = [.useBytes, .useKB, .useMB]
+        f.countStyle = .file
+        return f
+    }()
+
     /// Format file size for display
     func formatFileSize(_ bytes: Int) -> String {
-        let formatter = ByteCountFormatter()
-        formatter.allowedUnits = [.useBytes, .useKB, .useMB]
-        formatter.countStyle = .file
-        return formatter.string(fromByteCount: Int64(bytes))
+        Self.fileSizeFormatter.string(fromByteCount: Int64(bytes))
     }
 }
 
