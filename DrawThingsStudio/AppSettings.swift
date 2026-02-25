@@ -104,6 +104,9 @@ final class AppSettings: ObservableObject {
     @Published var drawThingsTransport: String {
         didSet { store.set(drawThingsTransport, forKey: "drawthings.transport") }
     }
+    @Published var drawThingsHostHistory: [String] {
+        didSet { store.set(drawThingsHostHistory, forKey: "drawthings.hostHistory") }
+    }
     @Published var drawThingsSharedSecret: String {
         didSet {
             if drawThingsSharedSecret.isEmpty {
@@ -173,6 +176,7 @@ final class AppSettings: ObservableObject {
         self.drawThingsGRPCPort = store.integer(forKey: "drawthings.grpcPort") != 0 ? store.integer(forKey: "drawthings.grpcPort") : 7859
         self.drawThingsTransport = store.string(forKey: "drawthings.transport") ?? DrawThingsTransport.http.rawValue
         self.drawThingsSharedSecret = isUITesting ? "" : (keychain.string(for: SecretAccount.drawThingsSharedSecret) ?? "")
+        self.drawThingsHostHistory = store.object(forKey: "drawthings.hostHistory") as? [String] ?? []
 
         self.defaultWidth = store.integer(forKey: "defaults.width") != 0 ? store.integer(forKey: "defaults.width") : 1024
         self.defaultHeight = store.integer(forKey: "defaults.height") != 0 ? store.integer(forKey: "defaults.height") : 1024
@@ -231,6 +235,7 @@ final class AppSettings: ObservableObject {
         }
     }
 
+
     /// Creates an LLM client based on current settings
     func createLLMClient() -> any LLMProvider {
         switch providerType {
@@ -257,6 +262,27 @@ final class AppSettings: ObservableObject {
     }
 
     // MARK: - Methods
+
+    // MARK: - Host History
+
+    /// Saves the current drawThingsHost to history (deduplicates, most-recent first, capped at 20).
+    func addDrawThingsHostToHistory() {
+        let trimmed = drawThingsHost.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        drawThingsHostHistory.removeAll { $0 == trimmed }
+        drawThingsHostHistory.insert(trimmed, at: 0)
+        if drawThingsHostHistory.count > 20 {
+            drawThingsHostHistory.removeLast()
+        }
+    }
+
+    func removeDrawThingsHostFromHistory(_ host: String) {
+        drawThingsHostHistory.removeAll { $0 == host }
+    }
+
+    func clearDrawThingsHostHistory() {
+        drawThingsHostHistory = []
+    }
 
     private static func migrateLegacySecretsIfNeeded(store: SettingsStore, keychain: KeychainService) {
         if let legacyJanKey = store.string(forKey: SecretAccount.janAPIKey), !legacyJanKey.isEmpty {
@@ -393,7 +419,16 @@ struct SettingsView: View {
 
                 // Draw Things Connection
                 neuSettingsSection("Draw Things Connection", icon: "paintbrush.pointed") {
-                    neuSettingsRow("Host") { TextField("", text: $settings.drawThingsHost).textFieldStyle(NeumorphicTextFieldStyle()).accessibilityIdentifier("settings_drawThingsHost") }
+                    neuSettingsRow("Host") {
+                        DrawThingsHostField(
+                            host: $settings.drawThingsHost,
+                            history: settings.drawThingsHostHistory,
+                            onCommit: { settings.addDrawThingsHostToHistory() },
+                            onSelect: { settings.drawThingsHost = $0 },
+                            onDelete: { settings.removeDrawThingsHostFromHistory($0) },
+                            onClearAll: { settings.clearDrawThingsHostHistory() }
+                        )
+                    }
                     neuSettingsRow("HTTP Port") { TextField("", value: $settings.drawThingsHTTPPort, format: .number).textFieldStyle(NeumorphicTextFieldStyle()).frame(width: 100).accessibilityIdentifier("settings_drawThingsHTTPPort") }
                     neuSettingsRow("gRPC Port") { TextField("", value: $settings.drawThingsGRPCPort, format: .number).textFieldStyle(NeumorphicTextFieldStyle()).frame(width: 100).accessibilityIdentifier("settings_drawThingsGRPCPort") }
 
@@ -569,6 +604,7 @@ struct SettingsView: View {
     }
 
     private func testDTConnection() {
+        settings.addDrawThingsHostToHistory()
         testingDTConnection = true
         dtConnectionResult = nil
 
@@ -578,5 +614,110 @@ struct SettingsView: View {
             testingDTConnection = false
             dtConnectionResult = success ? "Success! Connected to Draw Things" : "Failed to connect"
         }
+    }
+}
+
+// MARK: - Draw Things Host History Field
+
+private struct DrawThingsHostField: View {
+    @Binding var host: String
+    let history: [String]
+    let onCommit: () -> Void
+    let onSelect: (String) -> Void
+    let onDelete: (String) -> Void
+    let onClearAll: () -> Void
+
+    @State private var showHistory = false
+
+    var body: some View {
+        HStack(spacing: 4) {
+            TextField("", text: $host)
+                .textFieldStyle(NeumorphicTextFieldStyle())
+                .accessibilityIdentifier("settings_drawThingsHost")
+                .onSubmit(onCommit)
+
+            Button {
+                showHistory.toggle()
+            } label: {
+                Image(systemName: showHistory ? "chevron.up" : "chevron.down")
+                    .font(.caption)
+                    .foregroundColor(history.isEmpty ? Color.neuTextSecondary.opacity(0.4) : Color.neuTextSecondary)
+            }
+            .buttonStyle(NeumorphicIconButtonStyle())
+            .disabled(history.isEmpty)
+            .help(history.isEmpty ? "No saved hosts" : "Show host history")
+            .popover(isPresented: $showHistory, arrowEdge: .bottom) {
+                HostHistoryPopover(
+                    currentHost: host,
+                    history: history,
+                    onSelect: { h in
+                        onSelect(h)
+                        showHistory = false
+                    },
+                    onDelete: onDelete,
+                    onClearAll: {
+                        onClearAll()
+                        showHistory = false
+                    }
+                )
+            }
+        }
+    }
+}
+
+private struct HostHistoryPopover: View {
+    let currentHost: String
+    let history: [String]
+    let onSelect: (String) -> Void
+    let onDelete: (String) -> Void
+    let onClearAll: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(history, id: \.self) { h in
+                HStack(spacing: 8) {
+                    Button(action: { onSelect(h) }) {
+                        HStack(spacing: 6) {
+                            Text(h)
+                                .font(.body)
+                                .foregroundColor(.primary)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                            if h == currentHost {
+                                Image(systemName: "checkmark")
+                                    .font(.caption2)
+                                    .foregroundColor(Color.neuAccent)
+                            }
+                        }
+                    }
+                    .buttonStyle(.plain)
+
+                    Button(action: { onDelete(h) }) {
+                        Image(systemName: "trash")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Remove from history")
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 7)
+                .contentShape(Rectangle())
+
+                if h != history.last {
+                    Divider()
+                        .padding(.leading, 12)
+                }
+            }
+
+            Divider()
+
+            Button("Clear All", action: onClearAll)
+                .buttonStyle(.plain)
+                .font(.caption)
+                .foregroundColor(.red)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+        }
+        .frame(minWidth: 220)
     }
 }
