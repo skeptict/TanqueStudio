@@ -22,7 +22,7 @@ final class ImageStorageManager: ObservableObject {
     // Reused across calls — ISO8601DateFormatter is expensive to allocate.
     private static let filenameFormatter = ISO8601DateFormatter()
 
-    private let storageDirectory: URL
+    let storageDirectory: URL
 
     @Published var savedImages: [GeneratedImage] = []
 
@@ -331,7 +331,7 @@ final class ImageStorageManager: ObservableObject {
 
 // MARK: - Metadata Model
 
-private struct ImageMetadata: Codable {
+struct ImageMetadata: Codable {
     let prompt: String
     let negativePrompt: String
     let config: DrawThingsGenerationConfig

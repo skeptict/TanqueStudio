@@ -17,6 +17,7 @@ struct ContentView: View {
     @StateObject private var imageInspectorViewModel = ImageInspectorViewModel()
     @StateObject private var storyStudioViewModel = StoryStudioViewModel()
     @StateObject private var projectBrowserViewModel = DTProjectBrowserViewModel()
+    @StateObject private var imageBrowserViewModel = ImageBrowserViewModel()
     @State private var isDetailDropTargeted = false
 
     var body: some View {
@@ -45,6 +46,7 @@ struct ContentView: View {
                     .padding(.top, 12)
 
                 sidebarButton("DT Projects", icon: "cylinder.split.1x2", item: .projectBrowser)
+                sidebarButton("Image Browser", icon: "photo.stack", item: .imageBrowser)
                 sidebarButton("Saved Workflows", icon: "folder", item: .library)
                 sidebarButton("Templates", icon: "doc.on.doc", item: .templates)
                 sidebarButton("Story Projects", icon: "book.closed", item: .storyProjects)
@@ -106,6 +108,13 @@ struct ContentView: View {
                 if selectedItem == .projectBrowser {
                     DTProjectBrowserView(
                         viewModel: projectBrowserViewModel,
+                        imageGenViewModel: imageGenViewModel,
+                        selectedSidebarItem: $selectedItem
+                    )
+                    .transition(.opacity.combined(with: .scale(scale: 0.98)))
+                } else if selectedItem == .imageBrowser {
+                    ImageBrowserView(
+                        viewModel: imageBrowserViewModel,
                         imageGenViewModel: imageGenViewModel,
                         selectedSidebarItem: $selectedItem
                     )
@@ -277,6 +286,7 @@ enum SidebarItem: String, Identifiable {
     case imageInspector
     case storyStudio
     case projectBrowser
+    case imageBrowser
     case library
     case templates
     case storyProjects
