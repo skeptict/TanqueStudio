@@ -26,6 +26,15 @@ extension FocusedValues {
 @main
 struct DrawThingsStudioApp: App {
     var sharedModelContainer: ModelContainer = {
+        // Increment when the SwiftData schema changes incompatibly.
+        // On macOS 14 (SwiftData 1.0), automatic lightweight migration can
+        // leave stale SQLite constraints (e.g. UNIQUE indexes from a removed
+        // @Attribute(.unique)) that cause EXC_BAD_INSTRUCTION on insert.
+        // Wiping the store on version bump is safe for a beta app and prevents
+        // the crash for any user who had an older build installed.
+        let currentSchemaVersion = 2
+        let schemaVersionKey = "dts.schemaVersion"
+
         let schema = Schema([
             SavedWorkflow.self,
             ModelConfig.self,
@@ -39,6 +48,18 @@ struct DrawThingsStudioApp: App {
             SceneVariant.self
         ])
         let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
+
+        if UserDefaults.standard.integer(forKey: schemaVersionKey) < currentSchemaVersion {
+            // Delete the persistent store + WAL companions so SwiftData opens
+            // a clean database that matches the current schema.
+            let storeURL = modelConfiguration.url
+            let fm = FileManager.default
+            for suffix in ["", "-shm", "-wal"] {
+                let url = URL(fileURLWithPath: storeURL.path + suffix)
+                try? fm.removeItem(at: url)
+            }
+            UserDefaults.standard.set(currentSchemaVersion, forKey: schemaVersionKey)
+        }
 
         do {
             return try ModelContainer(for: schema, configurations: [modelConfiguration])
