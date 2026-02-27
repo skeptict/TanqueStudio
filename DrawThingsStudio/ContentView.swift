@@ -148,6 +148,13 @@ struct ContentView: View {
             }
         }
         .focusedSceneValue(\.workflowViewModel, workflowViewModel)
+        .task {
+            // Centralised asset loading: fetch Draw Things assets and the cloud model catalog
+            // once at the top level so child views (ImageGenerationView, WorkflowPipelineView)
+            // don't each trigger a redundant connection attempt on launch.
+            await DrawThingsAssetManager.shared.fetchAssets()
+            await DrawThingsAssetManager.shared.fetchCloudCatalogIfNeeded()
+        }
     }
 
     // MARK: - Drop Routing

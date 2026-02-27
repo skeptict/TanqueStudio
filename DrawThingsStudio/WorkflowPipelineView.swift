@@ -82,8 +82,6 @@ struct WorkflowPipelineView: View {
         }
         .task {
             await viewModel.checkConnection()
-            await assetManager.fetchAssets()
-            await assetManager.fetchCloudCatalogIfNeeded()
         }
     }
 
