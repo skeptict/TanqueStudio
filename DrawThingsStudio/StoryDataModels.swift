@@ -13,7 +13,7 @@ import SwiftData
 /// Top-level container for a visual narrative project
 @Model
 class StoryProject {
-    @Attribute(.unique) var id: UUID
+    var id: UUID
     var name: String
     var projectDescription: String
     var genre: String?
@@ -98,7 +98,7 @@ class StoryProject {
 /// A character with identity, visual consistency tools, and appearance variants
 @Model
 class StoryCharacter {
-    @Attribute(.unique) var id: UUID
+    var id: UUID
     var name: String
     var promptFragment: String
     var negativePromptFragment: String?
@@ -169,7 +169,7 @@ class StoryCharacter {
 /// A variation of a character's look for character development/growth
 @Model
 class CharacterAppearance {
-    @Attribute(.unique) var id: UUID
+    var id: UUID
     var name: String
     var promptOverride: String?
     var clothingOverride: String?
@@ -213,7 +213,7 @@ class CharacterAppearance {
 /// A reusable location/environment
 @Model
 class StorySetting {
-    @Attribute(.unique) var id: UUID
+    var id: UUID
     var name: String
     var promptFragment: String
     var negativePromptFragment: String?
@@ -251,7 +251,7 @@ class StorySetting {
 /// A narrative chapter containing scenes
 @Model
 class StoryChapter {
-    @Attribute(.unique) var id: UUID
+    var id: UUID
     var title: String
     var chapterDescription: String?
     var sortOrder: Int
@@ -284,7 +284,7 @@ class StoryChapter {
 /// The core creative unit — a single narrative moment
 @Model
 class StoryScene {
-    @Attribute(.unique) var id: UUID
+    var id: UUID
     var title: String
     var sceneDescription: String
     var actionDescription: String?
@@ -368,7 +368,7 @@ class StoryScene {
 /// Links a character to a scene with scene-specific overrides
 @Model
 class SceneCharacterPresence {
-    @Attribute(.unique) var id: UUID
+    var id: UUID
     var characterId: UUID
     var appearanceId: UUID?
     var expressionOverride: String?
@@ -399,7 +399,7 @@ class SceneCharacterPresence {
 /// A single generation attempt for a scene
 @Model
 class SceneVariant {
-    @Attribute(.unique) var id: UUID
+    var id: UUID
     var imageData: Data?
     var imagePath: String?
     var prompt: String

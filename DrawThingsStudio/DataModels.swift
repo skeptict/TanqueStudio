@@ -13,7 +13,7 @@ import SwiftData
 /// A saved configuration preset for a specific model
 @Model
 class ModelConfig {
-    @Attribute(.unique) var id: UUID
+    var id: UUID
     var name: String
     var modelName: String
     var configDescription: String
@@ -149,7 +149,7 @@ enum BuiltInModelConfigs {
 /// Stores the workflow as JSON data for maximum compatibility
 @Model
 class SavedWorkflow {
-    @Attribute(.unique) var id: UUID
+    var id: UUID
     var name: String
     var workflowDescription: String
     var jsonData: Data
