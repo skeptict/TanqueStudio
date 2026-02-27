@@ -32,7 +32,10 @@ struct DrawThingsStudioApp: App {
         // @Attribute(.unique)) that cause EXC_BAD_INSTRUCTION on insert.
         // Wiping the store on version bump is safe for a beta app and prevents
         // the crash for any user who had an older build installed.
-        let currentSchemaVersion = 2
+        //
+        // v3: switched to an explicit store URL so the migration path is
+        // predictable and we don't accidentally delete the wrong file.
+        let currentSchemaVersion = 3
         let schemaVersionKey = "dts.schemaVersion"
 
         let schema = Schema([
@@ -47,16 +50,29 @@ struct DrawThingsStudioApp: App {
             SceneCharacterPresence.self,
             SceneVariant.self
         ])
-        let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
+
+        // Naming the configuration pins the store filename to
+        // "DrawThingsStudio.store" so the migration path is predictable —
+        // without a name SwiftData may derive a different path across schema
+        // versions, causing the guard to delete the wrong file.
+        let modelConfiguration = ModelConfiguration(
+            "DrawThingsStudio", schema: schema, isStoredInMemoryOnly: false)
 
         if UserDefaults.standard.integer(forKey: schemaVersionKey) < currentSchemaVersion {
-            // Delete the persistent store + WAL companions so SwiftData opens
-            // a clean database that matches the current schema.
+            // Delete the persistent store + WAL companions at the named URL
+            // and also probe the legacy unnamed location ("default.store") that
+            // earlier builds may have used, so SwiftData opens a clean database.
             let storeURL = modelConfiguration.url
+            let appSupport = storeURL.deletingLastPathComponent()
             let fm = FileManager.default
-            for suffix in ["", "-shm", "-wal"] {
-                let url = URL(fileURLWithPath: storeURL.path + suffix)
-                try? fm.removeItem(at: url)
+            let candidates: [URL] = [
+                storeURL,
+                appSupport.appendingPathComponent("default.store"),
+            ]
+            for base in candidates {
+                for suffix in ["", "-shm", "-wal"] {
+                    try? fm.removeItem(at: URL(fileURLWithPath: base.path + suffix))
+                }
             }
             UserDefaults.standard.set(currentSchemaVersion, forKey: schemaVersionKey)
         }
