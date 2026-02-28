@@ -70,12 +70,17 @@ final class StoryStudioViewModel: ObservableObject {
             genre: genre,
             artStyle: artStyle
         )
-        // Add a default first chapter
+        // Insert project into context before establishing any relationships.
+        // SwiftData 1.0 (macOS 14) crashes with EXC_BAD_INSTRUCTION if you set
+        // inverse relationships between objects that are not yet managed by a
+        // ModelContext.
+        context.insert(project)
+
         let chapter = StoryChapter(title: "Chapter 1", sortOrder: 0)
+        context.insert(chapter)
         chapter.project = project
         project.chapters.append(chapter)
 
-        context.insert(project)
         selectedProject = project
         selectedChapter = chapter
         selectedScene = nil
