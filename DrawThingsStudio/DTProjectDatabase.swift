@@ -113,36 +113,55 @@ struct DTVideoClip: Identifiable {
 
     /// Group a flat list of entries (any order) into clips, sorted newest-first by rowid.
     ///
-    /// Entries whose model is a known video model are grouped by lineage (__pk0) so that
-    /// all frames of a single video generation run are kept together.
-    /// Entries from still-image models are each placed in their own single-frame clip —
-    /// even if they share a lineage value — so that batch renders are never accidentally
-    /// presented as an animation.
+    /// __pk0 (lineage) is configuration-scoped in Draw Things: two separate renders with
+    /// identical settings (model, prompt, seed) share the same __pk0 even if the source
+    /// canvas differs. The reliable per-run boundary signal is __pk1 (logicalTime) resetting
+    /// back to 0 within the same __pk0 group. Processing entries in ascending rowid order,
+    /// each reset of logicalTime to a value ≤ the previous frame's index marks the start
+    /// of a new generation run and produces a distinct clip.
+    ///
+    /// Still-image entries are never grouped — each gets its own single-frame clip keyed
+    /// on its negative rowid, which never collides with positive lineage values.
     static func group(from entries: [DTGenerationEntry]) -> [DTVideoClip] {
-        var byKey: [Int64: [DTGenerationEntry]] = [:]
-        for entry in entries {
+        // Process chronologically so logicalTime resets are detectable.
+        let chronological = entries.sorted { $0.id < $1.id }
+
+        // (lineage, runIndex) → frames collected so far
+        var byKey: [String: [DTGenerationEntry]] = [:]
+        // lineage → (current run index, last seen logicalTime)
+        var runState: [Int64: (run: Int, prevTime: Int64)] = [:]
+
+        for entry in chronological {
             if isVideoModel(entry.model) {
-                // Group all frames of this video generation run together.
-                byKey[entry.lineage, default: []].append(entry)
+                var (run, prevTime) = runState[entry.lineage] ?? (0, -1)
+
+                // A reset of logicalTime (frame index back to 0, or any non-monotone
+                // jump) means Draw Things started a new generation run under the same
+                // lineage key.
+                if prevTime >= 0 && entry.logicalTime <= prevTime {
+                    run += 1
+                }
+                prevTime = entry.logicalTime
+                runState[entry.lineage] = (run, prevTime)
+
+                let key = "\(entry.lineage)_\(run)"
+                byKey[key, default: []].append(entry)
             } else {
-                // Each still image gets its own clip. Use the negative rowid as the
-                // clip key — rowids are always positive, so there is no collision with
-                // real lineage values.
-                byKey[-entry.id] = [entry]
+                // Each still image gets its own clip. Prefix "s" avoids any collision
+                // with the lineage_run keys used for video entries.
+                byKey["s\(entry.id)"] = [entry]
             }
         }
-        return byKey.map { key, frames in
+
+        return byKey.values.map { frames in
             // Sort frames ascending by logicalTime so frame 0 is first.
-            // Use the map key as the clip ID: for video entries this is the lineage
-            // (positive, unique per generation run); for still-image entries it is
-            // the negative rowid (negative, unique per entry). The two ranges never
-            // overlap, so all clip IDs are globally unique.
             let sorted = frames.sorted { $0.logicalTime < $1.logicalTime }
-            return DTVideoClip(id: key, frames: sorted)
+            // Use the highest rowid in the clip as its stable ID.
+            let clipId = sorted.last?.id ?? sorted[0].id
+            return DTVideoClip(id: clipId, frames: sorted)
         }
         .sorted { a, b in
-            // frames is already sorted ascending by logicalTime; the last element
-            // has the highest rowid. Using .last?.id is O(1) vs .map(\.id).max() O(K).
+            // Newest clip first: highest rowid in clip = most recent frame generated.
             (a.frames.last?.id ?? 0) > (b.frames.last?.id ?? 0)
         }
     }
