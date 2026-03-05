@@ -758,8 +758,8 @@ struct ImageGenerationView: View {
                 Spacer()
             }
 
-            // SSS (Stochastic Sampling) — only for TCD sampler
-            if viewModel.config.sampler == "TCD" {
+            // SSS (Stochastic Sampling) — TCD family samplers
+            if viewModel.config.sampler == "TCD" || viewModel.config.sampler == "TCD Trailing" {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Stochastic Sampling (SSS)").font(.caption).foregroundColor(.neuTextSecondary)
                     HStack(spacing: 8) {

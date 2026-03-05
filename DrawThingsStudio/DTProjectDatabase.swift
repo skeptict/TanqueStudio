@@ -551,6 +551,8 @@ final class DTProjectDatabase: @unchecked Sendable {
         case 7: return "Euler A Substep"
         case 8: return "DPM++ SDE Substep"
         case 9: return "TCD"
+        // TCD Trailing — added in Draw Things alongside UniPC AYS (18)
+        case 19: return "TCD Trailing"
         case 10: return "Euler A Trailing"
         case 11: return "DPM++ SDE Trailing"
         case 12: return "DPM++ 2M AYS"

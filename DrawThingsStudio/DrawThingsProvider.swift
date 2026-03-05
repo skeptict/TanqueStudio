@@ -285,6 +285,7 @@ struct DrawThingsSampler: Identifiable, Hashable {
         DrawThingsSampler(name: "Euler a Substep", displayName: "Euler Ancestral Substep"),
         DrawThingsSampler(name: "DPM++ SDE Substep", displayName: "DPM++ SDE Substep"),
         DrawThingsSampler(name: "TCD", displayName: "TCD"),
+        DrawThingsSampler(name: "TCD Trailing", displayName: "TCD Trailing"),
         DrawThingsSampler(name: "Euler A Trailing", displayName: "Euler Ancestral Trailing"),
         DrawThingsSampler(name: "DPM++ SDE Trailing", displayName: "DPM++ SDE Trailing"),
         DrawThingsSampler(name: "DPM++ 2M AYS", displayName: "DPM++ 2M AYS"),

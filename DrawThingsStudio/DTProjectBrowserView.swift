@@ -1011,7 +1011,7 @@ private struct DTDetailPanel: View {
                         if entry.shift != 1.0 {
                             paramRow("Shift", String(format: "%.2f", entry.shift))
                         }
-                        if entry.sampler == "TCD" {
+                        if entry.sampler == "TCD" || entry.sampler == "TCD Trailing" {
                             paramRow("SSS", String(format: "%.0f%%", entry.stochasticSamplingGamma * 100))
                         }
                         paramRow("Seed Mode", entry.seedMode)
@@ -1113,7 +1113,7 @@ private struct DTDetailPanel: View {
         if !entry.model.isEmpty { dict["model"] = entry.model }
         if entry.strength > 0 && entry.strength < 1 { dict["strength"] = entry.strength }
         if entry.shift != 1.0 { dict["shift"] = entry.shift }
-        if entry.sampler == "TCD" { dict["stochastic_sampling_gamma"] = entry.stochasticSamplingGamma }
+        if entry.sampler == "TCD" || entry.sampler == "TCD Trailing" { dict["stochastic_sampling_gamma"] = entry.stochasticSamplingGamma }
         if !entry.loras.isEmpty {
             dict["loras"] = entry.loras.map { ["file": $0.file, "weight": $0.weight] as [String: Any] }
         }
@@ -1140,7 +1140,7 @@ private struct DTDetailPanel: View {
         if !entry.model.isEmpty { config.append("Model: \(entry.model)") }
         if entry.strength > 0 && entry.strength < 1 { config.append("Strength: \(String(format: "%.2f", entry.strength))") }
         if entry.shift != 1.0 { config.append("Shift: \(String(format: "%.2f", entry.shift))") }
-        if entry.sampler == "TCD" { config.append("SSS: \(String(format: "%.0f%%", entry.stochasticSamplingGamma * 100))") }
+        if entry.sampler == "TCD" || entry.sampler == "TCD Trailing" { config.append("SSS: \(String(format: "%.0f%%", entry.stochasticSamplingGamma * 100))") }
         for lora in entry.loras {
             config.append("LoRA: \(lora.file) @ \(String(format: "%.2f", lora.weight))")
         }

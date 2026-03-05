@@ -260,6 +260,7 @@ enum SamplerMapping {
         16: "DDIM Trailing",
         17: "UniPC Trailing",
         18: "UniPC AYS",
+        19: "TCD Trailing",
     ]
 
     static func name(for index: Int) -> String {

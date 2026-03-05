@@ -362,7 +362,7 @@ final class DrawThingsGRPCClient: DrawThingsProvider {
             return .eulerasubstep
         case "dpm++sdesubstep", "dpmppsdesubstep":
             return .dpmppsdesubstep
-        case "tcd":
+        case "tcd", "tcdtrailing":
             return .tcd
         case "euleratrailing", "euler_a_trailing":
             return .euleratrailing
