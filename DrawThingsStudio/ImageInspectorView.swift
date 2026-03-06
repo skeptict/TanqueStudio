@@ -398,10 +398,21 @@ struct ImageInspectorView: View {
         if meta.hasLoRAs {
             config.loras = meta.loras.map { ["file": $0.file, "weight": Double($0.weight)] }
         }
+        if let rm = meta.refinerModel, !rm.isEmpty {
+            config.refinerModel = rm
+            config.refinerStart = meta.refinerStart.map { Float($0) }
+        }
 
-        workflowViewModel.clearAllInstructions()
-        workflowViewModel.workflowName = selected.sourceName
-        workflowViewModel.addInstruction(.note("Imported from Image Inspector: \(selected.sourceName)"))
+        // Append to existing workflow rather than replacing it
+        let isAppending = !workflowViewModel.instructions.isEmpty
+        if workflowViewModel.workflowName == "Untitled Workflow" {
+            workflowViewModel.workflowName = selected.sourceName
+        }
+        if isAppending {
+            workflowViewModel.addInstruction(.note("--- From Image Inspector: \(selected.sourceName) ---"))
+        } else {
+            workflowViewModel.addInstruction(.note("Imported from Image Inspector: \(selected.sourceName)"))
+        }
         workflowViewModel.addInstruction(.config(config))
         if let prompt = meta.prompt, !prompt.isEmpty {
             workflowViewModel.addInstruction(.prompt(prompt))

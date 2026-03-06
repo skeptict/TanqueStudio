@@ -34,12 +34,14 @@ struct DrawThingsConfig: Codable {
     var clipSkip: Int?
     var shift: Float?
     var stochasticSamplingGamma: Float?
+    var refinerModel: String?
+    var refinerStart: Float?
     var loras: [[String: Any]]?
 
     enum CodingKeys: String, CodingKey {
         case width, height, steps, guidanceScale, seed, model
         case samplerName, numFrames, strength, batchCount, batchSize, clipSkip, shift
-        case stochasticSamplingGamma
+        case stochasticSamplingGamma, refinerModel, refinerStart
     }
 
     init(
@@ -57,6 +59,8 @@ struct DrawThingsConfig: Codable {
         clipSkip: Int? = nil,
         shift: Float? = nil,
         stochasticSamplingGamma: Float? = nil,
+        refinerModel: String? = nil,
+        refinerStart: Float? = nil,
         loras: [[String: Any]]? = nil
     ) {
         self.width = width
