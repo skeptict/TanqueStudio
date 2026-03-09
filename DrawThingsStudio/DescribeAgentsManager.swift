@@ -51,6 +51,7 @@ enum BuiltInDescribeAgent: String, CaseIterable {
     case sdxl         = "sdxl"
     case zImageTurbo  = "zimage-turbo"
     case ltx2         = "ltx2"
+    case wan22        = "wan22"
     case sd15         = "sd15"
 
     var agent: DescribeAgent {
@@ -108,6 +109,17 @@ enum BuiltInDescribeAgent: String, CaseIterable {
                 userMessage: "Analyze this image and write an LTX-2 prompt suitable for video generation from this scene. Include motion descriptions and camera movement.",
                 preferredVisionModel: "",
                 icon: "film",
+                isBuiltIn: true
+            )
+        case .wan22:
+            return DescribeAgent(
+                id: rawValue,
+                name: "Wan 2.2 Prompt",
+                targetModel: "Wan 2.2",
+                systemPrompt: "You are an expert at writing prompts for Wan 2.2, Alibaba's video generation model. Wan 2.2 excels at realistic motion and cinematic sequences. Write prompts that describe the scene's visual content, motion dynamics, camera behavior, lighting, and atmosphere. Use clear, natural language. Avoid abstract concepts — focus on what is literally visible and moving in the scene. Output only the prompt, no explanations.",
+                userMessage: "Analyze this image and write a Wan 2.2 video generation prompt. Describe the scene content, any implied or suitable motion, camera movement, lighting, and mood.",
+                preferredVisionModel: "",
+                icon: "video",
                 isBuiltIn: true
             )
         case .sd15:
