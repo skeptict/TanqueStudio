@@ -56,6 +56,29 @@ final class ImageGenerationViewModel: ObservableObject {
     @Published var inputImage: NSImage?
     @Published var inputImageName: String?
 
+    // MARK: - Sweep / Wildcard State
+
+    /// Editable text for sweep-aware fields. Single values ("8") behave normally;
+    /// ranges ("6-8") or comma lists ("4,8,16") expand into a job queue at generate time.
+    @Published var stepsText: String = "8"
+    @Published var guidanceText: String = "1.0"
+    @Published var shiftText: String = "3.0"
+    @Published var wildcardMode: WildcardMode = .random
+    @Published var wildcardRandomCount: Int = 4
+
+    /// Total queued job count based on current sweep + wildcard state.
+    var sweepJobCount: Int {
+        JobQueueBuilder(
+            basePrompt: prompt,
+            baseConfig: config,
+            stepsText: stepsText,
+            guidanceText: guidanceText,
+            shiftText: shiftText,
+            wildcardMode: wildcardMode,
+            wildcardRandomCount: wildcardRandomCount
+        ).totalCount
+    }
+
     // MARK: - Pipeline Steps
 
     @Published var steps: [GenerationStep] = [GenerationStep(name: "Step 1")]
@@ -104,6 +127,29 @@ final class ImageGenerationViewModel: ObservableObject {
 
         guard !isGenerating else { return }
 
+        // Build base config shared by all jobs
+        var baseConfig = config
+        baseConfig.negativePrompt = negativePrompt
+        // If no source image, force strength=1.0 so Draw Things runs txt2img.
+        if inputImage == nil { baseConfig.strength = 1.0 }
+
+        // Expand sweep ranges and prompt wildcards into concrete jobs
+        let builder = JobQueueBuilder(
+            basePrompt: prompt,
+            baseConfig: baseConfig,
+            stepsText: stepsText,
+            guidanceText: guidanceText,
+            shiftText: shiftText,
+            wildcardMode: wildcardMode,
+            wildcardRandomCount: wildcardRandomCount
+        )
+        let jobs = builder.build()
+        let isMultiJob = jobs.count > 1
+
+        // When sweeping, send 1 image per job; otherwise respect batchCount.
+        let imagesPerJob = isMultiJob ? 1 : max(1, config.batchCount)
+        let totalImages = jobs.count * imagesPerJob
+
         errorMessage = nil
         isGenerating = true
         progressFraction = 0
@@ -112,108 +158,79 @@ final class ImageGenerationViewModel: ObservableObject {
         generationTask = Task {
             do {
                 let settings = AppSettings.shared
-                if client == nil {
-                    client = settings.createDrawThingsClient()
-                }
+                if client == nil { client = settings.createDrawThingsClient() }
+                guard let client else { throw DrawThingsError.connectionFailed("No client available") }
 
-                guard let client = client else {
-                    throw DrawThingsError.connectionFailed("No client available")
-                }
-
-                // Check connection first
                 let connected = await client.checkConnection()
-                guard connected else {
-                    throw DrawThingsError.connectionFailed("Draw Things is not reachable")
-                }
+                guard connected else { throw DrawThingsError.connectionFailed("Draw Things is not reachable") }
                 connectionStatus = .connected
 
-                // DTS controls iteration count; always send batchCount=1 to Draw Things
-                // so its local batch setting is overridden by the single-image request.
-                var generationConfig = config
-                generationConfig.negativePrompt = negativePrompt
-                generationConfig.batchCount = 1
-                generationConfig.batchSize = 1
-                // If no source image, force strength=1.0 so Draw Things runs txt2img.
-                // A leftover strength<1.0 (from a prior img2img session) would otherwise
-                // tell Draw Things to denoise pure noise → static output.
-                if inputImage == nil {
-                    generationConfig.strength = 1.0
-                }
-
-                let totalImages = max(1, config.batchCount)
                 var totalSaved = 0
 
-                for imageIndex in 1...totalImages {
-                    try Task.checkCancellation()
+                for (jobIndex, job) in jobs.enumerated() {
+                    var jobConfig = job.config
+                    jobConfig.batchCount = 1
+                    jobConfig.batchSize = 1
 
-                    if totalImages > 1 {
-                        generationImageLabel = "Image \(imageIndex) of \(totalImages)"
-                    } else {
-                        generationImageLabel = ""
-                    }
-                    progressFraction = Double(imageIndex - 1) / Double(totalImages)
+                    for imageIndex in 0..<imagesPerJob {
+                        try Task.checkCancellation()
 
-                    let images = try await client.generateImage(
-                        prompt: prompt,
-                        sourceImage: inputImage,
-                        mask: nil,
-                        config: generationConfig,
-                        onProgress: { [weak self] prog in
-                            guard let self else { return }
-                            self.progress = prog
-                            // Scale fraction within this image's slice
-                            let base = Double(imageIndex - 1) / Double(totalImages)
-                            let slice = 1.0 / Double(totalImages)
-                            self.progressFraction = base + prog.fraction * slice
+                        let overallIndex = jobIndex * imagesPerJob + imageIndex
+                        if totalImages > 1 {
+                            generationImageLabel = isMultiJob
+                                ? "Job \(jobIndex + 1) of \(jobs.count)"
+                                : "Image \(overallIndex + 1) of \(totalImages)"
+                        } else {
+                            generationImageLabel = ""
                         }
-                    )
+                        progressFraction = Double(overallIndex) / Double(totalImages)
 
-                    guard !images.isEmpty else {
-                        errorMessage = "No images returned for image \(imageIndex). Check that the model is ready."
-                        progress = .failed("No images returned")
-                        isGenerating = false
-                        generationImageLabel = ""
-                        return
-                    }
+                        let images = try await client.generateImage(
+                            prompt: job.prompt,
+                            sourceImage: inputImage,
+                            mask: nil,
+                            config: jobConfig,
+                            onProgress: { [weak self] prog in
+                                guard let self else { return }
+                                self.progress = prog
+                                let base = Double(overallIndex) / Double(totalImages)
+                                let slice = 1.0 / Double(totalImages)
+                                self.progressFraction = base + prog.fraction * slice
+                            }
+                        )
 
-                    // Draw Things may ignore batchCount=1 and return multiple images
-                    // (using its own local batch setting). Only collect as many as still
-                    // needed to reach the user's requested total.
-                    let remaining = totalImages - totalSaved
-                    for image in images.prefix(remaining) {
-                        // Ensure the NSImage has a valid bitmap representation before saving.
-                        // Images from gRPC may arrive as CGImage-backed NSImages; force a
-                        // concrete bitmap rep so tiffRepresentation doesn't return nil.
+                        // Ensure NSImage has a valid bitmap rep (gRPC may return CGImage-backed images)
+                        guard let rawImage = images.first else {
+                            let label = isMultiJob ? "job \(jobIndex + 1)" : "image \(overallIndex + 1)"
+                            errorMessage = "No image returned for \(label). Check that the model is ready."
+                            progress = .failed("No images returned")
+                            isGenerating = false
+                            generationImageLabel = ""
+                            return
+                        }
+
                         let saveImage: NSImage
-                        if image.tiffRepresentation == nil,
-                           let cgImage = image.cgImage(forProposedRect: nil, context: nil, hints: nil) {
+                        if rawImage.tiffRepresentation == nil,
+                           let cgImage = rawImage.cgImage(forProposedRect: nil, context: nil, hints: nil) {
                             let rep = NSBitmapImageRep(cgImage: cgImage)
-                            let rebuilt = NSImage(size: image.size)
+                            let rebuilt = NSImage(size: rawImage.size)
                             rebuilt.addRepresentation(rep)
                             saveImage = rebuilt
                         } else {
-                            saveImage = image
+                            saveImage = rawImage
                         }
 
                         if let saved = storageManager.saveImage(
                             saveImage,
-                            prompt: prompt,
-                            negativePrompt: negativePrompt,
-                            config: generationConfig,
+                            prompt: job.prompt,
+                            negativePrompt: jobConfig.negativePrompt,
+                            config: jobConfig,
                             inferenceTimeMs: nil
                         ) {
                             generatedImages.insert(saved, at: 0)
-                            if selectedImage == nil {
-                                selectedImage = saved
-                            }
+                            if selectedImage == nil { selectedImage = saved }
                             totalSaved += 1
                         }
-                    }
-
-                    // If DT returned enough images to satisfy the full request in one
-                    // call (e.g. its local batch count ≥ totalImages), stop early.
-                    if totalSaved >= totalImages {
-                        break
                     }
                 }
 
@@ -264,6 +281,7 @@ final class ImageGenerationViewModel: ObservableObject {
         selectedImage = generatedImages.first
         inputImage = nil
         inputImageName = nil
+        syncSweepTexts()
     }
 
     /// Persists the current live state into `steps[selectedStepIndex]` without switching.
@@ -309,6 +327,7 @@ final class ImageGenerationViewModel: ObservableObject {
         selectedImage = generatedImages.first
         inputImage = nil
         inputImageName = nil
+        syncSweepTexts()
     }
 
     func moveSteps(from: IndexSet, to: Int) {
@@ -569,6 +588,26 @@ final class ImageGenerationViewModel: ObservableObject {
         }
         config.resolutionDependentShift = modelConfig.resolutionDependentShift
         config.cfgZeroStar = modelConfig.cfgZeroStar
+        syncSweepTexts()
+    }
+
+    // MARK: - Sweep Text Sync
+
+    /// Resets the sweep text fields to match the current single config values.
+    /// Called after preset loads and pipeline step switches to clear any active sweep.
+    func syncSweepTexts() {
+        stepsText = "\(config.steps)"
+        guidanceText = formatSweepDouble(config.guidanceScale)
+        shiftText = formatSweepDouble(config.shift)
+    }
+
+    private func formatSweepDouble(_ v: Double) -> String {
+        var s = String(format: "%.2f", v)
+        if s.contains(".") {
+            while s.hasSuffix("0") { s = String(s.dropLast()) }
+            if s.hasSuffix(".") { s = String(s.dropLast()) }
+        }
+        return s
     }
 
     // MARK: - Private

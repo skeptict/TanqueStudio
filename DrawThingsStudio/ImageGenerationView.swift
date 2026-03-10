@@ -635,6 +635,8 @@ struct ImageGenerationView: View {
                 )
                 .accessibilityIdentifier("generate_promptField")
 
+            wildcardBar
+
             if let error = enhanceError {
                 Text(error)
                     .font(.caption)
@@ -986,8 +988,12 @@ struct ImageGenerationView: View {
 
             // Steps & Guidance
             HStack(spacing: 12) {
-                neuConfigField("Steps", value: $viewModel.config.steps)
-                neuConfigFieldDouble("Guidance", value: $viewModel.config.guidanceScale)
+                sweepableIntField("Steps", text: $viewModel.stepsText) {
+                    viewModel.config.steps = $0
+                }
+                sweepableDoubleField("Guidance", text: $viewModel.guidanceText) {
+                    viewModel.config.guidanceScale = $0
+                }
                 Spacer()
             }
 
@@ -1005,7 +1011,9 @@ struct ImageGenerationView: View {
                         .textFieldStyle(NeumorphicTextFieldStyle())
                         .frame(width: 90)
                 }
-                neuConfigFieldDouble("Shift", value: $viewModel.config.shift)
+                sweepableDoubleField("Shift", text: $viewModel.shiftText) {
+                    viewModel.config.shift = $0
+                }
                 Spacer()
             }
 
@@ -1104,11 +1112,13 @@ struct ImageGenerationView: View {
                 .accessibilityLabel("Cancel generation")
             } else {
                 Button(action: { viewModel.generateOrRunPipeline() }) {
+                    let jobCount = viewModel.sweepJobCount
                     HStack {
                         Image(systemName: viewModel.steps.count > 1 ? "play.fill" :
                               (viewModel.inputImage != nil ? "photo.on.rectangle.angled" : "wand.and.stars"))
                             .symbolEffect(.bounce, value: viewModel.isGenerating)
                         Text(viewModel.steps.count > 1 ? "Run Pipeline" :
+                             jobCount > 1 ? "Generate \(jobCount) Jobs" :
                              (viewModel.inputImage != nil ? "Generate (img2img)" : "Generate"))
                     }
                     .frame(maxWidth: .infinity)
@@ -1355,6 +1365,117 @@ struct ImageGenerationView: View {
             TextField("", value: value, format: .number.precision(.fractionLength(1)))
                 .textFieldStyle(NeumorphicTextFieldStyle())
                 .frame(width: 70)
+        }
+    }
+
+    // MARK: - Sweepable Fields
+
+    /// A text field that accepts a single value or a range/list sweep expression.
+    /// Shows a "×N" badge when multiple values are detected.
+    @ViewBuilder
+    private func sweepableIntField(
+        _ label: String,
+        text: Binding<String>,
+        onSingleValue: @escaping (Int) -> Void
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(label).font(.caption).foregroundColor(.neuTextSecondary)
+            TextField("", text: text)
+                .textFieldStyle(NeumorphicTextFieldStyle())
+                .frame(width: 70)
+                .onChange(of: text.wrappedValue) { _, new in
+                    if let vals = SweepParser.parseInts(new), vals.count == 1 {
+                        onSingleValue(vals[0])
+                    }
+                }
+            if let count = SweepParser.sweepCount(ints: text.wrappedValue) {
+                Text("×\(count)")
+                    .font(.system(.caption2, design: .monospaced))
+                    .foregroundColor(.neuAccent)
+                    .padding(.horizontal, 5).padding(.vertical, 1)
+                    .background(Color.neuAccent.opacity(0.15))
+                    .clipShape(Capsule())
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func sweepableDoubleField(
+        _ label: String,
+        text: Binding<String>,
+        onSingleValue: @escaping (Double) -> Void
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(label).font(.caption).foregroundColor(.neuTextSecondary)
+            TextField("", text: text)
+                .textFieldStyle(NeumorphicTextFieldStyle())
+                .frame(width: 70)
+                .onChange(of: text.wrappedValue) { _, new in
+                    if let vals = SweepParser.parseDoubles(new), vals.count == 1 {
+                        onSingleValue(vals[0])
+                    }
+                }
+            if let count = SweepParser.sweepCount(doubles: text.wrappedValue) {
+                Text("×\(count)")
+                    .font(.system(.caption2, design: .monospaced))
+                    .foregroundColor(.neuAccent)
+                    .padding(.horizontal, 5).padding(.vertical, 1)
+                    .background(Color.neuAccent.opacity(0.15))
+                    .clipShape(Capsule())
+            }
+        }
+    }
+
+    // MARK: - Wildcard Bar
+
+    @ViewBuilder
+    private var wildcardBar: some View {
+        let groups = WildcardExpander.groups(in: viewModel.prompt)
+        if !groups.isEmpty {
+            HStack(spacing: 8) {
+                Image(systemName: "shuffle")
+                    .font(.caption)
+                    .foregroundColor(.neuAccent)
+
+                Button { viewModel.wildcardMode = .random } label: {
+                    HStack(spacing: 3) {
+                        Image(systemName: viewModel.wildcardMode == .random
+                              ? "largecircle.fill.circle" : "circle")
+                            .font(.caption2)
+                        Text("Random")
+                            .font(.caption)
+                    }
+                }
+                .buttonStyle(.plain)
+                .foregroundColor(viewModel.wildcardMode == .random ? .neuAccent : .neuTextSecondary)
+
+                if viewModel.wildcardMode == .random {
+                    Stepper(value: $viewModel.wildcardRandomCount, in: 1...99) {
+                        Text("×\(viewModel.wildcardRandomCount)")
+                            .font(.system(.caption, design: .monospaced))
+                            .foregroundColor(.neuTextSecondary)
+                    }
+                    .controlSize(.mini)
+                }
+
+                Spacer()
+
+                Button { viewModel.wildcardMode = .combinatoric } label: {
+                    HStack(spacing: 3) {
+                        Image(systemName: viewModel.wildcardMode == .combinatoric
+                              ? "largecircle.fill.circle" : "circle")
+                            .font(.caption2)
+                        Text("All \(WildcardExpander.combinatorialCount(in: viewModel.prompt)) combos")
+                            .font(.caption)
+                    }
+                }
+                .buttonStyle(.plain)
+                .foregroundColor(viewModel.wildcardMode == .combinatoric ? .neuAccent : .neuTextSecondary)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 7)
+            .background(Color.neuAccent.opacity(0.07))
+            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
         }
     }
 
