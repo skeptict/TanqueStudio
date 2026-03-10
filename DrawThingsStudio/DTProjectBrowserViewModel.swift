@@ -435,30 +435,34 @@ final class DTProjectBrowserViewModel: ObservableObject {
         let baseName = rawName.isEmpty ? "generation_\(entry.id)" : rawName
         let projectURL = selectedProject?.url
         let previewId = entry.previewId
+        let tensorId  = entry.tensorId
         let fallback = entry.thumbnail
 
         let panel = NSSavePanel()
         panel.title = "Save Image"
-        panel.nameFieldStringValue = "\(baseName).jpg"
-        panel.allowedContentTypes = [.jpeg, .png]
+        // Default to .png (full-res tensor decode), user can change to .jpg
+        panel.nameFieldStringValue = "\(baseName).png"
+        panel.allowedContentTypes = [.png, .jpeg]
         panel.canCreateDirectories = true
         panel.begin { response in
             guard response == .OK, let url = panel.url else { return }
             Task.detached(priority: .userInitiated) {
-                // Prefer full-res from thumbnailhistorynode; fall back to cached half-res
+                // Priority: full-res tensor → full JPEG thumbnail → cached half-res
                 let image: NSImage?
                 if let projectURL, let db = DTProjectDatabase(fileURL: projectURL) {
-                    image = db.fetchFullSizeThumbnail(previewId: previewId) ?? fallback
+                    image = db.fetchFullResImage(tensorId: tensorId)
+                         ?? db.fetchFullSizeThumbnail(previewId: previewId)
+                         ?? fallback
                 } else {
                     image = fallback
                 }
                 guard let img = image,
                       let tiffData = img.tiffRepresentation,
                       let bitmapRep = NSBitmapImageRep(data: tiffData) else { return }
-                if url.pathExtension.lowercased() == "png",
-                   let data = bitmapRep.representation(using: .png, properties: [:]) {
+                if url.pathExtension.lowercased() == "jpg" || url.pathExtension.lowercased() == "jpeg",
+                   let data = bitmapRep.representation(using: .jpeg, properties: [.compressionFactor: NSNumber(value: 0.95)]) {
                     try? data.write(to: url)
-                } else if let data = bitmapRep.representation(using: .jpeg, properties: [.compressionFactor: NSNumber(value: 0.95)]) {
+                } else if let data = bitmapRep.representation(using: .png, properties: [:]) {
                     try? data.write(to: url)
                 }
             }
@@ -481,15 +485,26 @@ final class DTProjectBrowserViewModel: ObservableObject {
             guard response == .OK, let folder = panel.url else { return }
             Task.detached(priority: .userInitiated) {
                 // Open DB once for the whole batch
+                // Priority per entry: full-res tensor → full JPEG thumbnail → cached half-res
                 let db: DTProjectDatabase? = projectURL.flatMap { DTProjectDatabase(fileURL: $0) }
                 for entry in toExport {
-                    let image = db?.fetchFullSizeThumbnail(previewId: entry.previewId) ?? entry.thumbnail
+                    let fullRes = db?.fetchFullResImage(tensorId: entry.tensorId)
+                    let image   = fullRes
+                              ?? db?.fetchFullSizeThumbnail(previewId: entry.previewId)
+                              ?? entry.thumbnail
                     guard let img = image,
                           let tiffData = img.tiffRepresentation,
-                          let bitmapRep = NSBitmapImageRep(data: tiffData),
-                          let data = bitmapRep.representation(using: .jpeg, properties: [.compressionFactor: NSNumber(value: 0.95)]) else { continue }
-                    let name = "generation_\(entry.id).jpg"
-                    try? data.write(to: folder.appendingPathComponent(name))
+                          let bitmapRep = NSBitmapImageRep(data: tiffData) else { continue }
+                    let name: String
+                    let data: Data?
+                    if fullRes != nil, let pngData = bitmapRep.representation(using: .png, properties: [:]) {
+                        name = "generation_\(entry.id).png"
+                        data = pngData
+                    } else {
+                        name = "generation_\(entry.id).jpg"
+                        data = bitmapRep.representation(using: .jpeg, properties: [.compressionFactor: NSNumber(value: 0.95)])
+                    }
+                    if let data { try? data.write(to: folder.appendingPathComponent(name)) }
                 }
                 await MainActor.run {
                     NSWorkspace.shared.activateFileViewerSelecting([folder])

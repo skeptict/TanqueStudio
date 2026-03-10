@@ -38,6 +38,7 @@ struct DTGenerationEntry: Identifiable, Hashable {
     let lineage: Int64      // __pk0
     let logicalTime: Int64  // __pk1
     let previewId: Int64
+    let tensorId: Int64     // key into `tensors` table ("tensor_history_<tensorId>")
     let prompt: String
     let negativePrompt: String
     let model: String
@@ -183,6 +184,7 @@ private struct FBReader {
     static let VT_GUIDANCE_SCALE: Int = 16   // field 6, float
     static let VT_STRENGTH: Int = 18         // field 7, float
     static let VT_MODEL: Int = 20            // field 8, string
+    static let VT_TENSOR_ID: Int = 22        // field 9, long (key into `tensors` table)
     static let VT_WALL_CLOCK: Int = 26       // field 11, long
     static let VT_SAMPLER: Int = 34          // field 15, byte (SamplerType)
     static let VT_SEED_MODE: Int = 54        // field 25, byte (SeedMode)
@@ -434,6 +436,37 @@ final class DTProjectDatabase: @unchecked Sendable {
             ?? queryThumbnailByPk0(table: .half, pk0: previewId)
     }
 
+    /// Decode the full-resolution Float16 tensor from the NNC `tensors` table.
+    /// Returns nil if the `tensors` table is absent or the tensor cannot be decoded.
+    func fetchFullResImage(tensorId: Int64) -> NSImage? {
+        guard tensorId > 0, let db = db else { return nil }
+        let key = "tensor_history_\(tensorId)"
+        var stmt: OpaquePointer?
+        defer { sqlite3_finalize(stmt) }
+
+        let sql = "SELECT data, type, format, datatype, dim FROM tensors WHERE name = ? LIMIT 1"
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return nil }
+        let transient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
+        sqlite3_bind_text(stmt, 1, key, -1, transient)
+        guard sqlite3_step(stmt) == SQLITE_ROW else { return nil }
+
+        guard let dataPtr = sqlite3_column_blob(stmt, 0) else { return nil }
+        let dataLen = Int(sqlite3_column_bytes(stmt, 0))
+        guard dataLen > 0 else { return nil }
+        let blobData = Data(bytes: dataPtr, count: dataLen)
+
+        let typeCol   = sqlite3_column_int64(stmt, 1)
+        // format column (index 2) reserved for future NCHW detection
+        let datatype  = sqlite3_column_int64(stmt, 3)
+
+        guard let dimPtr = sqlite3_column_blob(stmt, 4) else { return nil }
+        let dimLen = Int(sqlite3_column_bytes(stmt, 4))
+        guard dimLen > 0 else { return nil }
+        let dimData = Data(bytes: dimPtr, count: dimLen)
+
+        return DTTensorDecoder.decodeBlob(blobData, typeCol: typeCol, datatype: datatype, dim: dimData)
+    }
+
     // MARK: - Private Helpers
 
     private func parseEntry(rowid: Int64, lineage: Int64, logicalTime: Int64, blob: Data) -> DTGenerationEntry? {
@@ -454,6 +487,7 @@ final class DTProjectDatabase: @unchecked Sendable {
         let samplerByte = foff(FBReader.VT_SAMPLER).map { fb.readUInt8(at: tablePos + $0) } ?? 0
         let seedModeByte = foff(FBReader.VT_SEED_MODE).map { fb.readUInt8(at: tablePos + $0) } ?? 0
         let previewId = foff(FBReader.VT_PREVIEW_ID).map { fb.readInt64(at: tablePos + $0) } ?? 0
+        let tensorId  = foff(FBReader.VT_TENSOR_ID).map  { fb.readInt64(at: tablePos + $0) } ?? 0
         let shift = foff(FBReader.VT_SHIFT).map { fb.readFloat(at: tablePos + $0) } ?? 1.0
 
         let model = foff(FBReader.VT_MODEL).flatMap { fb.readString(tablePos: tablePos, fieldRelOffset: $0) } ?? ""
@@ -470,6 +504,7 @@ final class DTProjectDatabase: @unchecked Sendable {
             lineage: lineage,
             logicalTime: logicalTime,
             previewId: previewId,
+            tensorId: tensorId,
             prompt: textPrompt,
             negativePrompt: negPrompt,
             model: model,
