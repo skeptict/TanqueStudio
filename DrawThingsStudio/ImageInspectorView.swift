@@ -199,10 +199,28 @@ struct ImageInspectorView: View {
             }
         }
         .neuCard(cornerRadius: 20)
+        .sheet(isPresented: $showDescribeSheet) {
+            if let entry = viewModel.selectedImage {
+                ImageDescriptionView(
+                    image: entry.image,
+                    onSendToGeneratePrompt: { text, sourceImage in
+                        imageGenViewModel.prompt = text
+                        if let img = sourceImage {
+                            imageGenViewModel.loadInputImage(from: img, name: entry.sourceName)
+                        }
+                        selectedSidebarItem = .generateImage
+                    },
+                    onSendToWorkflowPrompt: { text in
+                        workflowViewModel.addInstruction(.prompt(text))
+                        selectedSidebarItem = .workflow
+                    }
+                )
+            }
+        }
     }
 
     private var noMetadataView: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: 12) {
             Text("No generation metadata found.")
                 .font(.callout)
                 .foregroundColor(.neuTextSecondary)
@@ -211,6 +229,17 @@ struct ImageInspectorView: View {
                 .foregroundColor(.neuTextSecondary.opacity(0.7))
                 .padding(12)
                 .neuInset(cornerRadius: 10)
+
+            Button(action: { showDescribeSheet = true }) {
+                HStack {
+                    Image(systemName: "eye")
+                    Text("Describe with AI...")
+                }
+                .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(NeumorphicButtonStyle(isProminent: true))
+            .controlSize(.large)
+            .accessibilityIdentifier("inspector_describeButtonNoMeta")
         }
     }
 
@@ -329,24 +358,6 @@ struct ImageInspectorView: View {
             .controlSize(.large)
             .disabled(viewModel.selectedImage == nil)
             .accessibilityIdentifier("inspector_describeButton")
-            .sheet(isPresented: $showDescribeSheet) {
-                if let entry = viewModel.selectedImage {
-                    ImageDescriptionView(
-                        image: entry.image,
-                        onSendToGeneratePrompt: { text, sourceImage in
-                            imageGenViewModel.prompt = text
-                            if let img = sourceImage {
-                                imageGenViewModel.loadInputImage(from: img, name: entry.sourceName)
-                            }
-                            selectedSidebarItem = .generateImage
-                        },
-                        onSendToWorkflowPrompt: { text in
-                            workflowViewModel.addInstruction(.prompt(text))
-                            selectedSidebarItem = .workflow
-                        }
-                    )
-                }
-            }
 
             Button(action: sendToGenerate) {
                 HStack {
