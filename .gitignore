@@ -12,3 +12,11 @@ output/
 tmp/
 .claude/commands/
 .claude/agents/
+.claude/*.old.json
+
+# Compiled test binaries in repo root
+main
+test_grid
+
+# Experimental test directories
+Tests/
