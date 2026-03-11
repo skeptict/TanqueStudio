@@ -39,6 +39,7 @@ struct DTGenerationEntry: Identifiable, Hashable {
     let logicalTime: Int64  // __pk1
     let previewId: Int64
     let tensorId: Int64     // key into `tensors` table ("tensor_history_<tensorId>")
+    let scaleFactor: Float  // scale_factor_by_120 / 120.0 (default 1.0 = no upscale)
     let prompt: String
     let negativePrompt: String
     let model: String
@@ -189,8 +190,9 @@ private struct FBReader {
     static let VT_SAMPLER: Int = 34          // field 15, byte (SamplerType)
     static let VT_SEED_MODE: Int = 54        // field 25, byte (SeedMode)
     static let VT_LORAS: Int = 64            // field 30, [LoRA]
-    static let VT_PREVIEW_ID: Int = 86       // field 41, long
-    static let VT_SHIFT: Int = 136           // field 66, float
+    static let VT_PREVIEW_ID: Int = 86           // field 41, long
+    static let VT_SCALE_FACTOR_BY_120: Int = 92  // field 44, int (default 120 = 1.0×)
+    static let VT_SHIFT: Int = 136               // field 66, float
     static let VT_TEXT_PROMPT: Int = 200      // field 98, string
     static let VT_NEG_TEXT_PROMPT: Int = 202  // field 99, string
 
@@ -488,6 +490,7 @@ final class DTProjectDatabase: @unchecked Sendable {
         let seedModeByte = foff(FBReader.VT_SEED_MODE).map { fb.readUInt8(at: tablePos + $0) } ?? 0
         let previewId = foff(FBReader.VT_PREVIEW_ID).map { fb.readInt64(at: tablePos + $0) } ?? 0
         let tensorId  = foff(FBReader.VT_TENSOR_ID).map  { fb.readInt64(at: tablePos + $0) } ?? 0
+        let scaleFactorBy120 = foff(FBReader.VT_SCALE_FACTOR_BY_120).map { Int(fb.readInt32(at: tablePos + $0)) } ?? 120
         let shift = foff(FBReader.VT_SHIFT).map { fb.readFloat(at: tablePos + $0) } ?? 1.0
 
         let model = foff(FBReader.VT_MODEL).flatMap { fb.readString(tablePos: tablePos, fieldRelOffset: $0) } ?? ""
@@ -505,6 +508,7 @@ final class DTProjectDatabase: @unchecked Sendable {
             logicalTime: logicalTime,
             previewId: previewId,
             tensorId: tensorId,
+            scaleFactor: Float(scaleFactorBy120) / 120.0,
             prompt: textPrompt,
             negativePrompt: negPrompt,
             model: model,

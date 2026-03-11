@@ -10,6 +10,25 @@ import AppKit
 import Combine
 import UniformTypeIdentifiers
 
+// MARK: - Bitmap Scaling Helper
+
+/// Scale a bitmap rep by factor using high-quality CGContext resampling.
+/// Returns the original rep unchanged when factor is effectively 1.0.
+private func scaledBitmapRep(_ rep: NSBitmapImageRep, by factor: Float) -> NSBitmapImageRep {
+    guard abs(factor - 1.0) > 0.001, factor > 0,
+          let cgImage = rep.cgImage else { return rep }
+    let newW = max(1, Int((Double(rep.pixelsWide) * Double(factor)).rounded()))
+    let newH = max(1, Int((Double(rep.pixelsHigh) * Double(factor)).rounded()))
+    let cs = cgImage.colorSpace ?? CGColorSpaceCreateDeviceRGB()
+    guard let ctx = CGContext(data: nil, width: newW, height: newH,
+                              bitsPerComponent: 8, bytesPerRow: 0, space: cs,
+                              bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return rep }
+    ctx.interpolationQuality = .high
+    ctx.draw(cgImage, in: CGRect(x: 0, y: 0, width: newW, height: newH))
+    guard let scaled = ctx.makeImage() else { return rep }
+    return NSBitmapImageRep(cgImage: scaled)
+}
+
 // MARK: - Project Info
 
 struct DTProjectInfo: Identifiable, Hashable {
@@ -429,6 +448,7 @@ final class DTProjectBrowserViewModel: ObservableObject {
 
     // MARK: - Image Export
 
+    // MARK: - Image Export
     func exportImage(_ entry: DTGenerationEntry) {
         guard entry.thumbnail != nil || entry.previewId > 0 else { return }
         let rawName = String(entry.prompt.prefix(40)).trimmingCharacters(in: .whitespaces)
@@ -436,6 +456,7 @@ final class DTProjectBrowserViewModel: ObservableObject {
         let projectURL = selectedProject?.url
         let previewId = entry.previewId
         let tensorId  = entry.tensorId
+        let scaleFactor = entry.scaleFactor
         let fallback = entry.thumbnail
 
         let panel = NSSavePanel()
@@ -458,9 +479,11 @@ final class DTProjectBrowserViewModel: ObservableObject {
                 }
                 guard let img = image else { return }
                 // Prefer the bitmap rep directly (avoids tiffRepresentation re-rendering)
-                let bitmapRep = img.representations.first as? NSBitmapImageRep
-                              ?? NSBitmapImageRep(data: img.tiffRepresentation ?? Data())
-                guard let rep = bitmapRep else { return }
+                let rawRep = img.representations.first as? NSBitmapImageRep
+                           ?? NSBitmapImageRep(data: img.tiffRepresentation ?? Data())
+                guard let rawRep else { return }
+                // Apply scale_factor_by_120 if DT upscaled the canvas after generation
+                let rep = scaledBitmapRep(rawRep, by: scaleFactor)
                 if url.pathExtension.lowercased() == "jpg" || url.pathExtension.lowercased() == "jpeg",
                    let data = rep.representation(using: .jpeg, properties: [.compressionFactor: NSNumber(value: 0.95)]) {
                     try? data.write(to: url)
@@ -495,17 +518,18 @@ final class DTProjectBrowserViewModel: ObservableObject {
                               ?? db?.fetchFullSizeThumbnail(previewId: entry.previewId)
                               ?? entry.thumbnail
                     guard let img = image else { continue }
-                    let bitmapRep = img.representations.first as? NSBitmapImageRep
-                                 ?? NSBitmapImageRep(data: img.tiffRepresentation ?? Data())
-                    guard let bitmapRep else { continue }
+                    let rawRep = img.representations.first as? NSBitmapImageRep
+                              ?? NSBitmapImageRep(data: img.tiffRepresentation ?? Data())
+                    guard let rawRep else { continue }
+                    let rep = scaledBitmapRep(rawRep, by: entry.scaleFactor)
                     let name: String
                     let data: Data?
-                    if fullRes != nil, let pngData = bitmapRep.representation(using: .png, properties: [:]) {
+                    if fullRes != nil, let pngData = rep.representation(using: .png, properties: [:]) {
                         name = "generation_\(entry.id).png"
                         data = pngData
                     } else {
                         name = "generation_\(entry.id).jpg"
-                        data = bitmapRep.representation(using: .jpeg, properties: [.compressionFactor: NSNumber(value: 0.95)])
+                        data = rep.representation(using: .jpeg, properties: [.compressionFactor: NSNumber(value: 0.95)])
                     }
                     if let data { try? data.write(to: folder.appendingPathComponent(name)) }
                 }
