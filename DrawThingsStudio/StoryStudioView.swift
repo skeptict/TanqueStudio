@@ -632,6 +632,14 @@ struct StoryStudioView: View {
                     .disabled(viewModel.selectedScene == nil)
                     .accessibilityIdentifier("storyStudio_generate")
 
+                    Button {
+                        ImageStorageManager.shared.openStoryStudioDirectory()
+                    } label: {
+                        Image(systemName: "folder")
+                    }
+                    .buttonStyle(NeumorphicIconButtonStyle())
+                    .help("Open Story Studio images folder")
+
                     if viewModel.selectedScene?.generatedImageData != nil {
                         if viewModel.selectedScene?.isApproved == true {
                             Button(action: { viewModel.unapproveScene() }) {

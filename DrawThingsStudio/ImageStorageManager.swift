@@ -282,6 +282,11 @@ final class ImageStorageManager: ObservableObject {
         NSWorkspace.shared.open(storageDirectory)
     }
 
+    func openStoryStudioDirectory() {
+        try? FileManager.default.createDirectory(at: storyStudioDirectory, withIntermediateDirectories: true)
+        NSWorkspace.shared.open(storyStudioDirectory)
+    }
+
     // MARK: - Private
 
     // MARK: - PNG Metadata Embedding
