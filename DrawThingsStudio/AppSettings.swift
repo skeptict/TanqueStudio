@@ -138,6 +138,12 @@ final class AppSettings: ObservableObject {
         didSet { store.set(describeImageSendTarget, forKey: "ui.describeImageSendTarget") }
     }
 
+    // MARK: - LLM Generation Settings
+
+    @Published var llmMaxTokens: Int {
+        didSet { store.set(llmMaxTokens, forKey: "llm.maxTokens") }
+    }
+
     // MARK: - Init
 
     init(
@@ -195,6 +201,8 @@ final class AppSettings: ObservableObject {
         self.persistInspectorHistory = store.object(forKey: "ui.persistInspectorHistory") as? Bool ?? true
         self.defaultSidebarItem = store.string(forKey: "ui.defaultSidebarItem") ?? "imageInspector"
         self.describeImageSendTarget = store.string(forKey: "ui.describeImageSendTarget") ?? "generateImage"
+
+        self.llmMaxTokens = store.integer(forKey: "llm.maxTokens") != 0 ? store.integer(forKey: "llm.maxTokens") : 2048
     }
 
     // MARK: - Computed Properties
@@ -368,6 +376,16 @@ struct SettingsView: View {
                     .pickerStyle(.radioGroup)
                     .onChange(of: settings.selectedProvider) { _, _ in
                         connectionResult = nil
+                    }
+
+                    neuSettingsRow("Max Tokens") {
+                        HStack(spacing: 8) {
+                            TextField("", value: $settings.llmMaxTokens, format: .number)
+                                .textFieldStyle(NeumorphicTextFieldStyle())
+                                .frame(width: 80)
+                            Stepper("", value: $settings.llmMaxTokens, in: 128...32768, step: 256)
+                                .labelsHidden()
+                        }
                     }
 
                     HStack {

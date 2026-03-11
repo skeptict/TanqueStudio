@@ -410,7 +410,7 @@ enum LLMError: LocalizedError {
         case .modelNotFound(let model):
             return "Model '\(model)' not found"
         case .timeout:
-            return "Request timed out"
+            return "Request timed out. If using prompt enhancement, try increasing Max Tokens in Settings → LLM Provider."
         case .cancelled:
             return "Request was cancelled"
         }

@@ -199,10 +199,13 @@ class WorkflowPromptGenerator: ObservableObject {
         IMPORTANT: Output ONLY the prompt text itself. Do not include any introduction, explanation, or phrases like "Here is" or "The prompt is". Start directly with the image description.
         """
 
+        var enhanceOptions = LLMGenerationOptions.creative
+        enhanceOptions.maxTokens = AppSettings.shared.llmMaxTokens
+
         let response = try await llmClient.generateText(
             prompt: prompt,
             model: llmClient.defaultModel,
-            options: LLMGenerationOptions.creative
+            options: enhanceOptions
         )
 
         logger.info("Raw LLM response (\(response.count) chars): '\(response.prefix(200))...'")
