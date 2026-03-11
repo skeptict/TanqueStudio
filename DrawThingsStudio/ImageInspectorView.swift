@@ -433,6 +433,7 @@ struct ImageInspectorView: View {
             imageGenViewModel.loadInputImage(from: entry.image, name: entry.sourceName)
         }
 
+        imageGenViewModel.syncSweepTexts()
         selectedSidebarItem = .generateImage
     }
 

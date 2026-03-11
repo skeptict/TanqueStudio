@@ -478,6 +478,7 @@ struct ImageBrowserView: View {
             imageGenViewModel.loadInputImage(from: thumb, name: image.filename)
         }
 
+        imageGenViewModel.syncSweepTexts()
         selectedSidebarItem = .generateImage
     }
 

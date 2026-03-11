@@ -1180,6 +1180,7 @@ private struct DTClipDetailPanel: View {
                 DrawThingsGenerationConfig.LoRAConfig(file: $0.file, weight: Double($0.weight))
             }
         }
+        imageGenViewModel.syncSweepTexts()
         selectedSidebarItem = .generateImage
     }
 
@@ -1486,7 +1487,7 @@ private struct DTDetailPanel: View {
                 DrawThingsGenerationConfig.LoRAConfig(file: $0.file, weight: Double($0.weight))
             }
         }
-
+        imageGenViewModel.syncSweepTexts()
         selectedSidebarItem = .generateImage
     }
 
