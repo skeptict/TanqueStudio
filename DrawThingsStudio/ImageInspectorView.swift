@@ -17,6 +17,7 @@ struct ImageInspectorView: View {
 
     @State private var sendImageToGenerate = false
     @State private var showDescribeSheet = false
+    @State private var lightboxImage: NSImage?
 
     var body: some View {
         HSplitView {
@@ -30,6 +31,7 @@ struct ImageInspectorView: View {
         }
         .padding(20)
         .neuBackground()
+        .lightbox(image: $lightboxImage)
     }
 
     // MARK: - History Panel
@@ -133,6 +135,7 @@ struct ImageInspectorView: View {
                             .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                             .shadow(color: Color.neuShadowDark.opacity(colorScheme == .dark ? 0.36 : 0.2), radius: 8, x: 4, y: 4)
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            .onTapGesture { lightboxImage = selected.image }
                     }
                     .padding(16)
                     .frame(minWidth: 250)

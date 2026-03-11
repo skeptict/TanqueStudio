@@ -27,6 +27,7 @@ struct ImageGenerationView: View {
     @State private var showSavePipeline = false
     @State private var showDescribeSheet = false
     @State private var imageToDescribe: NSImage?
+    @State private var lightboxImage: NSImage?
 
     var body: some View {
         HStack(spacing: 0) {
@@ -52,6 +53,7 @@ struct ImageGenerationView: View {
         .padding(.leading, 20)
         .padding(.trailing, 20)
         .neuBackground()
+        .lightbox(image: $lightboxImage)
         // Two .fileImporter modifiers cannot share the same view — SwiftUI only
         // honours the last one.  Attach each to its own Color.clear inside a
         // background Group so they live on distinct view nodes.
@@ -1234,18 +1236,20 @@ struct ImageGenerationView: View {
     }
 
     private func thumbnailView(_ generatedImage: GeneratedImage) -> some View {
-        ThumbnailItemView(viewModel: viewModel, generatedImage: generatedImage)
+        ThumbnailItemView(viewModel: viewModel, generatedImage: generatedImage,
+                          onDoubleTap: { lightboxImage = generatedImage.image })
     }
 
     private func imageDetailView(_ generatedImage: GeneratedImage) -> some View {
         VStack(spacing: 12) {
-            // Large image preview
+            // Large image preview — tap to open lightbox
             Image(nsImage: generatedImage.image)
                 .resizable()
                 .aspectRatio(contentMode: .fit)
                 .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                 .shadow(color: Color.neuShadowDark.opacity(colorScheme == .dark ? 0.36 : 0.2), radius: 8, x: 4, y: 4)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .onTapGesture { lightboxImage = generatedImage.image }
 
             // Image info card
             ScrollView(showsIndicators: false) {
@@ -1631,6 +1635,7 @@ struct SavePipelineSheet: View {
 private struct ThumbnailItemView: View {
     @ObservedObject var viewModel: ImageGenerationViewModel
     let generatedImage: GeneratedImage
+    var onDoubleTap: (() -> Void)? = nil
 
     @State private var isHovered = false
     @Environment(\.colorScheme) private var colorScheme
@@ -1659,9 +1664,8 @@ private struct ThumbnailItemView: View {
             .scaleEffect(isHovered ? 1.03 : 1.0)
             .animation(.spring(response: 0.2, dampingFraction: 0.7), value: isHovered)
             .onHover { isHovered = $0 }
-            .onTapGesture {
-                viewModel.selectedImage = generatedImage
-            }
+            .onTapGesture(count: 2) { onDoubleTap?() }
+            .onTapGesture { viewModel.selectedImage = generatedImage }
             .contextMenu {
                 Button("Copy Image") { viewModel.copyToClipboard(generatedImage) }
                 Button("Reveal in Finder") { viewModel.revealInFinder(generatedImage) }

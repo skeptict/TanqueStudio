@@ -19,6 +19,7 @@ struct DTProjectBrowserView: View {
     @State private var selectedEntryIDs: Set<Int64> = []
     @State private var selectedClipIDs: Set<Int64> = []
     @State private var showBulkDeleteConfirmation = false
+    @State private var lightboxImage: NSImage?
 
     var body: some View {
         Group {
@@ -73,6 +74,7 @@ struct DTProjectBrowserView: View {
             selectedEntryIDs.removeAll()
             selectedClipIDs.removeAll()
         }
+        .lightbox(image: $lightboxImage)
     }
 
     private var bulkDeleteTitle: String {
@@ -373,6 +375,9 @@ struct DTProjectBrowserView: View {
                                     isSelected: viewModel.selectedClip?.id == clip.id,
                                     isInSelection: selectedClipIDs.contains(clip.id)
                                 )
+                                .onTapGesture(count: 2) {
+                                    if let img = clip.frames[0].thumbnail { lightboxImage = img }
+                                }
                                 .onTapGesture {
                                     let cmdHeld = NSApplication.shared.currentEvent?.modifierFlags.contains(.command) ?? false
                                     if cmdHeld {
@@ -432,6 +437,9 @@ struct DTProjectBrowserView: View {
                                     isSelected: viewModel.selectedEntry?.id == entry.id,
                                     isInSelection: selectedEntryIDs.contains(entry.id)
                                 )
+                                .onTapGesture(count: 2) {
+                                    if let img = entry.thumbnail { lightboxImage = img }
+                                }
                                 .onTapGesture {
                                     let cmdHeld = NSApplication.shared.currentEvent?.modifierFlags.contains(.command) ?? false
                                     if cmdHeld {
@@ -613,6 +621,7 @@ struct DTProjectBrowserView: View {
                     viewModel: viewModel,
                     imageGenViewModel: imageGenViewModel,
                     selectedSidebarItem: $selectedSidebarItem,
+                    lightboxImage: $lightboxImage,
                     onDelete: {
                         clipToDelete = clip
                         showClipDeleteConfirmation = true
@@ -623,6 +632,7 @@ struct DTProjectBrowserView: View {
                     entry: entry,
                     imageGenViewModel: imageGenViewModel,
                     selectedSidebarItem: $selectedSidebarItem,
+                    lightboxImage: $lightboxImage,
                     onDelete: {
                         entryToDelete = entry
                         showDeleteConfirmation = true
@@ -904,6 +914,7 @@ private struct DTClipDetailPanel: View {
     @ObservedObject var viewModel: DTProjectBrowserViewModel
     @ObservedObject var imageGenViewModel: ImageGenerationViewModel
     @Binding var selectedSidebarItem: SidebarItem?
+    @Binding var lightboxImage: NSImage?
     let onDelete: () -> Void
 
     @State private var previewFrameIndex = 0
@@ -992,6 +1003,7 @@ private struct DTClipDetailPanel: View {
                 .clipShape(RoundedRectangle(cornerRadius: 10))
                 .neuCard(cornerRadius: 10)
                 .animation(.none, value: previewFrameIndex)
+                .onTapGesture { lightboxImage = thumbnail }
         } else {
             RoundedRectangle(cornerRadius: 10)
                 .fill(Color.neuSurface)
@@ -1205,6 +1217,7 @@ private struct DTDetailPanel: View {
     let entry: DTGenerationEntry
     @ObservedObject var imageGenViewModel: ImageGenerationViewModel
     @Binding var selectedSidebarItem: SidebarItem?
+    @Binding var lightboxImage: NSImage?
     let onDelete: () -> Void
     var onExport: (() -> Void)? = nil
     var onShowClip: (() -> Void)? = nil
@@ -1234,7 +1247,7 @@ private struct DTDetailPanel: View {
                     .buttonStyle(NeumorphicButtonStyle())
                 }
 
-                // Thumbnail
+                // Thumbnail — tap to open lightbox
                 if let thumbnail = entry.thumbnail {
                     Image(nsImage: thumbnail)
                         .resizable()
@@ -1242,6 +1255,7 @@ private struct DTDetailPanel: View {
                         .frame(maxWidth: .infinity)
                         .clipShape(RoundedRectangle(cornerRadius: 10))
                         .neuCard(cornerRadius: 10)
+                        .onTapGesture { lightboxImage = thumbnail }
                 }
 
                 // Prompt

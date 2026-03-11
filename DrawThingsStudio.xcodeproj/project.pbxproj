@@ -341,6 +341,7 @@
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
+				HEADER_SEARCH_PATHS = "$(SRCROOT)/DrawThingsStudio/fpzip";
 				INFOPLIST_FILE = DrawThingsStudio/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -355,10 +356,9 @@
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_OBJC_BRIDGING_HEADER = "DrawThingsStudio/DrawThingsStudio-Bridging-Header.h";
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
-				HEADER_SEARCH_PATHS = "$(SRCROOT)/DrawThingsStudio/fpzip";
-				SWIFT_OBJC_BRIDGING_HEADER = "DrawThingsStudio/DrawThingsStudio-Bridging-Header.h";
 			};
 			name = Debug;
 		};
@@ -375,6 +375,7 @@
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
+				HEADER_SEARCH_PATHS = "$(SRCROOT)/DrawThingsStudio/fpzip";
 				INFOPLIST_FILE = DrawThingsStudio/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -389,10 +390,9 @@
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_OBJC_BRIDGING_HEADER = "DrawThingsStudio/DrawThingsStudio-Bridging-Header.h";
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
-				HEADER_SEARCH_PATHS = "$(SRCROOT)/DrawThingsStudio/fpzip";
-				SWIFT_OBJC_BRIDGING_HEADER = "DrawThingsStudio/DrawThingsStudio-Bridging-Header.h";
 			};
 			name = Release;
 		};
