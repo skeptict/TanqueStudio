@@ -150,6 +150,7 @@ struct ContentView: View {
             }
         }
         .focusedSceneValue(\.workflowViewModel, workflowViewModel)
+        .background { BackupCoordinator() }
         .task {
             // Centralised asset loading: fetch Draw Things assets and the cloud model catalog
             // once at the top level so child views (ImageGenerationView, WorkflowPipelineView)
@@ -1611,6 +1612,57 @@ struct SavedPipelinesView: View {
     private func deletePipeline(_ pipeline: SavedPipeline) {
         if selectedPipeline?.id == pipeline.id { selectedPipeline = nil }
         modelContext.delete(pipeline)
+    }
+}
+
+// MARK: - Backup Coordinator
+
+/// Invisible view that auto-backs up SwiftData records to JSON on launch and
+/// whenever the item count changes. Auto-restores after a schema wipe.
+private struct BackupCoordinator: View {
+    @Query private var presets: [ModelConfig]
+    @Query private var workflows: [SavedWorkflow]
+    @Query private var pipelines: [SavedPipeline]
+    @Environment(\.modelContext) private var modelContext
+
+    var body: some View {
+        EmptyView()
+            .task {
+                await runBackupAndRestore()
+            }
+            .onChange(of: presets.count) { _, _ in Task { await runBackup() } }
+            .onChange(of: workflows.count) { _, _ in Task { await runBackup() } }
+            .onChange(of: pipelines.count) { _, _ in Task { await runBackup() } }
+    }
+
+    @MainActor
+    private func runBackupAndRestore() async {
+        // Auto-restore after a schema wipe (flag set by DrawThingsStudioApp)
+        if UserDefaults.standard.bool(forKey: "dts.needsBackupRestore") {
+            let manager = SwiftDataBackupManager.shared
+            if manager.hasBackup {
+                let counts = manager.restore(
+                    into: modelContext,
+                    existingPresets: presets,
+                    existingWorkflows: workflows,
+                    existingPipelines: pipelines
+                )
+                if counts.presets + counts.workflows + counts.pipelines > 0 {
+                    try? modelContext.save()
+                }
+            }
+            UserDefaults.standard.removeObject(forKey: "dts.needsBackupRestore")
+        }
+        await runBackup()
+    }
+
+    @MainActor
+    private func runBackup() async {
+        SwiftDataBackupManager.shared.backup(
+            presets: presets,
+            workflows: workflows,
+            pipelines: pipelines
+        )
     }
 }
 

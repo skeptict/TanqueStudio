@@ -84,6 +84,8 @@ struct DrawThingsStudioApp: App {
                     try? fm.removeItem(at: URL(fileURLWithPath: base.path + suffix))
                 }
             }
+            // Signal BackupCoordinator to restore from JSON backup on next launch
+            UserDefaults.standard.set(true, forKey: "dts.needsBackupRestore")
         }
         if storedVersion < currentSchemaVersion {
             UserDefaults.standard.set(currentSchemaVersion, forKey: schemaVersionKey)

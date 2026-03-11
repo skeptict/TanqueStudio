@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import SwiftData
 import Combine
 
 /// App-wide settings with persistence via UserDefaults
@@ -363,6 +364,12 @@ struct SettingsView: View {
     @State private var showSharedSecret = false
     @State private var showStyleEditor = false
     @State private var showAgentEditor = false
+    @State private var restoreResult: String?
+
+    @Environment(\.modelContext) private var modelContext
+    @Query private var allPresets: [ModelConfig]
+    @Query private var allWorkflows: [SavedWorkflow]
+    @Query private var allPipelines: [SavedPipeline]
 
     var body: some View {
         ScrollView(showsIndicators: false) {
@@ -606,6 +613,48 @@ struct SettingsView: View {
                             .font(.caption2)
                             .foregroundColor(.neuTextSecondary)
                             .textSelection(.enabled)
+                    }
+                }
+
+                // Data & Backup
+                neuSettingsSection("Data & Backup", icon: "externaldrive") {
+                    let manager = SwiftDataBackupManager.shared
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("JSON backups of config presets, workflows, and pipelines are written automatically to Application Support. Use Restore if a schema update wiped your data.")
+                            .font(.caption)
+                            .foregroundColor(.neuTextSecondary)
+
+                        HStack(spacing: 8) {
+                            Button("Restore from Backup") {
+                                let counts = manager.restore(
+                                    into: modelContext,
+                                    existingPresets: allPresets,
+                                    existingWorkflows: allWorkflows,
+                                    existingPipelines: allPipelines
+                                )
+                                let total = counts.presets + counts.workflows + counts.pipelines
+                                if total > 0 {
+                                    try? modelContext.save()
+                                    restoreResult = "Restored \(counts.presets) presets, \(counts.workflows) workflows, \(counts.pipelines) pipelines."
+                                } else {
+                                    restoreResult = manager.hasBackup ? "Nothing new to restore." : "No backup found."
+                                }
+                            }
+                            .buttonStyle(NeumorphicButtonStyle())
+                            .disabled(!manager.hasBackup)
+
+                            Button("Show Backup Folder") {
+                                try? FileManager.default.createDirectory(at: manager.backupDirectory, withIntermediateDirectories: true)
+                                NSWorkspace.shared.open(manager.backupDirectory)
+                            }
+                            .buttonStyle(NeumorphicButtonStyle())
+                        }
+
+                        if let result = restoreResult {
+                            Text(result)
+                                .font(.caption)
+                                .foregroundColor(.green)
+                        }
                     }
                 }
 
