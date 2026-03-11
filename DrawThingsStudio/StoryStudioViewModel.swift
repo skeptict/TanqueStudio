@@ -383,12 +383,11 @@ final class StoryStudioViewModel: ObservableObject {
                 // so we store 0 as a placeholder rather than the -1 sentinel which
                 // would make variants appear non-reproducible in the UI).
                 for image in images {
-                    let savedImage = await ImageStorageManager.shared.saveImage(
+                    let savedURL = await ImageStorageManager.shared.saveImageForStoryStudio(
                         image,
                         prompt: finalPrompt,
                         negativePrompt: assembled.negativePrompt,
-                        config: config,
-                        inferenceTimeMs: nil
+                        config: config
                     )
                     let resolvedSeed = config.seed >= 0 ? config.seed : 0
                     let variant = SceneVariant(
@@ -396,7 +395,7 @@ final class StoryStudioViewModel: ObservableObject {
                         negativePrompt: assembled.negativePrompt,
                         seed: resolvedSeed,
                         imageData: nil,
-                        imagePath: savedImage?.filePath?.path,
+                        imagePath: savedURL?.path,
                         isSelected: scene.variants.isEmpty
                     )
                     // Insert into context before establishing any relationships.

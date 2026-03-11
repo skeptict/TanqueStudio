@@ -35,15 +35,20 @@ final class ImageStorageManager: ObservableObject {
         ensureDirectoryExists()
     }
 
+    // MARK: - Directories
+
+    /// Separate directory for Story Studio generated images — kept out of the
+    /// Generate Image gallery so exploratory generations and narrative scene
+    /// variants don't mix.
+    var storyStudioDirectory: URL {
+        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+            ?? URL(fileURLWithPath: NSTemporaryDirectory())
+        return appSupport.appendingPathComponent("DrawThingsStudio/StoryStudioImages", isDirectory: true)
+    }
+
     // MARK: - Public Methods
 
-    /// Save a generated image to disk with metadata sidecar.
-    ///
-    /// This method performs synchronous file I/O on the `@MainActor`.  In practice
-    /// image saves are infrequent (one per generation call) and the files are small
-    /// (<5 MB), so the brief stall is acceptable.  If generation throughput increases
-    /// significantly, this should be moved to a detached Task with the `@Published`
-    /// update dispatched back to the main actor.
+    /// Save a generated image to the Generate Image gallery directory with metadata sidecar.
     func saveImage(_ image: NSImage, prompt: String, negativePrompt: String, config: DrawThingsGenerationConfig, inferenceTimeMs: Int?) -> GeneratedImage? {
         // Ensure directory exists before saving
         ensureDirectoryExists()
@@ -137,6 +142,55 @@ final class ImageStorageManager: ObservableObject {
         savedImages.insert(generatedImage, at: 0)
         logger.info("Saved image to \(imageURL.path)")
         return generatedImage
+    }
+
+    /// Save a Story Studio scene variant to the StoryStudioImages directory.
+    /// Does NOT add to `savedImages` — Story Studio images are managed separately
+    /// from the Generate Image gallery.
+    /// Returns the saved file URL, or nil on failure.
+    func saveImageForStoryStudio(_ image: NSImage, prompt: String, negativePrompt: String, config: DrawThingsGenerationConfig) -> URL? {
+        let dir = storyStudioDirectory
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+
+        let timestamp = Self.filenameFormatter.string(from: Date())
+            .replacingOccurrences(of: ":", with: "-")
+            .replacingOccurrences(of: "T", with: "_")
+        let filename = "scene_\(timestamp)_\(UUID().uuidString.prefix(8))"
+        let imageURL = dir.appendingPathComponent("\(filename).png")
+        let metadataURL = dir.appendingPathComponent("\(filename).json")
+
+        let parametersText = buildA1111Parameters(prompt: prompt, negativePrompt: negativePrompt, config: config)
+
+        guard let tiffData = image.tiffRepresentation,
+              let bitmapRep = NSBitmapImageRep(data: tiffData),
+              let cgImage = bitmapRep.cgImage else { return nil }
+
+        let mutableData = NSMutableData()
+        guard let dest = CGImageDestinationCreateWithData(mutableData, UTType.png.identifier as CFString, 1, nil) else { return nil }
+
+        let imageProps: [CFString: Any] = [
+            kCGImagePropertyTIFFDictionary: [kCGImagePropertyTIFFImageDescription: parametersText] as [CFString: Any],
+            kCGImagePropertyIPTCDictionary: [kCGImagePropertyIPTCCaptionAbstract: parametersText] as [CFString: Any],
+            kCGImagePropertyExifDictionary: [kCGImagePropertyExifUserComment: parametersText] as [CFString: Any]
+        ]
+        CGImageDestinationAddImage(dest, cgImage, imageProps as CFDictionary)
+        guard CGImageDestinationFinalize(dest) else { return nil }
+
+        let pngData = injectPNGTextChunk(into: mutableData as Data, keyword: "parameters", text: parametersText)
+        do {
+            try pngData.write(to: imageURL)
+        } catch {
+            logger.error("Failed to write Story Studio image: \(error.localizedDescription)")
+            return nil
+        }
+
+        let metadata = ImageMetadata(prompt: prompt, negativePrompt: negativePrompt, config: config, generatedAt: Date(), inferenceTimeMs: nil)
+        if let jsonData = try? JSONEncoder().encode(metadata) {
+            try? jsonData.write(to: metadataURL)
+        }
+
+        logger.info("Saved Story Studio image to \(imageURL.path)")
+        return imageURL
     }
 
     /// Load previously saved images from disk
