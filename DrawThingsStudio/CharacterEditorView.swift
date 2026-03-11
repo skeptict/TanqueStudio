@@ -85,8 +85,7 @@ struct CharacterEditorView: View {
                             .accessibilityIdentifier("characterEditor_name")
                     }
 
-                    HStack(spacing: 12) {
-                        VStack(alignment: .leading, spacing: 4) {
+                    VStack(alignment: .leading, spacing: 4) {
                             Text("Age")
                                 .font(.subheadline)
                                 .foregroundColor(.neuTextSecondary)
@@ -96,18 +95,6 @@ struct CharacterEditorView: View {
                             ))
                             .textFieldStyle(.roundedBorder)
                         }
-
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("Species")
-                                .font(.subheadline)
-                                .foregroundColor(.neuTextSecondary)
-                            TextField("Human, Elf...", text: Binding(
-                                get: { character.species ?? "" },
-                                set: { character.species = $0.isEmpty ? nil : $0 }
-                            ))
-                            .textFieldStyle(.roundedBorder)
-                        }
-                    }
                 }
             }
 
@@ -129,6 +116,17 @@ struct CharacterEditorView: View {
                 TextField("Default outfit description", text: Binding(
                     get: { character.clothingDefault ?? "" },
                     set: { character.clothingDefault = $0.isEmpty ? nil : $0 }
+                ))
+                .textFieldStyle(.roundedBorder)
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Character Type")
+                    .font(.subheadline)
+                    .foregroundColor(.neuTextSecondary)
+                TextField("Optional — Human, Elf, Robot…", text: Binding(
+                    get: { character.species ?? "" },
+                    set: { character.species = $0.isEmpty ? nil : $0 }
                 ))
                 .textFieldStyle(.roundedBorder)
             }
