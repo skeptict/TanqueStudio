@@ -660,7 +660,20 @@ struct StoryStudioView: View {
 
     private var promptPreviewSection: some View {
         VStack(alignment: .leading, spacing: 6) {
-            NeuSectionHeader("Assembled Prompt")
+            HStack {
+                NeuSectionHeader("Assembled Prompt")
+                Spacer()
+                Button(action: {
+                    copyPromptToClipboard()
+                }) {
+                    Image(systemName: "doc.on.doc")
+                        .foregroundColor(.neuTextSecondary)
+                }
+                .buttonStyle(NeumorphicIconButtonStyle())
+                .help("Copy prompt to clipboard")
+                .accessibilityIdentifier("storyStudio_copyPrompt")
+            }
+            
             Text(viewModel.assembledPromptPreview)
                 .font(.system(.caption, design: .monospaced))
                 .foregroundColor(.neuTextSecondary)
@@ -668,6 +681,12 @@ struct StoryStudioView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .neuInset(cornerRadius: 8)
         }
+    }
+    
+    private func copyPromptToClipboard() {
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setString(viewModel.assembledPromptPreview, forType: .string)
     }
 
     private var generationControlsSection: some View {
