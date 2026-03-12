@@ -27,8 +27,7 @@ struct ImageGenerationView: View {
     @State private var showEnhanceStyleEditor = false
     @State private var enhanceError: String?
     @State private var showSavePipeline = false
-    @State private var showDescribeSheet = false
-    @State private var imageToDescribe: NSImage?
+    @State private var generatedImageToDescribe: GeneratedImage?
     @State private var lightboxImage: NSImage?
     @State private var imageForStoryStudio: GeneratedImage?
 
@@ -1201,19 +1200,17 @@ struct ImageGenerationView: View {
         }
         .animation(.easeInOut(duration: 0.3), value: viewModel.generatedImages.isEmpty)
         .neuCard(cornerRadius: 24)
-        .sheet(isPresented: $showDescribeSheet) {
-            if let image = imageToDescribe {
-                ImageDescriptionView(
-                    image: image,
-                    onSendToGeneratePrompt: { text, sourceImage in
-                        viewModel.prompt = text
-                        if let img = sourceImage {
-                            viewModel.loadInputImage(from: img, name: "Described Image")
-                        }
-                    },
-                    onSendToWorkflowPrompt: nil
-                )
-            }
+        .sheet(item: $generatedImageToDescribe) { gi in
+            ImageDescriptionView(
+                image: gi.image,
+                onSendToGeneratePrompt: { text, sourceImage in
+                    viewModel.prompt = text
+                    if let img = sourceImage {
+                        viewModel.loadInputImage(from: img, name: "Described Image")
+                    }
+                },
+                onSendToWorkflowPrompt: nil
+            )
         }
     }
 
@@ -1353,8 +1350,7 @@ struct ImageGenerationView: View {
                         .font(.caption)
                         .buttonStyle(NeumorphicButtonStyle())
                         Button("Describe…") {
-                            imageToDescribe = generatedImage.image
-                            showDescribeSheet = true
+                            generatedImageToDescribe = generatedImage
                         }
                         .font(.caption)
                         .buttonStyle(NeumorphicButtonStyle())

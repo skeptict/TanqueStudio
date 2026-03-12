@@ -10,7 +10,7 @@ import Combine
 import OSLog
 
 /// Generates prompts for StoryFlow workflows using LLM
-class WorkflowPromptGenerator: ObservableObject {
+@MainActor final class WorkflowPromptGenerator: ObservableObject {
 
     // MARK: - Properties
 

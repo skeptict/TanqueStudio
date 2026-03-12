@@ -13,36 +13,45 @@ import AppKit
 // MARK: - Lightbox Overlay
 
 struct LightboxOverlay: View {
-    let image: NSImage
-    let onDismiss: () -> Void
-    var onPrevious: (() -> Void)? = nil
-    var onNext: (() -> Void)? = nil
+    /// The binding drives both display and navigation — writing a new value navigates.
+    @Binding var image: NSImage?
+    /// Ordered list of images to navigate through. Identity comparison (===) locates current.
+    var browseList: [NSImage] = []
 
     @State private var eventMonitor: Any?
-    private var hasNav: Bool { onPrevious != nil || onNext != nil }
+
+    private var currentIndex: Int {
+        guard let img = image else { return -1 }
+        return browseList.firstIndex(where: { $0 === img }) ?? -1
+    }
+    private var hasPrev: Bool { currentIndex > 0 }
+    private var hasNext: Bool { currentIndex >= 0 && currentIndex < browseList.count - 1 }
+    private var hasNav: Bool { !browseList.isEmpty }
 
     var body: some View {
         ZStack {
             // Dimmed background — tap to dismiss
             Color.black.opacity(0.82)
                 .ignoresSafeArea()
-                .onTapGesture { onDismiss() }
+                .onTapGesture { image = nil }
 
-            // Centered image — taps pass through to background
-            Image(nsImage: image)
-                .resizable()
-                .aspectRatio(contentMode: .fit)
-                .padding(.horizontal, hasNav ? 80 : 40)
-                .padding(.vertical, 40)
-                .shadow(color: .black.opacity(0.55), radius: 30, x: 0, y: 10)
-                .allowsHitTesting(false)
+            // Centered image
+            if let img = image {
+                Image(nsImage: img)
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .padding(.horizontal, hasNav ? 80 : 40)
+                    .padding(.vertical, 40)
+                    .shadow(color: .black.opacity(0.55), radius: 30, x: 0, y: 10)
+                    .allowsHitTesting(false)
+            }
 
             // Navigation chevrons
             if hasNav {
                 HStack {
-                    navButton(systemName: "chevron.left.circle.fill", action: onPrevious)
+                    navButton(systemName: "chevron.left.circle.fill", enabled: hasPrev) { navigatePrev() }
                     Spacer()
-                    navButton(systemName: "chevron.right.circle.fill", action: onNext)
+                    navButton(systemName: "chevron.right.circle.fill", enabled: hasNext) { navigateNext() }
                 }
                 .padding(.horizontal, 16)
             }
@@ -51,7 +60,7 @@ struct LightboxOverlay: View {
             VStack {
                 HStack {
                     Spacer()
-                    Button(action: onDismiss) {
+                    Button(action: { image = nil }) {
                         Image(systemName: "xmark.circle.fill")
                             .font(.system(size: 26))
                             .symbolRenderingMode(.palette)
@@ -64,12 +73,31 @@ struct LightboxOverlay: View {
             }
         }
         .onAppear {
+            // Capture the binding — idx is computed fresh on each keypress so navigation
+            // always reflects the current position, not the position at install time.
+            let imageBinding = $image
+            let list = browseList
             eventMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
                 switch event.keyCode {
-                case 53: onDismiss(); return nil          // Escape
-                case 123: onPrevious?(); return nil       // Left arrow
-                case 124: onNext?(); return nil           // Right arrow
-                default: return event
+                case 53:   // Escape
+                    imageBinding.wrappedValue = nil
+                    return nil
+                case 123:  // Left arrow
+                    if let current = imageBinding.wrappedValue,
+                       let idx = list.firstIndex(where: { $0 === current }),
+                       idx > 0 {
+                        imageBinding.wrappedValue = list[idx - 1]
+                    }
+                    return nil
+                case 124:  // Right arrow
+                    if let current = imageBinding.wrappedValue,
+                       let idx = list.firstIndex(where: { $0 === current }),
+                       idx < list.count - 1 {
+                        imageBinding.wrappedValue = list[idx + 1]
+                    }
+                    return nil
+                default:
+                    return event
                 }
             }
         }
@@ -81,9 +109,19 @@ struct LightboxOverlay: View {
         }
     }
 
+    private func navigatePrev() {
+        let idx = currentIndex
+        if idx > 0 { image = browseList[idx - 1] }
+    }
+
+    private func navigateNext() {
+        let idx = currentIndex
+        if idx >= 0 && idx < browseList.count - 1 { image = browseList[idx + 1] }
+    }
+
     @ViewBuilder
-    private func navButton(systemName: String, action: (() -> Void)?) -> some View {
-        if let action {
+    private func navButton(systemName: String, enabled: Bool, action: @escaping () -> Void) -> some View {
+        if enabled {
             Button(action: action) {
                 Image(systemName: systemName)
                     .font(.system(size: 40))
@@ -95,8 +133,6 @@ struct LightboxOverlay: View {
             Color.clear.frame(width: 56, height: 56)
         }
     }
-
-
 }
 
 // MARK: - View Extension
@@ -107,23 +143,12 @@ extension View {
     func lightbox(image: Binding<NSImage?>, browseList: [NSImage] = []) -> some View {
         ZStack {
             self
-            if let img = image.wrappedValue {
-                let idx = browseList.isEmpty ? -1 : browseList.firstIndex(where: { $0 === img }) ?? -1
-                let hasPrev = idx > 0
-                let hasNext = idx >= 0 && idx < browseList.count - 1
-                LightboxOverlay(
-                    image: img,
-                    onDismiss: { image.wrappedValue = nil },
-                    onPrevious: hasPrev ? { image.wrappedValue = browseList[idx - 1] } : nil,
-                    onNext:     hasNext ? { image.wrappedValue = browseList[idx + 1] } : nil
-                )
-                .transition(.opacity)
-                .zIndex(999)
+            if image.wrappedValue != nil {
+                LightboxOverlay(image: image, browseList: browseList)
+                    .transition(.opacity)
+                    .zIndex(999)
             }
         }
-        // Drive the appear/disappear transition from the ZStack level so that
-        // both insertion and removal animate correctly. A modifier on the child
-        // alone only animates internal state changes, not the branch removal.
         .animation(.easeInOut(duration: 0.15), value: image.wrappedValue != nil)
     }
 }
