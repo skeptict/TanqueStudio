@@ -9,6 +9,7 @@
 
 import SwiftUI
 import AppKit
+import Combine
 
 // MARK: - Key Event Monitor
 
