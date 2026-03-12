@@ -18,7 +18,7 @@ struct LightboxOverlay: View {
     var onPrevious: (() -> Void)? = nil
     var onNext: (() -> Void)? = nil
 
-    @FocusState private var isFocused: Bool
+    @State private var eventMonitor: Any?
     private var hasNav: Bool { onPrevious != nil || onNext != nil }
 
     var body: some View {
@@ -63,12 +63,22 @@ struct LightboxOverlay: View {
                 Spacer()
             }
         }
-        .focusable()
-        .focused($isFocused)
-        .onAppear { DispatchQueue.main.async { isFocused = true } }
-        .onKeyPress(.escape)     { onDismiss(); return .handled }
-        .onKeyPress(.leftArrow)  { navigate(onPrevious) }
-        .onKeyPress(.rightArrow) { navigate(onNext) }
+        .onAppear {
+            eventMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+                switch event.keyCode {
+                case 53: onDismiss(); return nil          // Escape
+                case 123: onPrevious?(); return nil       // Left arrow
+                case 124: onNext?(); return nil           // Right arrow
+                default: return event
+                }
+            }
+        }
+        .onDisappear {
+            if let monitor = eventMonitor {
+                NSEvent.removeMonitor(monitor)
+                eventMonitor = nil
+            }
+        }
     }
 
     @ViewBuilder
@@ -86,11 +96,7 @@ struct LightboxOverlay: View {
         }
     }
 
-    private func navigate(_ action: (() -> Void)?) -> KeyPress.Result {
-        guard let action else { return .ignored }
-        action()
-        return .handled
-    }
+
 }
 
 // MARK: - View Extension
