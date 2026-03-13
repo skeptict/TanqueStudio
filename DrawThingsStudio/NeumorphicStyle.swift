@@ -197,6 +197,27 @@ struct NeumorphicTextFieldStyle: TextFieldStyle {
     }
 }
 
+// MARK: - Revealable Secure Field
+
+/// A SecureField that can be toggled to reveal its contents as a plain TextField.
+/// Uses ZStack+opacity (not if/else) to keep both NSViews in the hierarchy, avoiding
+/// AppKit constraint crashes that occur when conditionally swapping NSTextField subviews.
+struct RevealableSecureField: View {
+    @Binding var text: String
+    var isRevealed: Bool
+
+    var body: some View {
+        ZStack {
+            TextField("", text: $text)
+                .textFieldStyle(NeumorphicTextFieldStyle())
+                .opacity(isRevealed ? 1 : 0)
+            SecureField("", text: $text)
+                .textFieldStyle(NeumorphicTextFieldStyle())
+                .opacity(isRevealed ? 0 : 1)
+        }
+    }
+}
+
 // MARK: - Neumorphic Sidebar Style
 
 struct NeumorphicSidebarItem: ViewModifier {

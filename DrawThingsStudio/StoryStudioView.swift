@@ -14,9 +14,11 @@ struct StoryStudioView: View {
     @Query(sort: \StoryProject.modifiedAt, order: .reverse) private var projects: [StoryProject]
 
     @State private var lightboxImage: NSImage?
+    @State private var lightboxBrowseList: [NSImage] = []
 
-    private var variantBrowseList: [NSImage] {
-        viewModel.selectedScene?.sortedVariants.compactMap { viewModel.imageForVariant($0) } ?? []
+    private func openLightbox(image: NSImage) {
+        lightboxBrowseList = viewModel.selectedScene?.sortedVariants.compactMap { viewModel.imageForVariant($0) } ?? []
+        lightboxImage = image
     }
 
     var body: some View {
@@ -30,7 +32,7 @@ struct StoryStudioView: View {
         .onAppear {
             viewModel.setModelContext(modelContext)
         }
-        .lightbox(image: $lightboxImage, browseList: variantBrowseList)
+        .lightbox(image: $lightboxImage, browseList: lightboxBrowseList)
         .sheet(isPresented: $viewModel.showingNewProjectSheet) {
             NewProjectSheet(viewModel: viewModel)
         }
@@ -544,7 +546,7 @@ struct StoryStudioView: View {
                     .frame(maxHeight: 300)
                     .clipShape(RoundedRectangle(cornerRadius: 12))
                     .neuCard(cornerRadius: 12)
-                    .onTapGesture { lightboxImage = nsImage }
+                    .onTapGesture { openLightbox(image: nsImage) }
 
                 // Show the prompt the selected variant was generated with (#4)
                 if let variant = scene.selectedVariant, !variant.prompt.isEmpty {
@@ -651,7 +653,7 @@ struct StoryStudioView: View {
             }
         }
         .onTapGesture(count: 2) {
-            if let img = viewModel.imageForVariant(variant) { lightboxImage = img }
+            if let img = viewModel.imageForVariant(variant) { openLightbox(image: img) }
         }
         .onTapGesture {
             viewModel.selectVariant(variant)

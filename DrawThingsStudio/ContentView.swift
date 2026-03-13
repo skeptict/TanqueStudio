@@ -1640,7 +1640,7 @@ private struct BackupCoordinator: View {
     @MainActor
     private func runBackupAndRestore() async {
         // Auto-restore after a schema wipe (flag set by DrawThingsStudioApp)
-        if UserDefaults.standard.bool(forKey: "dts.needsBackupRestore") {
+        if UserDefaults.standard.bool(forKey: needsBackupRestoreKey) {
             let manager = SwiftDataBackupManager.shared
             if manager.hasBackup {
                 let counts = manager.restore(
@@ -1658,7 +1658,7 @@ private struct BackupCoordinator: View {
                     }
                 }
             }
-            UserDefaults.standard.removeObject(forKey: "dts.needsBackupRestore")
+            UserDefaults.standard.removeObject(forKey: needsBackupRestoreKey)
         }
         runBackup()
     }

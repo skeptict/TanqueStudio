@@ -21,6 +21,30 @@ extension FocusedValues {
     }
 }
 
+// MARK: - Constants
+
+/// UserDefaults key signalling that BackupCoordinator should restore from JSON on next launch.
+/// Written by DrawThingsStudioApp (schema wipe / recovery), read and cleared by ContentView.
+let needsBackupRestoreKey = "dts.needsBackupRestore"
+
+/// Removes a SQLite store and its WAL/SHM siblings. Safe to call when files are absent.
+private func wipeSQLiteStore(_ modelConfiguration: ModelConfiguration) {
+    let storeURL = modelConfiguration.url
+    let appSupport = storeURL.deletingLastPathComponent()
+    let fm = FileManager.default
+    // Include "default.store" as a legacy fallback for stores created before the named
+    // configuration was introduced (pre-v3 builds may have used that path).
+    let candidates: [URL] = [
+        storeURL,
+        appSupport.appendingPathComponent("default.store"),
+    ]
+    for base in candidates {
+        for suffix in ["", "-shm", "-wal"] {
+            try? fm.removeItem(at: URL(fileURLWithPath: base.path + suffix))
+        }
+    }
+}
+
 // MARK: - App
 
 @main
@@ -72,20 +96,9 @@ struct DrawThingsStudioApp: App {
             // Wipe only for destructive schema changes — removes stale constraints
             // and incompatible table structures. Additive changes (new columns with
             // defaults) are left to SwiftData's automatic lightweight migration.
-            let storeURL = modelConfiguration.url
-            let appSupport = storeURL.deletingLastPathComponent()
-            let fm = FileManager.default
-            let candidates: [URL] = [
-                storeURL,
-                appSupport.appendingPathComponent("default.store"),
-            ]
-            for base in candidates {
-                for suffix in ["", "-shm", "-wal"] {
-                    try? fm.removeItem(at: URL(fileURLWithPath: base.path + suffix))
-                }
-            }
+            wipeSQLiteStore(modelConfiguration)
             // Signal BackupCoordinator to restore from JSON backup on next launch
-            UserDefaults.standard.set(true, forKey: "dts.needsBackupRestore")
+            UserDefaults.standard.set(true, forKey: needsBackupRestoreKey)
         }
         if storedVersion < currentSchemaVersion {
             UserDefaults.standard.set(currentSchemaVersion, forKey: schemaVersionKey)
@@ -96,19 +109,8 @@ struct DrawThingsStudioApp: App {
         } catch {
             // Recovery: store may be corrupt or incompatible (e.g. pre-release OS SwiftData changes).
             // Wipe and retry once — BackupCoordinator will restore data on next launch.
-            let storeURL = modelConfiguration.url
-            let appSupport = storeURL.deletingLastPathComponent()
-            let fm = FileManager.default
-            let candidates: [URL] = [
-                storeURL,
-                appSupport.appendingPathComponent("default.store"),
-            ]
-            for base in candidates {
-                for suffix in ["", "-shm", "-wal"] {
-                    try? fm.removeItem(at: URL(fileURLWithPath: base.path + suffix))
-                }
-            }
-            UserDefaults.standard.set(true, forKey: "dts.needsBackupRestore")
+            wipeSQLiteStore(modelConfiguration)
+            UserDefaults.standard.set(true, forKey: needsBackupRestoreKey)
             do {
                 return try ModelContainer(for: schema, configurations: [modelConfiguration])
             } catch {

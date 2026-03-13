@@ -500,14 +500,7 @@ struct SettingsView: View {
                         neuSettingsRow("Port") { TextField("", value: $settings.janPort, format: .number).textFieldStyle(NeumorphicTextFieldStyle()).frame(width: 100) }
                         neuSettingsRow("API Key") {
                             HStack {
-                                ZStack {
-                                    TextField("", text: $settings.janAPIKey)
-                                        .textFieldStyle(NeumorphicTextFieldStyle())
-                                        .opacity(showAPIKey ? 1 : 0)
-                                    SecureField("", text: $settings.janAPIKey)
-                                        .textFieldStyle(NeumorphicTextFieldStyle())
-                                        .opacity(showAPIKey ? 0 : 1)
-                                }
+                                RevealableSecureField(text: $settings.janAPIKey, isRevealed: showAPIKey)
                                 Button(action: { showAPIKey.toggle() }) {
                                     Image(systemName: showAPIKey ? "eye.slash" : "eye").foregroundColor(.neuTextSecondary)
                                 }.buttonStyle(NeumorphicIconButtonStyle())
@@ -549,14 +542,7 @@ struct SettingsView: View {
 
                     neuSettingsRow("Secret") {
                         HStack {
-                            ZStack {
-                                TextField("", text: $settings.drawThingsSharedSecret)
-                                    .textFieldStyle(NeumorphicTextFieldStyle())
-                                    .opacity(showSharedSecret ? 1 : 0)
-                                SecureField("", text: $settings.drawThingsSharedSecret)
-                                    .textFieldStyle(NeumorphicTextFieldStyle())
-                                    .opacity(showSharedSecret ? 0 : 1)
-                            }
+                            RevealableSecureField(text: $settings.drawThingsSharedSecret, isRevealed: showSharedSecret)
                             Button(action: { showSharedSecret.toggle() }) {
                                 Image(systemName: showSharedSecret ? "eye.slash" : "eye").foregroundColor(.neuTextSecondary)
                             }.buttonStyle(NeumorphicIconButtonStyle())
