@@ -515,18 +515,94 @@ struct SettingsView: View {
     var body: some View {
         ScrollView(showsIndicators: false) {
             VStack(spacing: 20) {
-                // LLM Provider
-                neuSettingsSection("LLM Provider", icon: "brain") {
-                    Picker("Provider", selection: $settings.selectedProvider) {
-                        ForEach(LLMProviderType.allCases) { provider in
-                            Label(provider.displayName, systemImage: provider.icon)
-                                .tag(provider.rawValue)
+                // LLM Settings
+                neuSettingsSection("LLM Settings", icon: "brain") {
+                    neuSettingsRow("Provider") {
+                        Picker("", selection: $settings.selectedProvider) {
+                            ForEach(LLMProviderType.allCases) { provider in
+                                Label(provider.displayName, systemImage: provider.icon)
+                                    .tag(provider.rawValue)
+                            }
+                        }
+                        .labelsHidden()
+                        .onChange(of: settings.selectedProvider) { _, _ in
+                            connectionResult = nil
                         }
                     }
-                    .pickerStyle(.radioGroup)
-                    .onChange(of: settings.selectedProvider) { _, _ in
-                        connectionResult = nil
+
+                    Divider()
+
+                    // Provider-specific fields
+                    switch settings.providerType {
+                    case .ollama:
+                        neuSettingsRow("Host") {
+                            HostHistoryField(
+                                host: $settings.ollamaHost,
+                                history: settings.ollamaHostHistory,
+                                onCommit: { settings.addOllamaHostToHistory() },
+                                onSelect: { settings.ollamaHost = $0; settings.addOllamaHostToHistory() },
+                                onDelete: { settings.removeOllamaHostFromHistory($0) },
+                                onClearAll: { settings.clearOllamaHostHistory() }
+                            )
+                        }
+                        neuSettingsRow("Port") {
+                            TextField("", value: $settings.ollamaPort, format: .number)
+                                .textFieldStyle(NeumorphicTextFieldStyle()).frame(width: 100)
+                        }
+                        neuSettingsRow("Model") {
+                            TextField("", text: $settings.ollamaDefaultModel)
+                                .textFieldStyle(NeumorphicTextFieldStyle())
+                        }
+                        Toggle("Auto-connect on launch", isOn: $settings.ollamaAutoConnect)
+                            .tint(Color.neuAccent)
+
+                    case .lmStudio:
+                        neuSettingsRow("Host") {
+                            HostHistoryField(
+                                host: $settings.lmStudioHost,
+                                history: settings.lmStudioHostHistory,
+                                onCommit: { settings.addLMStudioHostToHistory() },
+                                onSelect: { settings.lmStudioHost = $0; settings.addLMStudioHostToHistory() },
+                                onDelete: { settings.removeLMStudioHostFromHistory($0) },
+                                onClearAll: { settings.clearLMStudioHostHistory() }
+                            )
+                        }
+                        neuSettingsRow("Port") {
+                            TextField("", value: $settings.lmStudioPort, format: .number)
+                                .textFieldStyle(NeumorphicTextFieldStyle()).frame(width: 100)
+                        }
+                        Text("OpenAI-compatible API on port 1234 by default.")
+                            .font(.caption).foregroundColor(.neuTextSecondary)
+
+                    case .jan:
+                        neuSettingsRow("Host") {
+                            HostHistoryField(
+                                host: $settings.janHost,
+                                history: settings.janHostHistory,
+                                onCommit: { settings.addJanHostToHistory() },
+                                onSelect: { settings.janHost = $0; settings.addJanHostToHistory() },
+                                onDelete: { settings.removeJanHostFromHistory($0) },
+                                onClearAll: { settings.clearJanHostHistory() }
+                            )
+                        }
+                        neuSettingsRow("Port") {
+                            TextField("", value: $settings.janPort, format: .number)
+                                .textFieldStyle(NeumorphicTextFieldStyle()).frame(width: 100)
+                        }
+                        neuSettingsRow("API Key") {
+                            HStack {
+                                RevealableSecureField(text: $settings.janAPIKey, isRevealed: showAPIKey)
+                                Button(action: { showAPIKey.toggle() }) {
+                                    Image(systemName: showAPIKey ? "eye.slash" : "eye")
+                                        .foregroundColor(.neuTextSecondary)
+                                }.buttonStyle(NeumorphicIconButtonStyle())
+                            }
+                        }
+                        Text("Jan only accepts connections from localhost. For remote LLM access, use Ollama or LM Studio.")
+                            .font(.caption).foregroundColor(.neuTextSecondary)
                     }
+
+                    Divider()
 
                     neuSettingsRow("Max Tokens") {
                         HStack(spacing: 8) {
@@ -553,71 +629,6 @@ struct SettingsView: View {
                                 .font(.caption)
                                 .foregroundColor(result.contains("Success") ? .green : .red)
                         }
-                    }
-                }
-
-                // Provider-specific settings
-                if settings.providerType == .ollama {
-                    neuSettingsSection("Ollama Settings", icon: "server.rack") {
-                        neuSettingsRow("Host") {
-                            HostHistoryField(
-                                host: $settings.ollamaHost,
-                                history: settings.ollamaHostHistory,
-                                onCommit: { settings.addOllamaHostToHistory() },
-                                onSelect: { settings.ollamaHost = $0; settings.addOllamaHostToHistory() },
-                                onDelete: { settings.removeOllamaHostFromHistory($0) },
-                                onClearAll: { settings.clearOllamaHostHistory() }
-                            )
-                        }
-                        neuSettingsRow("Port") { TextField("", value: $settings.ollamaPort, format: .number).textFieldStyle(NeumorphicTextFieldStyle()).frame(width: 100) }
-                        neuSettingsRow("Model") { TextField("", text: $settings.ollamaDefaultModel).textFieldStyle(NeumorphicTextFieldStyle()) }
-                        Toggle("Auto-connect on launch", isOn: $settings.ollamaAutoConnect)
-                            .tint(Color.neuAccent)
-                    }
-                }
-
-                if settings.providerType == .lmStudio {
-                    neuSettingsSection("LM Studio Settings", icon: "desktopcomputer") {
-                        neuSettingsRow("Host") {
-                            HostHistoryField(
-                                host: $settings.lmStudioHost,
-                                history: settings.lmStudioHostHistory,
-                                onCommit: { settings.addLMStudioHostToHistory() },
-                                onSelect: { settings.lmStudioHost = $0; settings.addLMStudioHostToHistory() },
-                                onDelete: { settings.removeLMStudioHostFromHistory($0) },
-                                onClearAll: { settings.clearLMStudioHostHistory() }
-                            )
-                        }
-                        neuSettingsRow("Port") { TextField("", value: $settings.lmStudioPort, format: .number).textFieldStyle(NeumorphicTextFieldStyle()).frame(width: 100) }
-                        Text("OpenAI-compatible API on port 1234 by default.")
-                            .font(.caption).foregroundColor(.neuTextSecondary)
-                    }
-                }
-
-                if settings.providerType == .jan {
-                    neuSettingsSection("Jan Settings", icon: "bubble.left.and.bubble.right") {
-                        neuSettingsRow("Host") {
-                            HostHistoryField(
-                                host: $settings.janHost,
-                                history: settings.janHostHistory,
-                                onCommit: { settings.addJanHostToHistory() },
-                                onSelect: { settings.janHost = $0; settings.addJanHostToHistory() },
-                                onDelete: { settings.removeJanHostFromHistory($0) },
-                                onClearAll: { settings.clearJanHostHistory() }
-                            )
-                        }
-                        neuSettingsRow("Port") { TextField("", value: $settings.janPort, format: .number).textFieldStyle(NeumorphicTextFieldStyle()).frame(width: 100) }
-                        neuSettingsRow("API Key") {
-                            HStack {
-                                RevealableSecureField(text: $settings.janAPIKey, isRevealed: showAPIKey)
-                                Button(action: { showAPIKey.toggle() }) {
-                                    Image(systemName: showAPIKey ? "eye.slash" : "eye").foregroundColor(.neuTextSecondary)
-                                }.buttonStyle(NeumorphicIconButtonStyle())
-                            }
-                        }
-                        Text("Jan only accepts connections from localhost. For remote LLM access, use Ollama or LM Studio.")
-                            .font(.caption)
-                            .foregroundColor(.neuTextSecondary)
                     }
                 }
 
