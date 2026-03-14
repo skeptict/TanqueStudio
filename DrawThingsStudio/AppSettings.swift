@@ -38,6 +38,9 @@ final class AppSettings: ObservableObject {
     @Published var ollamaDefaultModel: String {
         didSet { store.set(ollamaDefaultModel, forKey: "ollama.defaultModel") }
     }
+    @Published var ollamaModelHistory: [String] {
+        didSet { store.set(ollamaModelHistory, forKey: "ollama.modelHistory") }
+    }
     @Published var ollamaAutoConnect: Bool {
         didSet { store.set(ollamaAutoConnect, forKey: "ollama.autoConnect") }
     }
@@ -187,6 +190,7 @@ final class AppSettings: ObservableObject {
         self.ollamaHost = store.string(forKey: "ollama.host") ?? "localhost"
         self.ollamaPort = store.integer(forKey: "ollama.port") != 0 ? store.integer(forKey: "ollama.port") : 11434
         self.ollamaDefaultModel = store.string(forKey: "ollama.defaultModel") ?? "llama3.2"
+        self.ollamaModelHistory = store.object(forKey: "ollama.modelHistory") as? [String] ?? []
         self.ollamaAutoConnect = store.object(forKey: "ollama.autoConnect") as? Bool ?? true
         self.ollamaHostHistory = store.object(forKey: "ollama.hostHistory") as? [String] ?? []
 
@@ -347,6 +351,10 @@ final class AppSettings: ObservableObject {
     func addOllamaHostToHistory() { addToHistory(ollamaHost, list: &ollamaHostHistory, key: "ollama.hostHistory") }
     func removeOllamaHostFromHistory(_ host: String) { ollamaHostHistory.removeAll { $0 == host } }
     func clearOllamaHostHistory() { ollamaHostHistory = [] }
+
+    func addOllamaModelToHistory() { addToHistory(ollamaDefaultModel, list: &ollamaModelHistory, key: "ollama.modelHistory") }
+    func removeOllamaModelFromHistory(_ model: String) { ollamaModelHistory.removeAll { $0 == model } }
+    func clearOllamaModelHistory() { ollamaModelHistory = [] }
 
     func addLMStudioHostToHistory() { addToHistory(lmStudioHost, list: &lmStudioHostHistory, key: "lmstudio.hostHistory") }
     func removeLMStudioHostFromHistory(_ host: String) { lmStudioHostHistory.removeAll { $0 == host } }
@@ -550,8 +558,14 @@ struct SettingsView: View {
                                 .textFieldStyle(NeumorphicTextFieldStyle()).frame(width: 100)
                         }
                         neuSettingsRow("Model") {
-                            TextField("", text: $settings.ollamaDefaultModel)
-                                .textFieldStyle(NeumorphicTextFieldStyle())
+                            HostHistoryField(
+                                host: $settings.ollamaDefaultModel,
+                                history: settings.ollamaModelHistory,
+                                onCommit: { settings.addOllamaModelToHistory() },
+                                onSelect: { settings.ollamaDefaultModel = $0; settings.addOllamaModelToHistory() },
+                                onDelete: { settings.removeOllamaModelFromHistory($0) },
+                                onClearAll: { settings.clearOllamaModelHistory() }
+                            )
                         }
                         Toggle("Auto-connect on launch", isOn: $settings.ollamaAutoConnect)
                             .tint(Color.neuAccent)
@@ -913,7 +927,7 @@ struct SettingsView: View {
 
     private func testConnection() {
         switch settings.providerType {
-        case .ollama: settings.addOllamaHostToHistory()
+        case .ollama: settings.addOllamaHostToHistory(); settings.addOllamaModelToHistory()
         case .lmStudio: settings.addLMStudioHostToHistory()
         case .jan: settings.addJanHostToHistory()
         }
