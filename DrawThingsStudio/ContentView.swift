@@ -1619,7 +1619,7 @@ struct SavedPipelinesView: View {
 // MARK: - Backup Coordinator
 
 /// Invisible view that auto-backs up SwiftData records to JSON on launch and
-/// whenever the item count changes. Auto-restores after a schema wipe.
+/// whenever content changes. Auto-restores after a schema wipe.
 private struct BackupCoordinator: View {
     @Query private var presets: [ModelConfig]
     @Query private var workflows: [SavedWorkflow]
@@ -1628,13 +1628,34 @@ private struct BackupCoordinator: View {
     @Environment(\.modelContext) private var modelContext
     private let logger = Logger(subsystem: "com.drawthingsstudio", category: "backup")
 
+    /// Pending debounce task — cancelled and replaced on each change.
+    @State private var pendingBackup: Task<Void, Never>?
+
+    /// Hash covering count + modifiedAt for every top-level record.
+    /// Re-evaluated on each SwiftUI render triggered by @Query observation,
+    /// so it catches both add/delete (count change) and content edits (modifiedAt change).
+    private var backupToken: Int {
+        var h = Hasher()
+        for p in presets   { h.combine(p.id); h.combine(p.modifiedAt.timeIntervalSinceReferenceDate.bitPattern) }
+        for w in workflows  { h.combine(w.id); h.combine(w.modifiedAt.timeIntervalSinceReferenceDate.bitPattern) }
+        for p in pipelines  { h.combine(p.id); h.combine(p.modifiedAt.timeIntervalSinceReferenceDate.bitPattern) }
+        for s in storyProjects { h.combine(s.id); h.combine(s.modifiedAt.timeIntervalSinceReferenceDate.bitPattern) }
+        return h.finalize()
+    }
+
     var body: some View {
         EmptyView()
             .task { await runBackupAndRestore() }
-            .onChange(of: presets.count) { _, _ in runBackup() }
-            .onChange(of: workflows.count) { _, _ in runBackup() }
-            .onChange(of: pipelines.count) { _, _ in runBackup() }
-            .onChange(of: storyProjects.count) { _, _ in runBackup() }
+            .onChange(of: backupToken) { _, _ in scheduleBackup() }
+    }
+
+    private func scheduleBackup() {
+        pendingBackup?.cancel()
+        pendingBackup = Task {
+            try? await Task.sleep(for: .seconds(2))
+            guard !Task.isCancelled else { return }
+            runBackup()
+        }
     }
 
     @MainActor

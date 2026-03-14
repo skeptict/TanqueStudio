@@ -262,7 +262,7 @@ struct StoryProjectBackup: Codable {
     let baseNegativePrompt: String?
     let baseRefinerModel: String?
     let baseRefinerStart: Float?
-    let coverImageData: Data?
+    // coverImageData intentionally excluded — large blob, not needed for structural recovery
     let createdAt: Date
     let modifiedAt: Date
     let characters: [StoryCharacterBackup]
@@ -285,7 +285,7 @@ struct StoryProjectBackup: Codable {
         baseNegativePrompt = p.baseNegativePrompt
         baseRefinerModel = p.baseRefinerModel
         baseRefinerStart = p.baseRefinerStart
-        coverImageData = p.coverImageData
+        // coverImageData excluded from backup — large blob, stored on disk
         createdAt = p.createdAt
         modifiedAt = p.modifiedAt
         characters = p.characters.map { StoryCharacterBackup(from: $0) }
@@ -303,7 +303,7 @@ struct StoryProjectBackup: Codable {
             baseRefinerModel: baseRefinerModel, baseRefinerStart: baseRefinerStart
         )
         project.id = id
-        project.coverImageData = coverImageData
+        // coverImageData not restored — was excluded from backup
         project.createdAt = createdAt
         project.modifiedAt = modifiedAt
         context.insert(project)
@@ -354,7 +354,7 @@ struct StoryCharacterBackup: Codable {
     let clothingDefault: String?
     let age: String?
     let species: String?
-    let primaryReferenceImageData: Data?
+    // primaryReferenceImageData intentionally excluded — large blob
     let loraFilename: String?
     let loraWeight: Double?
     let moodboardWeight: Double?
@@ -368,7 +368,7 @@ struct StoryCharacterBackup: Codable {
         negativePromptFragment = c.negativePromptFragment
         physicalDescription = c.physicalDescription; clothingDefault = c.clothingDefault
         age = c.age; species = c.species
-        primaryReferenceImageData = c.primaryReferenceImageData
+        // primaryReferenceImageData excluded from backup
         loraFilename = c.loraFilename; loraWeight = c.loraWeight
         moodboardWeight = c.moodboardWeight; preferredSeed = c.preferredSeed
         sortOrder = c.sortOrder; createdAt = c.createdAt
@@ -381,7 +381,7 @@ struct StoryCharacterBackup: Codable {
             physicalDescription: physicalDescription, clothingDefault: clothingDefault,
             age: age, species: species, loraFilename: loraFilename, loraWeight: loraWeight,
             moodboardWeight: moodboardWeight, preferredSeed: preferredSeed, sortOrder: sortOrder)
-        c.id = id; c.primaryReferenceImageData = primaryReferenceImageData; c.createdAt = createdAt
+        c.id = id; c.createdAt = createdAt // primaryReferenceImageData not restored
         return c
     }
 }
@@ -393,7 +393,7 @@ struct CharacterAppearanceBackup: Codable {
     let clothingOverride: String?
     let expressionOverride: String?
     let physicalChanges: String?
-    let referenceImageData: Data?
+    // referenceImageData intentionally excluded — large blob
     let loraFilenameOverride: String?
     let loraWeightOverride: Double?
     let isDefault: Bool
@@ -402,7 +402,7 @@ struct CharacterAppearanceBackup: Codable {
     init(from a: CharacterAppearance) {
         id = a.id; name = a.name; promptOverride = a.promptOverride
         clothingOverride = a.clothingOverride; expressionOverride = a.expressionOverride
-        physicalChanges = a.physicalChanges; referenceImageData = a.referenceImageData
+        physicalChanges = a.physicalChanges // referenceImageData excluded
         loraFilenameOverride = a.loraFilenameOverride; loraWeightOverride = a.loraWeightOverride
         isDefault = a.isDefault; sortOrder = a.sortOrder
     }
@@ -412,7 +412,7 @@ struct CharacterAppearanceBackup: Codable {
             clothingOverride: clothingOverride, expressionOverride: expressionOverride,
             physicalChanges: physicalChanges, loraFilenameOverride: loraFilenameOverride,
             loraWeightOverride: loraWeightOverride, isDefault: isDefault, sortOrder: sortOrder)
-        a.id = id; a.referenceImageData = referenceImageData
+        a.id = id // referenceImageData not restored
         return a
     }
 }
@@ -422,7 +422,7 @@ struct StorySettingBackup: Codable {
     let name: String
     let promptFragment: String
     let negativePromptFragment: String?
-    let referenceImageData: Data?
+    // referenceImageData intentionally excluded — large blob
     let timeOfDay: String?
     let weather: String?
     let lighting: String?
@@ -431,7 +431,7 @@ struct StorySettingBackup: Codable {
     init(from s: StorySetting) {
         id = s.id; name = s.name; promptFragment = s.promptFragment
         negativePromptFragment = s.negativePromptFragment
-        referenceImageData = s.referenceImageData
+        // referenceImageData excluded from backup
         timeOfDay = s.timeOfDay; weather = s.weather; lighting = s.lighting; sortOrder = s.sortOrder
     }
 
@@ -439,7 +439,7 @@ struct StorySettingBackup: Codable {
         let s = StorySetting(name: name, promptFragment: promptFragment,
             negativePromptFragment: negativePromptFragment,
             timeOfDay: timeOfDay, weather: weather, lighting: lighting, sortOrder: sortOrder)
-        s.id = id; s.referenceImageData = referenceImageData
+        s.id = id // referenceImageData not restored
         return s
     }
 }
@@ -483,7 +483,7 @@ struct StorySceneBackup: Codable {
     let seedOverride: Int?
     let strengthOverride: Float?
     let sourceImagePath: String?
-    let generatedImageData: Data?
+    // generatedImageData intentionally excluded — large blob; imagePath preserves disk location
     let isApproved: Bool
     let panelSizeHint: String?
     let sortOrder: Int
@@ -501,7 +501,7 @@ struct StorySceneBackup: Codable {
         widthOverride = sc.widthOverride; heightOverride = sc.heightOverride
         stepsOverride = sc.stepsOverride; guidanceOverride = sc.guidanceOverride
         seedOverride = sc.seedOverride; strengthOverride = sc.strengthOverride
-        sourceImagePath = sc.sourceImagePath; generatedImageData = sc.generatedImageData
+        sourceImagePath = sc.sourceImagePath // generatedImageData excluded from backup
         isApproved = sc.isApproved; panelSizeHint = sc.panelSizeHint; sortOrder = sc.sortOrder
         settingId = sc.settingId
         characterPresences = sc.characterPresences.map { SceneCharacterPresenceBackup(from: $0) }
@@ -518,7 +518,7 @@ struct StorySceneBackup: Codable {
         sc.widthOverride = widthOverride; sc.heightOverride = heightOverride
         sc.stepsOverride = stepsOverride; sc.guidanceOverride = guidanceOverride
         sc.seedOverride = seedOverride; sc.strengthOverride = strengthOverride
-        sc.sourceImagePath = sourceImagePath; sc.generatedImageData = generatedImageData
+        sc.sourceImagePath = sourceImagePath // generatedImageData not restored
         sc.isApproved = isApproved; sc.panelSizeHint = panelSizeHint
         return sc
     }
@@ -547,7 +547,7 @@ struct SceneCharacterPresenceBackup: Codable {
 
 struct SceneVariantBackup: Codable {
     let id: UUID
-    let imageData: Data?
+    // imageData intentionally excluded — large blob; imagePath is preserved for disk recovery
     let imagePath: String?
     let prompt: String
     let negativePrompt: String
@@ -559,7 +559,7 @@ struct SceneVariantBackup: Codable {
     let notes: String?
 
     init(from v: SceneVariant) {
-        id = v.id; imageData = v.imageData; imagePath = v.imagePath
+        id = v.id; imagePath = v.imagePath // imageData excluded from backup
         prompt = v.prompt; negativePrompt = v.negativePrompt; seed = v.seed
         generatedAt = v.generatedAt; isSelected = v.isSelected; isApproved = v.isApproved
         rating = v.rating; notes = v.notes
@@ -567,7 +567,7 @@ struct SceneVariantBackup: Codable {
 
     func toModel() -> SceneVariant {
         let v = SceneVariant(prompt: prompt, negativePrompt: negativePrompt, seed: seed,
-            imageData: imageData, imagePath: imagePath,
+            imageData: nil, imagePath: imagePath, // imageData not restored
             isSelected: isSelected, isApproved: isApproved, rating: rating, notes: notes)
         v.id = id; v.generatedAt = generatedAt
         return v
