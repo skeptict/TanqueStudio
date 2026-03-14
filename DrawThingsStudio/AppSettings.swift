@@ -615,6 +615,9 @@ struct SettingsView: View {
                                 }.buttonStyle(NeumorphicIconButtonStyle())
                             }
                         }
+                        Text("Jan only accepts connections from localhost. For remote LLM access, use Ollama or LM Studio.")
+                            .font(.caption)
+                            .foregroundColor(.neuTextSecondary)
                     }
                 }
 
@@ -898,6 +901,11 @@ struct SettingsView: View {
     }
 
     private func testConnection() {
+        switch settings.providerType {
+        case .ollama: settings.addOllamaHostToHistory()
+        case .lmStudio: settings.addLMStudioHostToHistory()
+        case .jan: settings.addJanHostToHistory()
+        }
         connectionTask?.cancel()
         testingConnection = true
         connectionResult = nil
