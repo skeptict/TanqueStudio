@@ -18,6 +18,7 @@ struct StoryStudioView: View {
     @State private var newChapterTitle = ""
     @State private var renamingChapter: StoryChapter?
     @State private var renameChapterTitle = ""
+    @State private var showingExportSheet = false
 
     private func openLightbox(image: NSImage) {
         lightboxBrowseList = viewModel.selectedScene?.sortedVariants.compactMap { viewModel.imageForVariant($0) } ?? []
@@ -52,6 +53,15 @@ struct StoryStudioView: View {
         .sheet(isPresented: $viewModel.showingProjectSettings) {
             if let project = viewModel.selectedProject {
                 ProjectSettingsSheet(project: project, viewModel: viewModel)
+            }
+        }
+        .sheet(isPresented: $showingExportSheet) {
+            if let project = viewModel.selectedProject {
+                StoryExportSheet(
+                    project: project,
+                    currentChapter: viewModel.selectedChapter,
+                    imageLoader: { viewModel.imageForVariant($0) }
+                )
             }
         }
     }
@@ -188,6 +198,16 @@ struct StoryStudioView: View {
                 .buttonStyle(NeumorphicIconButtonStyle())
                 .help("New project")
                 .accessibilityIdentifier("storyStudio_newProjectFromNav")
+
+                Button(action: {
+                    showingExportSheet = true
+                }) {
+                    Image(systemName: "square.and.arrow.up")
+                        .foregroundColor(.neuTextSecondary)
+                }
+                .buttonStyle(NeumorphicIconButtonStyle())
+                .help("Export project")
+                .accessibilityIdentifier("storyStudio_exportProject")
 
                 Button(action: {
                     viewModel.showingProjectSettings = true
