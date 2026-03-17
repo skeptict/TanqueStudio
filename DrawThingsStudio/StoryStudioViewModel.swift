@@ -54,6 +54,16 @@ final class StoryStudioViewModel: ObservableObject {
     /// (currentSceneNumber, totalScenes) — 1-based for display
     @Published var chapterBatchProgress: (current: Int, total: Int) = (0, 0)
 
+    // MARK: - LLM State
+
+    enum LLMOperation: Equatable {
+        case enhancingDescription, writingNarrative, generatingCharacterPrompt, enhancingPromptFragment
+    }
+
+    @Published var activeLLMOp: LLMOperation?
+    var isEnhancing: Bool { activeLLMOp != nil }
+    @Published var enhanceError: String?
+
     // MARK: - Private
 
     private var client: (any DrawThingsProvider)?
@@ -152,6 +162,13 @@ final class StoryStudioViewModel: ObservableObject {
         project.modifiedAt = Date()
     }
 
+    func renameChapter(_ chapter: StoryChapter, title: String) {
+        let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        chapter.title = trimmed
+        selectedProject?.modifiedAt = Date()
+    }
+
     // MARK: - Scene Management
 
     func addScene(title: String, to chapter: StoryChapter? = nil) {
@@ -187,6 +204,11 @@ final class StoryStudioViewModel: ObservableObject {
         var sorted = chapter.sortedScenes
         sorted.move(fromOffsets: fromOffsets, toOffset: toOffset)
         for (i, scene) in sorted.enumerated() { scene.sortOrder = i }
+        selectedProject?.modifiedAt = Date()
+    }
+
+    func toggleSceneApproval(_ scene: StoryScene) {
+        scene.isApproved.toggle()
         selectedProject?.modifiedAt = Date()
     }
 
@@ -733,6 +755,124 @@ final class StoryStudioViewModel: ObservableObject {
     func setSettingReferenceImage(_ setting: StorySetting, imageData: Data) {
         setting.referenceImageData = imageData
         selectedProject?.modifiedAt = Date()
+    }
+
+    // MARK: - LLM Story Development (SSP4)
+
+    private func makeOptions() -> LLMGenerationOptions {
+        var options = LLMGenerationOptions.creative
+        options.maxTokens = AppSettings.shared.llmMaxTokens
+        return options
+    }
+
+    private func runLLM(systemPrompt: String, userMessage: String) async throws -> String {
+        let client = AppSettings.shared.createLLMClient()
+        return try await client.generateText(
+            systemPrompt: systemPrompt,
+            userMessage: userMessage,
+            model: client.defaultModel,
+            options: makeOptions()
+        )
+    }
+
+    /// Enhance text using a named style and apply the result via a setter closure.
+    func enhanceTextAndApply(_ text: String, style: CustomPromptStyle, op: LLMOperation, apply: @escaping (String) -> Void) async {
+        activeLLMOp = op
+        enhanceError = nil
+        defer { activeLLMOp = nil }
+        do {
+            let trimmed = try await runLLM(systemPrompt: style.systemPrompt, userMessage: text)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmed.isEmpty { apply(trimmed) }
+        } catch {
+            enhanceError = error.localizedDescription
+        }
+    }
+
+    /// Use the LLM to write action, dialogue, and narrator text for a scene,
+    /// based on its description, characters, and setting.
+    func writeSceneNarrative(for scene: StoryScene) async {
+        guard let project = selectedProject else { return }
+        activeLLMOp = .writingNarrative
+        enhanceError = nil
+        defer { activeLLMOp = nil }
+
+        let characterNames = scene.characterPresences
+            .compactMap { p in project.characters.first(where: { $0.id == p.characterId })?.name }
+            .joined(separator: ", ")
+        let settingName: String
+        if let sid = scene.settingId, let setting = project.settings.first(where: { $0.id == sid }) {
+            settingName = setting.name
+        } else {
+            settingName = "unspecified location"
+        }
+
+        let systemPrompt = """
+        You are a creative writer for an AI-illustrated story. Given a scene description, write brief narrative content.
+
+        Respond in exactly this format (one line each):
+        ACTION: <what characters are doing — 1-2 concrete, visual sentences>
+        DIALOGUE: <a brief spoken line or inner thought, or "none">
+        NARRATOR: <a short caption or narrative context, or "none">
+
+        Keep everything brief and visual — this is for AI image generation captions. Output only the three lines above.
+        """
+        let userMessage = """
+        Scene: \(scene.sceneDescription.isEmpty ? "Untitled scene" : scene.sceneDescription)
+        Characters: \(characterNames.isEmpty ? "none" : characterNames)
+        Setting: \(settingName)
+        Genre: \(project.genre ?? "general")
+        """
+
+        do {
+            let response = try await runLLM(systemPrompt: systemPrompt, userMessage: userMessage)
+            parseNarrativeResponse(response, into: scene)
+        } catch {
+            enhanceError = error.localizedDescription
+        }
+    }
+
+    private func parseNarrativeResponse(_ response: String, into scene: StoryScene) {
+        // Thinking models sometimes wrap the actual response in <think>…</think> — strip it.
+        var cleaned = response
+        if let thinkEnd = cleaned.range(of: "</think>") {
+            cleaned = String(cleaned[thinkEnd.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+
+        for line in cleaned.components(separatedBy: "\n") {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            func extract(after prefix: String) -> String? {
+                guard trimmed.uppercased().hasPrefix(prefix) else { return nil }
+                let value = String(trimmed.dropFirst(prefix.count)).trimmingCharacters(in: .whitespaces)
+                return (value.isEmpty || value.lowercased() == "none") ? nil : value
+            }
+            if let v = extract(after: "ACTION:") { scene.actionDescription = v }
+            else if let v = extract(after: "DIALOGUE:") { scene.dialogueText = v }
+            else if let v = extract(after: "NARRATOR:") { scene.narratorText = v }
+        }
+    }
+
+    /// Use the LLM to generate a prompt fragment for a character from a brief description.
+    func generateCharacterPrompt(description: String, for character: StoryCharacter) async {
+        activeLLMOp = .generatingCharacterPrompt
+        enhanceError = nil
+        defer { activeLLMOp = nil }
+
+        let systemPrompt = """
+        You are building a character for an AI-illustrated story. Convert the description into a concise AI image generation prompt fragment.
+
+        The fragment should be comma-separated descriptive terms (e.g., "young woman, auburn hair, green eyes, freckles, determined expression").
+
+        Output ONLY the prompt fragment — no explanations, no quotes, no additional text.
+        """
+
+        do {
+            let trimmed = try await runLLM(systemPrompt: systemPrompt, userMessage: description)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmed.isEmpty { character.promptFragment = trimmed }
+        } catch {
+            enhanceError = error.localizedDescription
+        }
     }
 
     func importReferenceImage(for character: StoryCharacter) {

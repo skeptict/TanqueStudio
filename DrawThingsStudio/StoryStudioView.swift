@@ -15,6 +15,9 @@ struct StoryStudioView: View {
 
     @State private var lightboxImage: NSImage?
     @State private var lightboxBrowseList: [NSImage] = []
+    @State private var newChapterTitle = ""
+    @State private var renamingChapter: StoryChapter?
+    @State private var renameChapterTitle = ""
 
     private func openLightbox(image: NSImage) {
         lightboxBrowseList = viewModel.selectedScene?.sortedVariants.compactMap { viewModel.imageForVariant($0) } ?? []
@@ -240,7 +243,10 @@ struct StoryStudioView: View {
             HStack {
                 NeuSectionHeader("Chapters", icon: "book")
                 Spacer()
-                Button(action: { viewModel.showingNewChapterSheet = true }) {
+                Button(action: {
+                    newChapterTitle = ""
+                    viewModel.showingNewChapterSheet = true
+                }) {
                     Image(systemName: "plus")
                         .font(.caption)
                 }
@@ -251,82 +257,7 @@ struct StoryStudioView: View {
 
             ForEach(project.sortedChapters) { chapter in
                 VStack(alignment: .leading, spacing: 2) {
-                    // Chapter header
-                    HStack(spacing: 6) {
-                        Image(systemName: "chevron.right")
-                            .font(.caption2)
-                            .foregroundColor(.neuTextSecondary)
-                        Text(chapter.title)
-                            .font(.subheadline)
-                            .fontWeight(.medium)
-                            .foregroundColor(viewModel.selectedChapter?.id == chapter.id ? .neuAccent : .primary)
-
-                        // Batch progress badge (shown only while this chapter is generating)
-                        let isThisChapterGenerating = viewModel.isGeneratingChapter
-                            && viewModel.selectedChapter?.id == chapter.id
-                        if isThisChapterGenerating {
-                            Text("\(viewModel.chapterBatchProgress.current)/\(viewModel.chapterBatchProgress.total)")
-                                .font(.system(.caption2, design: .monospaced))
-                                .foregroundColor(.neuAccent)
-                        }
-
-                        Spacer()
-
-                        // Generate Chapter button
-                        if isThisChapterGenerating {
-                            Button(action: { viewModel.cancelChapterGeneration() }) {
-                                Image(systemName: "stop.fill")
-                                    .font(.caption2)
-                                    .foregroundColor(.orange)
-                            }
-                            .buttonStyle(NeumorphicIconButtonStyle())
-                        } else {
-                            Button(action: {
-                                viewModel.selectedChapter = chapter
-                                viewModel.generateChapter(chapter)
-                            }) {
-                                Image(systemName: "play.fill")
-                                    .font(.caption2)
-                            }
-                            .buttonStyle(NeumorphicIconButtonStyle())
-                            .disabled(viewModel.isGenerating || viewModel.isGeneratingChapter || chapter.scenes.isEmpty)
-                            .help("Generate all scenes in \"\(chapter.title)\"")
-                        }
-
-                        Button(action: {
-                            viewModel.selectedChapter = chapter
-                            viewModel.addScene(title: "New Scene", to: chapter)
-                        }) {
-                            Image(systemName: "plus")
-                                .font(.caption2)
-                        }
-                        .buttonStyle(NeumorphicIconButtonStyle())
-                        .accessibilityIdentifier("storyStudio_addScene_\(chapter.title)")
-                    }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 4)
-                    .contentShape(Rectangle())
-                    .onTapGesture {
-                        viewModel.selectedChapter = chapter
-                    }
-                    .contextMenu {
-                        let chapters = project.sortedChapters
-                        let idx = chapters.firstIndex(where: { $0.id == chapter.id }) ?? -1
-                        if idx > 0 {
-                            Button("Move Up") {
-                                viewModel.moveChapters(in: project, fromOffsets: IndexSet(integer: idx), toOffset: idx - 1)
-                            }
-                        }
-                        if idx >= 0 && idx < chapters.count - 1 {
-                            Button("Move Down") {
-                                viewModel.moveChapters(in: project, fromOffsets: IndexSet(integer: idx), toOffset: idx + 2)
-                            }
-                        }
-                        if idx >= 0 { Divider() }
-                        Button("Delete Chapter", role: .destructive) {
-                            viewModel.deleteChapter(chapter)
-                        }
-                    }
+                    chapterHeader(chapter: chapter, project: project)
 
                     // Scenes in chapter
                     ForEach(chapter.sortedScenes) { scene in
@@ -338,11 +269,139 @@ struct StoryStudioView: View {
                 }
             }
         }
+        // New chapter
         .alert("New Chapter", isPresented: $viewModel.showingNewChapterSheet) {
-            TextField("Chapter title", text: .constant(""))
-            Button("Cancel", role: .cancel) {}
+            TextField("Chapter title", text: $newChapterTitle)
+            Button("Cancel", role: .cancel) { newChapterTitle = "" }
             Button("Add") {
-                viewModel.addChapter(title: "New Chapter")
+                let title = newChapterTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+                viewModel.addChapter(title: title.isEmpty ? "New Chapter" : title)
+                newChapterTitle = ""
+            }
+        }
+        // Rename chapter
+        .alert("Rename Chapter", isPresented: Binding(
+            get: { renamingChapter != nil },
+            set: { if !$0 { renamingChapter = nil } }
+        )) {
+            TextField("Chapter title", text: $renameChapterTitle)
+            Button("Cancel", role: .cancel) { renamingChapter = nil }
+            Button("Rename") {
+                if let chapter = renamingChapter {
+                    viewModel.renameChapter(chapter, title: renameChapterTitle)
+                }
+                renamingChapter = nil
+            }
+        }
+    }
+
+    private func chapterHeader(chapter: StoryChapter, project: StoryProject) -> some View {
+        let isThisChapterGenerating = viewModel.isGeneratingChapter
+            && viewModel.selectedChapter?.id == chapter.id
+        let total = chapter.scenes.count
+        let withVariants = chapter.scenesWithVariants
+        let approved = chapter.approvedSceneCount
+
+        return VStack(alignment: .leading, spacing: 2) {
+            HStack(spacing: 6) {
+                Image(systemName: "chevron.right")
+                    .font(.caption2)
+                    .foregroundColor(.neuTextSecondary)
+
+                Text(chapter.title)
+                    .font(.subheadline)
+                    .fontWeight(.medium)
+                    .foregroundColor(viewModel.selectedChapter?.id == chapter.id ? .neuAccent : .primary)
+                    .lineLimit(1)
+
+                Spacer()
+
+                // Completion badge: "2/5 ✓" — only shown when chapter has scenes
+                if total > 0 && !isThisChapterGenerating {
+                    HStack(spacing: 3) {
+                        if approved == total {
+                            Image(systemName: "checkmark.circle.fill")
+                                .foregroundColor(.green)
+                        } else if withVariants > 0 || approved > 0 {
+                            Text("\(approved)/\(total)")
+                                .foregroundColor(approved > 0 ? .green : .neuTextSecondary)
+                        }
+                    }
+                    .font(.system(.caption2, design: .monospaced))
+                }
+
+                // Generate / Stop button
+                if isThisChapterGenerating {
+                    Button(action: { viewModel.cancelChapterGeneration() }) {
+                        Image(systemName: "stop.fill")
+                            .font(.caption2)
+                            .foregroundColor(.orange)
+                    }
+                    .buttonStyle(NeumorphicIconButtonStyle())
+                } else {
+                    Button(action: {
+                        viewModel.selectedChapter = chapter
+                        viewModel.generateChapter(chapter)
+                    }) {
+                        Image(systemName: "play.fill")
+                            .font(.caption2)
+                    }
+                    .buttonStyle(NeumorphicIconButtonStyle())
+                    .disabled(viewModel.isGenerating || viewModel.isGeneratingChapter || chapter.scenes.isEmpty)
+                    .help("Generate all scenes in \"\(chapter.title)\"")
+                }
+
+                Button(action: {
+                    viewModel.selectedChapter = chapter
+                    viewModel.addScene(title: "New Scene", to: chapter)
+                }) {
+                    Image(systemName: "plus")
+                        .font(.caption2)
+                }
+                .buttonStyle(NeumorphicIconButtonStyle())
+                .accessibilityIdentifier("storyStudio_addScene_\(chapter.title)")
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 4)
+            .contentShape(Rectangle())
+            .onTapGesture { viewModel.selectedChapter = chapter }
+            .contextMenu {
+                Button("Rename…") {
+                    renameChapterTitle = chapter.title
+                    renamingChapter = chapter
+                }
+                Divider()
+                let chapters = project.sortedChapters
+                let idx = chapters.firstIndex(where: { $0.id == chapter.id }) ?? -1
+                if idx > 0 {
+                    Button("Move Up") {
+                        viewModel.moveChapters(in: project, fromOffsets: IndexSet(integer: idx), toOffset: idx - 1)
+                    }
+                }
+                if idx >= 0 && idx < chapters.count - 1 {
+                    Button("Move Down") {
+                        viewModel.moveChapters(in: project, fromOffsets: IndexSet(integer: idx), toOffset: idx + 2)
+                    }
+                }
+                Divider()
+                Button("Delete Chapter", role: .destructive) {
+                    viewModel.deleteChapter(chapter)
+                }
+            }
+
+            // Batch progress bar — shown during chapter generation
+            if isThisChapterGenerating && viewModel.chapterBatchProgress.total > 0 {
+                let fraction = Double(viewModel.chapterBatchProgress.current) / Double(viewModel.chapterBatchProgress.total)
+                VStack(alignment: .leading, spacing: 2) {
+                    ProgressView(value: fraction)
+                        .progressViewStyle(.linear)
+                        .tint(.neuAccent)
+                        .padding(.horizontal, 12)
+                    Text("Scene \(viewModel.chapterBatchProgress.current) of \(viewModel.chapterBatchProgress.total)")
+                        .font(.system(.caption2, design: .monospaced))
+                        .foregroundColor(.neuAccent)
+                        .padding(.horizontal, 12)
+                }
             }
         }
     }
@@ -354,9 +413,15 @@ struct StoryStudioView: View {
                     .scaleEffect(0.6)
                     .frame(width: 12, height: 12)
             } else {
-                Image(systemName: scene.isApproved ? "checkmark.circle.fill" : "circle")
-                    .font(.caption)
-                    .foregroundColor(scene.isApproved ? .green : .neuTextSecondary)
+                Button {
+                    viewModel.toggleSceneApproval(scene)
+                } label: {
+                    Image(systemName: scene.isApproved ? "checkmark.circle.fill" : "circle")
+                        .font(.caption)
+                        .foregroundColor(scene.isApproved ? .green : .neuTextSecondary)
+                }
+                .buttonStyle(.plain)
+                .help(scene.isApproved ? "Mark as not approved" : "Mark as approved")
             }
 
             Text(scene.title)

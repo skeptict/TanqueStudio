@@ -283,6 +283,16 @@ class StoryChapter {
     var sortedScenes: [StoryScene] {
         scenes.sorted { $0.sortOrder < $1.sortOrder }
     }
+
+    /// Number of scenes that have at least one generated variant
+    var scenesWithVariants: Int {
+        scenes.filter { !$0.variants.isEmpty }.count
+    }
+
+    /// Number of scenes marked as approved
+    var approvedSceneCount: Int {
+        scenes.filter { $0.isApproved }.count
+    }
 }
 
 // MARK: - Story Scene
