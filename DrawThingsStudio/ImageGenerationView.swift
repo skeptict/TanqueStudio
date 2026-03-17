@@ -386,6 +386,13 @@ struct ImageGenerationView: View {
             HStack {
                 NeuSectionHeader("Config Preset", icon: "slider.horizontal.3")
                 Spacer()
+                Button(action: copyConfigToClipboard) {
+                    Image(systemName: "doc.on.doc")
+                }
+                .buttonStyle(NeumorphicIconButtonStyle())
+                .help("Copy current config to clipboard (Draw Things format)")
+                .accessibilityIdentifier("generate_copyConfigButton")
+
                 Button(action: handleClipboardPaste) {
                     Image(systemName: "doc.on.clipboard")
                 }
@@ -1532,6 +1539,16 @@ struct ImageGenerationView: View {
         case .failure(let error):
             importMessage = "Import failed: \(error.localizedDescription)"
         }
+    }
+
+    private func copyConfigToClipboard() {
+        guard let json = ConfigPresetsManager.shared.drawThingsJSON(for: viewModel.config) else {
+            importMessage = "Failed to serialize config"
+            return
+        }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(json, forType: .string)
+        importMessage = "Config copied to clipboard"
     }
 
     private func handleClipboardPaste() {

@@ -1117,6 +1117,7 @@ struct ProjectSettingsSheet: View {
     @State private var isPresetExpanded = false
     @State private var presetSearchText = ""
     @State private var selectedPresetID: String = ""
+    @State private var pasteMessage: String?
     @FocusState private var isPresetSearchFocused: Bool
 
     var body: some View {
@@ -1215,7 +1216,20 @@ struct ProjectSettingsSheet: View {
 
     private var generationDefaultsSection: some View {
         VStack(alignment: .leading, spacing: 16) {
-            NeuSectionHeader("Generation Defaults", icon: "gearshape")
+            HStack {
+                NeuSectionHeader("Generation Defaults", icon: "gearshape")
+                Spacer()
+                Button(action: pasteConfigFromClipboard) {
+                    Image(systemName: "doc.on.clipboard")
+                }
+                .buttonStyle(NeumorphicIconButtonStyle())
+                .help("Paste config from clipboard (Draw Things format)")
+            }
+            if let msg = pasteMessage {
+                Text(msg)
+                    .font(.caption)
+                    .foregroundColor(msg.hasPrefix("✓") ? .green : .red)
+            }
             Text("These settings apply to all scenes unless overridden per-scene.")
                 .font(.caption)
                 .foregroundColor(.neuTextSecondary)
@@ -1572,6 +1586,25 @@ struct ProjectSettingsSheet: View {
         project.baseSampler = config.samplerName
         if let shift = config.shift {
             project.baseShift = shift
+        }
+    }
+
+    private func pasteConfigFromClipboard() {
+        guard let text = NSPasteboard.general.string(forType: .string),
+              let data = text.data(using: .utf8) else {
+            pasteMessage = "Clipboard doesn't contain text"
+            return
+        }
+        do {
+            let presets = try ConfigPresetsManager.shared.importPresetsFromData(data)
+            guard let first = presets.first else {
+                pasteMessage = "No config found in clipboard"
+                return
+            }
+            loadPreset(first.toModelConfig())
+            pasteMessage = "✓ Applied: \(first.name)"
+        } catch {
+            pasteMessage = "Not a valid config"
         }
     }
 

@@ -1695,6 +1695,11 @@ struct ManageConfigPresetsSheet: View {
 
                 Spacer()
 
+                Button(action: pastePresetFromClipboard) {
+                    Label("Paste", systemImage: "doc.on.clipboard")
+                }
+                .help("Paste config from clipboard (Draw Things format)")
+
                 Button(action: { showingImportPicker = true }) {
                     Label("Import", systemImage: "square.and.arrow.down")
                 }
@@ -1968,6 +1973,23 @@ struct ManageConfigPresetsSheet: View {
 
     private func exportPresets() {
         showingExportPicker = true
+    }
+
+    private func pastePresetFromClipboard() {
+        guard let text = NSPasteboard.general.string(forType: .string),
+              let data = text.data(using: .utf8) else {
+            importMessage = "Clipboard doesn't contain text"
+            return
+        }
+        do {
+            let presets = try presetsManager.importPresetsFromData(data)
+            for preset in presets {
+                modelContext.insert(preset.toModelConfig())
+            }
+            importMessage = "Pasted \(presets.count) preset(s) from clipboard"
+        } catch {
+            importMessage = "Not a valid config: \(error.localizedDescription)"
+        }
     }
 }
 

@@ -316,6 +316,34 @@ final class ConfigPresetsManager {
         return appSupport.appendingPathComponent("DrawThingsStudio/Presets/config_presets.json")
     }()
 
+    // MARK: - Clipboard
+
+    /// Serialize a live generation config to flat Draw Things JSON for clipboard.
+    func drawThingsJSON(for config: DrawThingsGenerationConfig) -> String? {
+        let dtConfig = DrawThingsConfigData(
+            width: config.width,
+            height: config.height,
+            steps: config.steps,
+            guidanceScale: config.guidanceScale,
+            sampler: SamplerMapping.index(for: config.sampler),
+            shift: config.shift,
+            strength: config.strength,
+            stochasticSamplingGamma: config.stochasticSamplingGamma,
+            clipSkip: nil,
+            seed: config.seed != 0 ? config.seed : nil,
+            seedMode: SeedModeMapping.index(for: config.seedMode),
+            model: config.model.isEmpty ? nil : config.model,
+            batchCount: nil,
+            batchSize: nil,
+            resolutionDependentShift: config.resolutionDependentShift,
+            cfgZeroStar: config.cfgZeroStar
+        )
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        guard let data = try? encoder.encode(dtConfig) else { return nil }
+        return String(data: data, encoding: .utf8)
+    }
+
     // MARK: - Export
 
     /// Export all presets to our native JSON format
