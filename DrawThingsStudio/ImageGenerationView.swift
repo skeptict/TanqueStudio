@@ -386,6 +386,13 @@ struct ImageGenerationView: View {
             HStack {
                 NeuSectionHeader("Config Preset", icon: "slider.horizontal.3")
                 Spacer()
+                Button(action: handleClipboardPaste) {
+                    Image(systemName: "doc.on.clipboard")
+                }
+                .buttonStyle(NeumorphicIconButtonStyle())
+                .help("Paste config from clipboard (Draw Things copy)")
+                .accessibilityIdentifier("generate_pasteConfigButton")
+
                 Button(action: { showingConfigImport = true }) {
                     Image(systemName: "square.and.arrow.down")
                 }
@@ -1524,6 +1531,32 @@ struct ImageGenerationView: View {
             }
         case .failure(let error):
             importMessage = "Import failed: \(error.localizedDescription)"
+        }
+    }
+
+    private func handleClipboardPaste() {
+        guard let text = NSPasteboard.general.string(forType: .string),
+              let data = text.data(using: .utf8) else {
+            importMessage = "Clipboard doesn't contain text"
+            return
+        }
+        do {
+            let presets = try ConfigPresetsManager.shared.importPresetsFromData(data)
+            guard let first = presets.first else {
+                importMessage = "No config found in clipboard"
+                return
+            }
+            // Apply first config immediately
+            viewModel.loadPreset(first.toModelConfig())
+            // Save all to SwiftData (same as file import)
+            for preset in presets {
+                modelContext.insert(preset.toModelConfig())
+            }
+            importMessage = presets.count == 1
+                ? "Applied: \(first.name)"
+                : "Applied: \(first.name) (+\(presets.count - 1) saved)"
+        } catch {
+            importMessage = "Not a valid config: \(error.localizedDescription)"
         }
     }
 
