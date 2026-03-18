@@ -92,18 +92,8 @@ final class ImageStorageManager: ObservableObject {
             return nil
         }
 
-        // Also inject A1111 iTXt chunk for compatibility with A1111/ComfyUI tools
-        let basePngData = mutableData as Data
-        let pngWithMeta = injectPNGTextChunk(into: basePngData, keyword: "parameters", text: parametersText)
-
-        do {
-            try pngWithMeta.write(to: imageURL)
-        } catch {
-            logger.error("Failed to write image file: \(error.localizedDescription)")
-            return nil
-        }
-
-        // Save metadata sidecar
+        // Inject A1111 "parameters" iTXt chunk for compatibility with A1111/ComfyUI tools,
+        // plus a "dts_metadata" iTXt chunk containing the full JSON metadata.
         let metadata = ImageMetadata(
             prompt: prompt,
             negativePrompt: negativePrompt,
@@ -111,15 +101,17 @@ final class ImageStorageManager: ObservableObject {
             generatedAt: Date(),
             inferenceTimeMs: inferenceTimeMs
         )
+        var pngWithMeta = injectPNGTextChunk(into: mutableData as Data, keyword: "parameters", text: parametersText)
+        if let jsonData = try? JSONEncoder().encode(metadata),
+           let jsonString = String(data: jsonData, encoding: .utf8) {
+            pngWithMeta = injectPNGTextChunk(into: pngWithMeta, keyword: "dts_metadata", text: jsonString)
+        }
 
         do {
-            let encoder = JSONEncoder()
-            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-            let jsonData = try encoder.encode(metadata)
-            try jsonData.write(to: metadataURL)
+            try pngWithMeta.write(to: imageURL)
         } catch {
-            logger.warning("Failed to write metadata file: \(error.localizedDescription)")
-            // Non-fatal: image is saved even without metadata
+            logger.error("Failed to write image file: \(error.localizedDescription)")
+            return nil
         }
 
         let generatedImage = GeneratedImage(
@@ -150,7 +142,6 @@ final class ImageStorageManager: ObservableObject {
             .replacingOccurrences(of: "T", with: "_")
         let filename = "scene_\(timestamp)_\(UUID().uuidString.prefix(8))"
         let imageURL = dir.appendingPathComponent("\(filename).png")
-        let metadataURL = dir.appendingPathComponent("\(filename).json")
 
         let parametersText = buildA1111Parameters(prompt: prompt, negativePrompt: negativePrompt, config: config)
 
@@ -169,17 +160,17 @@ final class ImageStorageManager: ObservableObject {
         CGImageDestinationAddImage(dest, cgImage, imageProps as CFDictionary)
         guard CGImageDestinationFinalize(dest) else { return nil }
 
-        let pngData = injectPNGTextChunk(into: mutableData as Data, keyword: "parameters", text: parametersText)
+        let metadata = ImageMetadata(prompt: prompt, negativePrompt: negativePrompt, config: config, generatedAt: Date(), inferenceTimeMs: nil)
+        var pngData = injectPNGTextChunk(into: mutableData as Data, keyword: "parameters", text: parametersText)
+        if let jsonData = try? JSONEncoder().encode(metadata),
+           let jsonString = String(data: jsonData, encoding: .utf8) {
+            pngData = injectPNGTextChunk(into: pngData, keyword: "dts_metadata", text: jsonString)
+        }
         do {
             try pngData.write(to: imageURL)
         } catch {
             logger.error("Failed to write Story Studio image: \(error.localizedDescription)")
             return nil
-        }
-
-        let metadata = ImageMetadata(prompt: prompt, negativePrompt: negativePrompt, config: config, generatedAt: Date(), inferenceTimeMs: nil)
-        if let jsonData = try? JSONEncoder().encode(metadata) {
-            try? jsonData.write(to: metadataURL)
         }
 
         logger.info("Saved Story Studio image to \(imageURL.path)")
@@ -212,15 +203,26 @@ final class ImageStorageManager: ObservableObject {
         for pngURL in pngFiles {
             guard let image = NSImage(contentsOf: pngURL) else { continue }
 
-            let metadataURL = pngURL.deletingPathExtension().appendingPathExtension("json")
             var prompt = ""
             var negativePrompt = ""
             var config = DrawThingsGenerationConfig()
             var generatedAt = (try? pngURL.resourceValues(forKeys: [.creationDateKey]).creationDate) ?? Date()
             var inferenceTimeMs: Int?
 
-            if let metadataData = try? Data(contentsOf: metadataURL),
-               let metadata = try? decoder.decode(ImageMetadata.self, from: metadataData) {
+            // Prefer embedded "dts_metadata" iTXt chunk; fall back to .json sidecar for older images.
+            var metadata: ImageMetadata?
+            if let pngData = try? Data(contentsOf: pngURL),
+               let jsonString = extractPNGTextChunk(from: pngData, keyword: "dts_metadata"),
+               let jsonData = jsonString.data(using: .utf8) {
+                metadata = try? decoder.decode(ImageMetadata.self, from: jsonData)
+            }
+            if metadata == nil {
+                let metadataURL = pngURL.deletingPathExtension().appendingPathExtension("json")
+                if let jsonData = try? Data(contentsOf: metadataURL) {
+                    metadata = try? decoder.decode(ImageMetadata.self, from: jsonData)
+                }
+            }
+            if let metadata {
                 prompt = metadata.prompt
                 negativePrompt = metadata.negativePrompt
                 config = metadata.config
@@ -311,6 +313,44 @@ final class ImageStorageManager: ObservableObject {
 
         lines.append(params.joined(separator: ", "))
         return lines.joined(separator: "\n")
+    }
+
+    /// Extracts the text value of the first iTXt or tEXt PNG chunk matching `keyword`.
+    private func extractPNGTextChunk(from pngData: Data, keyword: String) -> String? {
+        guard pngData.count > 16 else { return nil }
+        let keywordBytes = Array(keyword.utf8)
+        var offset = 8 // skip PNG signature
+        while offset + 12 <= pngData.count {
+            let length = Int(pngData[offset]) << 24 | Int(pngData[offset+1]) << 16 |
+                         Int(pngData[offset+2]) << 8  | Int(pngData[offset+3])
+            let typeBytes = pngData[(offset+4)..<(offset+8)]
+            guard let type = String(bytes: typeBytes, encoding: .ascii) else { break }
+            let dataStart = offset + 8
+            let dataEnd = dataStart + length
+            guard dataEnd + 4 <= pngData.count else { break }
+
+            if type == "iTXt" || type == "tEXt" {
+                let kwEnd = dataStart + keywordBytes.count
+                if kwEnd < dataEnd,
+                   pngData[dataStart..<kwEnd].elementsEqual(keywordBytes),
+                   pngData[kwEnd] == 0 {
+                    let afterKwNull = kwEnd + 1
+                    if type == "tEXt" {
+                        return String(bytes: pngData[afterKwNull..<dataEnd], encoding: .utf8)
+                    } else {
+                        // iTXt: skip compressionFlag(1) + compressionMethod(1) + languageTag\0 + translatedKeyword\0
+                        var idx = afterKwNull + 2
+                        while idx < dataEnd && pngData[idx] != 0 { idx += 1 }; idx += 1 // language tag
+                        while idx < dataEnd && pngData[idx] != 0 { idx += 1 }; idx += 1 // translated keyword
+                        guard idx <= dataEnd else { break }
+                        return String(bytes: pngData[idx..<dataEnd], encoding: .utf8)
+                    }
+                }
+            }
+            if type == "IEND" { break }
+            offset = dataEnd + 4
+        }
+        return nil
     }
 
     /// Inserts an uncompressed PNG iTXt chunk carrying `keyword` / `text` (UTF-8)

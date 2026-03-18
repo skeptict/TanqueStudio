@@ -15,9 +15,8 @@ final class AppSettings: ObservableObject {
     static let shared = AppSettings()
 
     private let store: SettingsStore
-    private let keychain: KeychainService
 
-    private enum SecretAccount {
+    private enum SecretKey {
         static let janAPIKey = "jan.apiKey"
         static let drawThingsSharedSecret = "drawthings.sharedSecret"
     }
@@ -70,13 +69,7 @@ final class AppSettings: ObservableObject {
         didSet { store.set(janHostHistory, forKey: "jan.hostHistory") }
     }
     @Published var janAPIKey: String {
-        didSet {
-            if janAPIKey.isEmpty {
-                _ = keychain.removeValue(for: SecretAccount.janAPIKey)
-            } else {
-                _ = keychain.set(janAPIKey, for: SecretAccount.janAPIKey)
-            }
-        }
+        didSet { store.set(janAPIKey, forKey: SecretKey.janAPIKey) }
     }
 
     // MARK: - Default Generation Settings
@@ -121,13 +114,7 @@ final class AppSettings: ObservableObject {
         didSet { store.set(drawThingsHostHistory, forKey: "drawthings.hostHistory") }
     }
     @Published var drawThingsSharedSecret: String {
-        didSet {
-            if drawThingsSharedSecret.isEmpty {
-                _ = keychain.removeValue(for: SecretAccount.drawThingsSharedSecret)
-            } else {
-                _ = keychain.set(drawThingsSharedSecret, for: SecretAccount.drawThingsSharedSecret)
-            }
-        }
+        didSet { store.set(drawThingsSharedSecret, forKey: SecretKey.drawThingsSharedSecret) }
     }
 
     // MARK: - UI Settings
@@ -170,15 +157,11 @@ final class AppSettings: ObservableObject {
 
     // MARK: - Init
 
-    init(
-        store: SettingsStore = UserDefaultsSettingsStore(),
-        keychain: KeychainService = MacKeychainService()
-    ) {
+    init(store: SettingsStore = UserDefaultsSettingsStore()) {
         self.store = store
-        self.keychain = keychain
 
         if ProcessInfo.processInfo.environment["UI_TESTING"] != "1" {
-            AppSettings.migrateLegacySecretsIfNeeded(store: store, keychain: keychain)
+            AppSettings.migrateLegacySecretsIfNeeded(store: store)
         }
 
         // Load from defaults or use default values
@@ -203,16 +186,15 @@ final class AppSettings: ObservableObject {
         self.janHost = store.string(forKey: "jan.host") ?? "localhost"
         self.janPort = store.integer(forKey: "jan.port") != 0 ? store.integer(forKey: "jan.port") : 1337
         self.janHostHistory = store.object(forKey: "jan.hostHistory") as? [String] ?? []
-        // Skip keychain reads during UI tests to prevent authorization dialogs from blocking test startup
         let isUITesting = ProcessInfo.processInfo.environment["UI_TESTING"] == "1"
-        self.janAPIKey = isUITesting ? "" : (keychain.string(for: SecretAccount.janAPIKey) ?? "")
+        self.janAPIKey = isUITesting ? "" : (store.string(forKey: SecretKey.janAPIKey) ?? "")
 
         // Draw Things
         self.drawThingsHost = store.string(forKey: "drawthings.host") ?? "127.0.0.1"
         self.drawThingsHTTPPort = store.integer(forKey: "drawthings.httpPort") != 0 ? store.integer(forKey: "drawthings.httpPort") : 7860
         self.drawThingsGRPCPort = store.integer(forKey: "drawthings.grpcPort") != 0 ? store.integer(forKey: "drawthings.grpcPort") : 7859
         self.drawThingsTransport = store.string(forKey: "drawthings.transport") ?? DrawThingsTransport.http.rawValue
-        self.drawThingsSharedSecret = isUITesting ? "" : (keychain.string(for: SecretAccount.drawThingsSharedSecret) ?? "")
+        self.drawThingsSharedSecret = isUITesting ? "" : (store.string(forKey: SecretKey.drawThingsSharedSecret) ?? "")
         self.drawThingsHostHistory = store.object(forKey: "drawthings.hostHistory") as? [String] ?? []
 
         self.defaultWidth = store.integer(forKey: "defaults.width") != 0 ? store.integer(forKey: "defaults.width") : 1024
@@ -448,15 +430,22 @@ final class AppSettings: ObservableObject {
         return url
     }
 
-    private static func migrateLegacySecretsIfNeeded(store: SettingsStore, keychain: KeychainService) {
-        if let legacyJanKey = store.string(forKey: SecretAccount.janAPIKey), !legacyJanKey.isEmpty {
-            _ = keychain.set(legacyJanKey, for: SecretAccount.janAPIKey)
-            store.removeObject(forKey: SecretAccount.janAPIKey)
-        }
+    /// One-time migration: move any secrets stored in the Keychain (v0.6.8) into UserDefaults.
+    private static func migrateLegacySecretsIfNeeded(store: SettingsStore) {
+        let migrationKey = "app.didMigrateSecretsToUserDefaults"
+        guard !store.bool(forKey: migrationKey) else { return }
+        defer { store.set(true, forKey: migrationKey) }
 
-        if let legacySharedSecret = store.string(forKey: SecretAccount.drawThingsSharedSecret), !legacySharedSecret.isEmpty {
-            _ = keychain.set(legacySharedSecret, for: SecretAccount.drawThingsSharedSecret)
-            store.removeObject(forKey: SecretAccount.drawThingsSharedSecret)
+        let keychain = MacKeychainService()
+        if let janKey = keychain.string(for: SecretKey.janAPIKey), !janKey.isEmpty,
+           (store.string(forKey: SecretKey.janAPIKey) ?? "").isEmpty {
+            store.set(janKey, forKey: SecretKey.janAPIKey)
+            _ = keychain.removeValue(for: SecretKey.janAPIKey)
+        }
+        if let secret = keychain.string(for: SecretKey.drawThingsSharedSecret), !secret.isEmpty,
+           (store.string(forKey: SecretKey.drawThingsSharedSecret) ?? "").isEmpty {
+            store.set(secret, forKey: SecretKey.drawThingsSharedSecret)
+            _ = keychain.removeValue(for: SecretKey.drawThingsSharedSecret)
         }
     }
 
