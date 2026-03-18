@@ -126,17 +126,16 @@ final class OllamaClient: LLMProvider, ObservableObject {
         model: String,
         options: LLMGenerationOptions = .default
     ) async throws -> String {
-        let result = try await chat(
-            messages: [.user(prompt)],
-            model: model,
-            options: options
-        )
+        try await chat(messages: [.user(prompt)], model: model, options: options)
+    }
 
-        if result.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            throw LLMError.requestFailed("Model returned empty response. If using a vision model (VL), try a text-only model instead.")
-        }
-
-        return result
+    func generateText(
+        systemPrompt: String,
+        userMessage: String,
+        model: String,
+        options: LLMGenerationOptions = .default
+    ) async throws -> String {
+        try await chat(messages: [.system(systemPrompt), .user(userMessage)], model: model, options: options)
     }
 
     // MARK: - Generate Text Streaming
@@ -278,8 +277,18 @@ final class OllamaClient: LLMProvider, ObservableObject {
         }
 
         let result = try JSONDecoder().decode(OllamaChatResponse.self, from: data)
+        // Thinking models (e.g. Qwen3, QwQ) put reasoning in `thinking` and response in `content`.
+        // If `content` is empty, fall back to `thinking` so the result is still usable.
+        let trimmedContent = result.message.content.trimmingCharacters(in: .whitespacesAndNewlines)
+        let content = trimmedContent.isEmpty
+            ? (result.message.thinking ?? result.message.content)
+            : result.message.content
 
-        return result.message.content
+        if content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            throw LLMError.requestFailed(LLMError.emptyResponseMessage)
+        }
+
+        return content
     }
 
     // MARK: - Helpers
@@ -348,4 +357,5 @@ private struct OllamaChatResponse: Codable {
 private struct OllamaChatMessage: Codable {
     let role: String
     let content: String
+    let thinking: String?  // Populated by thinking/reasoning models (e.g. Qwen3, QwQ)
 }

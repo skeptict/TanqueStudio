@@ -22,6 +22,9 @@ protocol LLMProvider {
     /// Generate text with model and options
     func generateText(prompt: String, model: String, options: LLMGenerationOptions) async throws -> String
 
+    /// Generate text with a separate system prompt and user message (proper role separation)
+    func generateText(systemPrompt: String, userMessage: String, model: String, options: LLMGenerationOptions) async throws -> String
+
     /// Generate text with streaming callback
     func generateTextStreaming(prompt: String, onToken: @escaping (String) -> Void) async throws -> String
 
@@ -115,39 +118,27 @@ enum PromptStyle: String, CaseIterable, Identifiable {
         switch self {
         case .creative:
             return """
-            You are an expert at creating detailed, imaginative prompts for AI image generation.
-            Focus on vivid descriptions, artistic style, mood, lighting, and composition.
-            Keep prompts clear and under 200 words. Output only the prompt, no explanations.
+            You are an expert at enhancing AI image generation prompts. Take the provided prompt and expand it with vivid, imaginative details: evocative mood and atmosphere, creative lighting choices, compelling composition, and rich descriptive language. Preserve the original subject and intent while making it more visually dynamic. Output only the enhanced prompt, no explanations or preamble.
             """
         case .technical:
             return """
-            Create precise, technical prompts for AI image generation.
-            Include specific details about camera angles, lighting setups, materials, and rendering style.
-            Be concise and technical. Output only the prompt, no explanations.
+            You are an expert at enhancing AI image generation prompts with technical precision. Take the provided prompt and add specific technical details: camera angle and lens type, lighting setup (e.g., three-point, rim light, golden hour), material properties, rendering style tags, and depth-of-field cues. Preserve the original subject. Output only the enhanced prompt, no explanations or preamble.
             """
         case .photorealistic:
             return """
-            Generate prompts for photorealistic image generation.
-            Include camera settings (lens, aperture), lighting conditions, time of day, and realistic details.
-            Focus on achieving photographic quality. Output only the prompt, no explanations.
+            You are an expert at enhancing AI image generation prompts for photorealistic output. Take the provided prompt and add photographic details: camera model or lens (e.g., 85mm f/1.8), lighting conditions, time of day, environmental atmosphere, and realism-boosting tags (e.g., photo-realistic, RAW photo, sharp focus). Preserve the original subject. Output only the enhanced prompt, no explanations or preamble.
             """
         case .artistic:
             return """
-            Create artistic prompts inspired by famous art movements and styles.
-            Reference specific artists, techniques, and artistic periods when appropriate.
-            Focus on artistic expression and style. Output only the prompt, no explanations.
+            You are an expert at enhancing AI image generation prompts in an artistic style. Take the provided prompt and add references to specific art movements, artists, or techniques that suit the subject (e.g., impressionist brushwork, Rembrandt lighting, watercolor wash). Add details about medium, color palette, and compositional approach. Preserve the original subject. Output only the enhanced prompt, no explanations or preamble.
             """
         case .cinematic:
             return """
-            Generate cinematic prompts suitable for film-like imagery.
-            Include cinematic lighting, dramatic composition, color grading style, and mood.
-            Think like a cinematographer. Output only the prompt, no explanations.
+            You are an expert at enhancing AI image generation prompts with a cinematic quality. Take the provided prompt and add film-style details: dramatic lighting (e.g., chiaroscuro, anamorphic lens flare), color grading descriptors (e.g., teal-orange grade, desaturated), aspect ratio hints, strong mood, and cinematographic composition cues. Preserve the original subject. Output only the enhanced prompt, no explanations or preamble.
             """
         case .anime:
             return """
-            Create prompts for anime/illustration style images.
-            Include art style references (e.g., studio ghibli, makoto shinkai), character details, and scene composition.
-            Focus on anime aesthetics. Output only the prompt, no explanations.
+            You are an expert at enhancing AI image generation prompts in anime and illustration style. Take the provided prompt and add relevant art style references (e.g., Studio Ghibli, Makoto Shinkai, cel shading), anime-specific quality tags, character design details, and scene atmosphere appropriate for illustrated art. Preserve the original subject. Output only the enhanced prompt, no explanations or preamble.
             """
         }
     }
@@ -396,6 +387,8 @@ enum LLMError: LocalizedError {
     case modelNotFound(String)
     case timeout
     case cancelled
+
+    static let emptyResponseMessage = "Model returned empty response. If using a vision model (VL), try a text-only model instead."
 
     var errorDescription: String? {
         switch self {

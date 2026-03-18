@@ -13,6 +13,8 @@ struct SceneEditorView: View {
     let project: StoryProject
     @ObservedObject var viewModel: StoryStudioViewModel
 
+    @State private var showEnhanceStylePicker = false
+
     var body: some View {
         VStack(spacing: 0) {
             // Scene header
@@ -128,7 +130,11 @@ struct SceneEditorView: View {
 
     private var basicInfoSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            NeuSectionHeader("Scene Description", icon: "text.alignleft")
+            HStack {
+                NeuSectionHeader("Scene Description", icon: "text.alignleft")
+                Spacer()
+                enhanceDescriptionButton
+            }
 
             TextEditor(text: $scene.sceneDescription)
                 .font(.body)
@@ -137,9 +143,35 @@ struct SceneEditorView: View {
                 .neuInset(cornerRadius: 8)
                 .accessibilityIdentifier("sceneEditor_description")
 
+            if let err = viewModel.enhanceError {
+                Text(err)
+                    .font(.caption)
+                    .foregroundColor(.red)
+            }
+
             Text("What happens in this scene — used to build the prompt")
                 .font(.caption)
                 .foregroundColor(.neuTextSecondary)
+        }
+    }
+
+    private var enhanceDescriptionButton: some View {
+        Button {
+            showEnhanceStylePicker.toggle()
+        } label: {
+            LLMActionLabel(isActive: viewModel.activeLLMOp == .enhancingDescription, icon: "sparkles", text: "Enhance")
+        }
+        .buttonStyle(NeumorphicPlainButtonStyle())
+        .disabled(viewModel.isEnhancing || scene.sceneDescription.isEmpty)
+        .popover(isPresented: $showEnhanceStylePicker, arrowEdge: .top) {
+            EnhanceStylePickerView { style in
+                showEnhanceStylePicker = false
+                Task {
+                    await viewModel.enhanceTextAndApply(scene.sceneDescription, style: style, op: .enhancingDescription) {
+                        scene.sceneDescription = $0
+                    }
+                }
+            }
         }
     }
 
@@ -370,7 +402,18 @@ struct SceneEditorView: View {
 
     private var narrativeSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            NeuSectionHeader("Narrative", icon: "text.bubble")
+            HStack {
+                NeuSectionHeader("Narrative", icon: "text.bubble")
+                Spacer()
+                Button {
+                    Task { await viewModel.writeSceneNarrative(for: scene) }
+                } label: {
+                    LLMActionLabel(isActive: viewModel.activeLLMOp == .writingNarrative, icon: "wand.and.stars", text: "Write with AI")
+                }
+                .buttonStyle(NeumorphicPlainButtonStyle())
+                .disabled(viewModel.isEnhancing || scene.sceneDescription.isEmpty)
+                .help("Generate action, dialogue, and narrator text from the scene description")
+            }
 
             VStack(alignment: .leading, spacing: 4) {
                 Text("Action")

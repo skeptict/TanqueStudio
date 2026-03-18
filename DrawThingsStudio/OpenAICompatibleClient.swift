@@ -227,6 +227,19 @@ final class OpenAICompatibleClient: LLMProvider, ObservableObject {
         return content
     }
 
+    func generateText(
+        systemPrompt: String,
+        userMessage: String,
+        model: String,
+        options: LLMGenerationOptions = .default
+    ) async throws -> String {
+        try await chat(
+            messages: [.system(systemPrompt), .user(userMessage)],
+            model: model,
+            options: options
+        )
+    }
+
     // MARK: - Generate Text Streaming
 
     func generateTextStreaming(
@@ -392,6 +405,10 @@ final class OpenAICompatibleClient: LLMProvider, ObservableObject {
 
         guard let content = result.choices.first?.message.content else {
             throw LLMError.invalidResponse
+        }
+
+        if content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            throw LLMError.requestFailed(LLMError.emptyResponseMessage)
         }
 
         return content

@@ -284,6 +284,7 @@ final class DrawThingsGRPCClient: DrawThingsProvider {
         let modelLower = config.model.lowercased()
 
         // T5 text encoder: needed for Flux, zImage, and SD3 families
+        // Note: ltx23 falls through to default (no T5, no resDependentShift) — same requirements as ltx2
         let useT5: Bool
         switch modelFamily {
         case .flux, .zImage, .sd3:

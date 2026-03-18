@@ -184,26 +184,12 @@ import OSLog
 
         defer { setGenerating(false) }
 
-        let prompt = """
-        \(systemPrompt)
-
-        Transform this concept into a detailed AI image generation prompt: "\(concept)"
-
-        Create a single, comprehensive prompt that includes:
-        - Subject description with details
-        - Setting and environment
-        - Lighting and atmosphere
-        - Art style and quality tags
-        - Composition hints
-
-        IMPORTANT: Output ONLY the prompt text itself. Do not include any introduction, explanation, or phrases like "Here is" or "The prompt is". Start directly with the image description.
-        """
-
         var enhanceOptions = LLMGenerationOptions.creative
         enhanceOptions.maxTokens = AppSettings.shared.llmMaxTokens
 
         let response = try await llmClient.generateText(
-            prompt: prompt,
+            systemPrompt: systemPrompt,
+            userMessage: concept,
             model: llmClient.defaultModel,
             options: enhanceOptions
         )
