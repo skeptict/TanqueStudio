@@ -612,7 +612,7 @@ struct SettingsView: View {
                                 }.buttonStyle(NeumorphicIconButtonStyle())
                             }
                         }
-                        Text("Jan only accepts connections from localhost. For remote LLM access, use Ollama or LM Studio.")
+                        Text("Jan requires an API key — find it in Jan Settings → Developers. For remote access, enable \"API Server\" and \"Remote Access\" in Jan Settings, then use the remote machine's IP here.")
                             .font(.caption).foregroundColor(.neuTextSecondary)
                     }
 

@@ -232,6 +232,11 @@ final class DrawThingsHTTPClient: DrawThingsProvider {
         }
 
         guard httpResponse.statusCode == 200 else {
+            // 404/501 means Draw Things doesn't support this endpoint — return empty gracefully
+            if httpResponse.statusCode == 404 || httpResponse.statusCode == 501 {
+                logger.info("Draw Things HTTP API doesn't support /sdapi/v1/loras (\(httpResponse.statusCode)) — LoRAs unavailable via HTTP")
+                return []
+            }
             let errorMessage = String(data: data, encoding: .utf8) ?? "Unknown error"
             logger.error("Failed to fetch LoRAs: \(httpResponse.statusCode) - \(errorMessage)")
             throw DrawThingsError.requestFailed(httpResponse.statusCode, errorMessage)

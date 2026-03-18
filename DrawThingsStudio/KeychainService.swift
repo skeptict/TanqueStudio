@@ -7,6 +7,7 @@
 
 import Foundation
 import Security
+import OSLog
 
 protocol KeychainService {
     func string(for account: String) -> String?
@@ -16,6 +17,7 @@ protocol KeychainService {
 
 final class MacKeychainService: KeychainService {
     private let service: String
+    private let logger = Logger(subsystem: "com.drawthingsstudio", category: "keychain")
 
     init(service: String = "DrawThingsStudio") {
         self.service = service
@@ -29,6 +31,9 @@ final class MacKeychainService: KeychainService {
 
         var result: CFTypeRef?
         let status = SecItemCopyMatching(query as CFDictionary, &result)
+        if status != errSecSuccess && status != errSecItemNotFound {
+            logger.warning("Keychain read failed for '\(account)': OSStatus \(status)")
+        }
         guard status == errSecSuccess,
               let data = result as? Data,
               let value = String(data: data, encoding: .utf8) else {
@@ -53,7 +58,11 @@ final class MacKeychainService: KeychainService {
 
         var addQuery = query
         addQuery[kSecValueData as String] = data
-        return SecItemAdd(addQuery as CFDictionary, nil) == errSecSuccess
+        let addStatus = SecItemAdd(addQuery as CFDictionary, nil)
+        if addStatus != errSecSuccess {
+            logger.error("Keychain write failed for '\(account)': OSStatus \(addStatus)")
+        }
+        return addStatus == errSecSuccess
     }
 
     func removeValue(for account: String) -> Bool {
@@ -62,11 +71,15 @@ final class MacKeychainService: KeychainService {
     }
 
     private func baseQuery(for account: String) -> [String: Any] {
+        // Use the file-based login keychain (kSecUseDataProtectionKeychain omitted).
+        // The data-protection keychain requires a valid access-group entitlement that
+        // ad-hoc / "Sign to Run Locally" Debug builds don't have, causing SecItemAdd
+        // to return errSecMissingEntitlement (−34018) silently and leaving API keys
+        // unreadable on the next launch.
         [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
-            kSecAttrAccount as String: account,
-            kSecUseDataProtectionKeychain as String: true
+            kSecAttrAccount as String: account
         ]
     }
 }

@@ -139,7 +139,7 @@ final class DrawThingsGRPCClient: DrawThingsProvider {
     func fetchLoRAs() async throws -> [DrawThingsLoRA] {
         let echoReply = try await fetchEchoReply()
 
-        // Strategy 1: Check if files array contains LoRA filenames
+        // Strategy 1: Check if files array contains LoRA filenames (path must contain "lora")
         let loraExtensions = [".safetensors", ".ckpt"]
         let filesLoRAs = echoReply.files.filter { file in
             let lower = file.lowercased()
@@ -149,6 +149,15 @@ final class DrawThingsGRPCClient: DrawThingsProvider {
         if !filesLoRAs.isEmpty {
             logger.info("Found \(filesLoRAs.count) LoRAs from files array")
             return filesLoRAs.map { DrawThingsLoRA(filename: $0) }
+        }
+
+        // Diagnostic: log what files[] actually contains when strategy 1 returns nothing
+        let totalExtFiles = echoReply.files.filter { f in
+            let l = f.lowercased(); return loraExtensions.contains(where: { l.hasSuffix($0) })
+        }.count
+        if totalExtFiles > 0 {
+            let sample = echoReply.files.prefix(5).joined(separator: ", ")
+            logger.warning("Strategy 1: 0 LoRAs — \(totalExtFiles) .safetensors/.ckpt files found but none contain 'lora' in path. Sample files: \(sample)")
         }
 
         // Strategy 2: Parse binary override data (offloaded to background — scanning large Data on main actor is slow)
@@ -163,7 +172,7 @@ final class DrawThingsGRPCClient: DrawThingsProvider {
             }
         }
 
-        logger.info("No LoRAs found in gRPC echo response")
+        logger.info("No LoRAs found in gRPC echo response (files: \(echoReply.files.count), hasOverride: \(echoReply.hasOverride))")
         return []
     }
 

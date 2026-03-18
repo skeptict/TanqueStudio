@@ -95,7 +95,11 @@ final class DrawThingsAssetManager: ObservableObject {
             }
             let modelCount = models.count
             let loraCount = fetchedLoRAs.count
-            lastError = "Connected via \(client.transport.displayName) - \(modelCount) models, \(loraCount) LoRAs"
+            if loraCount == 0 && client.transport == .http {
+                lastError = "Connected via \(client.transport.displayName) - \(modelCount) models (LoRA browsing not supported via HTTP; use gRPC)"
+            } else {
+                lastError = "Connected via \(client.transport.displayName) - \(modelCount) models, \(loraCount) LoRAs"
+            }
         } catch {
             let prev = lastError ?? ""
             lastError = "\(prev) | LoRA fetch failed: \(error.localizedDescription)"

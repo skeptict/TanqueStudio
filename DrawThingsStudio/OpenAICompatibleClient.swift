@@ -85,8 +85,16 @@ final class OpenAICompatibleClient: LLMProvider, ObservableObject {
 
     /// Add authorization header if API key is set
     private func addAuthHeader(to request: inout URLRequest) {
-        if let apiKey = apiKey, !apiKey.isEmpty {
-            request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        if let apiKey = apiKey {
+            let trimmed = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmed.isEmpty {
+                request.setValue("Bearer \(trimmed)", forHTTPHeaderField: "Authorization")
+            }
+        }
+        // Jan validates the Host header and rejects anything other than "localhost"
+        // (DNS-rebinding protection). Override it so remote connections work.
+        if providerType == .jan {
+            request.setValue("localhost", forHTTPHeaderField: "Host")
         }
     }
 
@@ -103,13 +111,25 @@ final class OpenAICompatibleClient: LLMProvider, ObservableObject {
 
             let url = baseURL.appendingPathComponent("models")
             var request = URLRequest(url: url)
+            request.timeoutInterval = 15
             addAuthHeader(to: &request)
+
+            logger.info("Connecting to \(url.absoluteString), apiKey: \(self.apiKey != nil ? "\(self.apiKey!.count) chars" : "none")")
 
             let (_, response) = try await session.data(for: request)
 
-            guard let httpResponse = response as? HTTPURLResponse,
-                  httpResponse.statusCode == 200 else {
+            guard let httpResponse = response as? HTTPURLResponse else {
                 connectionStatus = .error("Invalid response")
+                return false
+            }
+
+            if httpResponse.statusCode == 401 || httpResponse.statusCode == 403 {
+                connectionStatus = .error("Unauthorized — check API key in \(providerType.displayName) settings")
+                return false
+            }
+
+            guard httpResponse.statusCode == 200 else {
+                connectionStatus = .error("HTTP \(httpResponse.statusCode) — check host/port")
                 return false
             }
 
