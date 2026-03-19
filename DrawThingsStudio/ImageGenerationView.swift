@@ -1374,6 +1374,15 @@ struct ImageGenerationView: View {
                         viewModel.prompt = generatedImage.prompt
                         viewModel.negativePrompt = generatedImage.negativePrompt
                     }
+                    Button("Use Config") {
+                        viewModel.applyConfig(generatedImage.config)
+                    }
+                    Button("Copy Config") {
+                        if let json = ConfigPresetsManager.shared.drawThingsJSON(for: generatedImage.config) {
+                            NSPasteboard.general.clearContents()
+                            NSPasteboard.general.setString(json, forType: .string)
+                        }
+                    }
                     Button("Describe…") {
                         generatedImageToDescribe = generatedImage
                     }

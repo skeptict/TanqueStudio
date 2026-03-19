@@ -569,6 +569,24 @@ final class ImageGenerationViewModel: ObservableObject {
 
     // MARK: - Preset Loading
 
+    /// Apply a previously-generated image's full config back to the current generation settings.
+    func applyConfig(_ sourceConfig: DrawThingsGenerationConfig) {
+        config.width = sourceConfig.width
+        config.height = sourceConfig.height
+        config.steps = sourceConfig.steps
+        config.guidanceScale = sourceConfig.guidanceScale
+        config.sampler = sourceConfig.sampler
+        config.shift = sourceConfig.shift
+        config.strength = sourceConfig.strength
+        config.stochasticSamplingGamma = sourceConfig.stochasticSamplingGamma
+        config.model = sourceConfig.model
+        config.seedMode = sourceConfig.seedMode
+        config.resolutionDependentShift = sourceConfig.resolutionDependentShift
+        config.cfgZeroStar = sourceConfig.cfgZeroStar
+        config.loras = sourceConfig.loras
+        syncSweepTexts()
+    }
+
     func loadPreset(_ modelConfig: ModelConfig) {
         config.width = modelConfig.width
         config.height = modelConfig.height
