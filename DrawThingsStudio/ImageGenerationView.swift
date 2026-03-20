@@ -1377,6 +1377,9 @@ struct ImageGenerationView: View {
                     Button("Use Config") {
                         viewModel.applyConfig(generatedImage.config)
                     }
+                    Button("Use as i2i") {
+                        viewModel.loadInputImage(from: generatedImage.image, name: "generated")
+                    }
                     Button("Copy Config") {
                         if let json = ConfigPresetsManager.shared.drawThingsJSON(for: generatedImage.config) {
                             NSPasteboard.general.clearContents()
