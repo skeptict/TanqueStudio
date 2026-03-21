@@ -310,3 +310,17 @@ static NSImage * _Nullable imageFromFloat16(const uint16_t *pixels, int width, i
 }
 
 @end
+
+// MARK: - AVFoundation exception-safe helpers
+
+extern "C" BOOL DTAppendPixelBufferSafely(AVAssetWriterInputPixelBufferAdaptor *adaptor,
+                                           CVPixelBufferRef pixelBuffer,
+                                           CMTime presentationTime) {
+    @try {
+        return [adaptor appendPixelBuffer:pixelBuffer withPresentationTime:presentationTime];
+    } @catch (NSException *exception) {
+        NSLog(@"[DTVideoExporter] appendPixelBuffer threw NSException: %@ — %@",
+              exception.name, exception.reason);
+        return NO;
+    }
+}

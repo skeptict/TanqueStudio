@@ -160,7 +160,7 @@ struct DTVideoExporter {
         for (index, image) in frames.enumerated() {
             let pts = CMTimeMultiply(frameDuration, multiplier: Int32(index))
             if let pb = image.toDTCVPixelBuffer(width: width, height: height) {
-                if !adaptor.append(pb, withPresentationTime: pts) { break }
+                if !DTAppendPixelBufferSafely(adaptor, pb, pts) { break }
             }
         }
 

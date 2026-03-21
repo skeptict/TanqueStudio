@@ -8,8 +8,25 @@
 
 #import <Foundation/Foundation.h>
 #import <AppKit/AppKit.h>
+#import <AVFoundation/AVFoundation.h>
+#import <CoreVideo/CoreVideo.h>
 
 NS_ASSUME_NONNULL_BEGIN
+
+/// Appends a pixel buffer to an AVAssetWriterInputPixelBufferAdaptor, catching any
+/// Objective-C exceptions thrown by AVFoundation (e.g. the appendTaggedPixelBufferGroup
+/// code path on macOS 26 beta) so they don't abort the process.
+///
+/// @return YES on success, NO if the append failed or an exception was thrown.
+#ifdef __cplusplus
+extern "C" {
+#endif
+BOOL DTAppendPixelBufferSafely(AVAssetWriterInputPixelBufferAdaptor *adaptor,
+                                CVPixelBufferRef pixelBuffer,
+                                CMTime presentationTime);
+#ifdef __cplusplus
+}
+#endif
 
 /// Decodes a raw tensor BLOB from the Draw Things project database `tensors` table
 /// into a full-resolution NSImage suitable for PNG export.
