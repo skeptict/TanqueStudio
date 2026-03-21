@@ -472,7 +472,7 @@
 			repositoryURL = "https://github.com/euphoriacyberware-ai/DT-gRPC-Swift-Client.git";
 			requirement = {
 				kind = revision;
-				revision = 05c310a01292c850a2b417b121680778f9a7d24a;
+				revision = e57cbce2718d8c9cb167bb29c827017bb4ef8f7a;
 			};
 		};
 /* End XCRemoteSwiftPackageReference section */
