@@ -318,9 +318,7 @@ extern "C" BOOL DTAppendPixelBufferSafely(AVAssetWriterInputPixelBufferAdaptor *
                                            CMTime presentationTime) {
     @try {
         return [adaptor appendPixelBuffer:pixelBuffer withPresentationTime:presentationTime];
-    } @catch (NSException *exception) {
-        NSLog(@"[DTVideoExporter] appendPixelBuffer threw NSException: %@ — %@",
-              exception.name, exception.reason);
+    } @catch (NSException *) {
         return NO;
     }
 }
