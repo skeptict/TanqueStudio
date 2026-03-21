@@ -80,6 +80,7 @@ struct DrawThingsGenerationConfig: Codable {
     var stochasticSamplingGamma: Double
     var batchSize: Int
     var batchCount: Int
+    var numFrames: Int          // video models: number of frames to generate (0 = use model default)
     var negativePrompt: String
     var loras: [LoRAConfig]
     var resolutionDependentShift: Bool?
@@ -113,6 +114,7 @@ struct DrawThingsGenerationConfig: Codable {
         stochasticSamplingGamma: Double = 0.3,
         batchSize: Int = 1,
         batchCount: Int = 1,
+        numFrames: Int = 0,
         negativePrompt: String = "",
         loras: [LoRAConfig] = [],
         resolutionDependentShift: Bool? = nil,
@@ -133,6 +135,7 @@ struct DrawThingsGenerationConfig: Codable {
         self.stochasticSamplingGamma = stochasticSamplingGamma
         self.batchSize = batchSize
         self.batchCount = batchCount
+        self.numFrames = numFrames
         self.negativePrompt = negativePrompt
         self.loras = loras
         self.resolutionDependentShift = resolutionDependentShift
@@ -234,7 +237,7 @@ struct DrawThingsGenerationConfig: Codable {
             c.steps = 25; c.guidanceScale = 3.5
             c.sampler = "UniPC Trailing"
             c.shift = 1.0
-            c.batchCount = 25
+            c.numFrames = 25
             c.resolutionDependentShift = nil
             c.cfgZeroStar = nil
         case .wan:
@@ -242,7 +245,7 @@ struct DrawThingsGenerationConfig: Codable {
             c.steps = 30; c.guidanceScale = 5.0
             c.sampler = "UniPC Trailing"
             c.shift = 5.0
-            c.batchCount = 16
+            c.numFrames = 16
             c.resolutionDependentShift = nil
             c.cfgZeroStar = nil
         case .hunyuan:
@@ -250,7 +253,7 @@ struct DrawThingsGenerationConfig: Codable {
             c.steps = 30; c.guidanceScale = 6.0
             c.sampler = "UniPC Trailing"
             c.shift = 7.0
-            c.batchCount = 25
+            c.numFrames = 25
             c.resolutionDependentShift = nil
             c.cfgZeroStar = nil
         case .animateDiff:
@@ -258,7 +261,7 @@ struct DrawThingsGenerationConfig: Codable {
             c.steps = 20; c.guidanceScale = 7.0
             c.sampler = "DPM++ SDE Karras"
             c.shift = 1.0
-            c.batchCount = 16
+            c.numFrames = 16
             c.resolutionDependentShift = nil
             c.cfgZeroStar = nil
         case .cogVideo:
@@ -266,7 +269,7 @@ struct DrawThingsGenerationConfig: Codable {
             c.steps = 50; c.guidanceScale = 6.0
             c.sampler = "UniPC Trailing"
             c.shift = 1.0
-            c.batchCount = 49
+            c.numFrames = 49
             c.resolutionDependentShift = nil
             c.cfgZeroStar = nil
         case .mochi:
@@ -274,7 +277,7 @@ struct DrawThingsGenerationConfig: Codable {
             c.steps = 64; c.guidanceScale = 4.5
             c.sampler = "UniPC Trailing"
             c.shift = 1.0
-            c.batchCount = 25
+            c.numFrames = 25
             c.resolutionDependentShift = nil
             c.cfgZeroStar = nil
         case .unknown:
@@ -310,6 +313,10 @@ struct DrawThingsGenerationConfig: Codable {
             body["loras"] = loras.map { lora in
                 ["file": lora.file, "weight": lora.weight, "mode": lora.mode] as [String: Any]
             }
+        }
+
+        if numFrames > 0 {
+            body["num_frames"] = numFrames
         }
 
         if !refinerModel.isEmpty {

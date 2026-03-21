@@ -1043,9 +1043,13 @@ struct ImageGenerationView: View {
                 Spacer()
             }
 
-            // Images
+            // Images (non-video) / Frames (video)
             HStack(spacing: 12) {
-                neuConfigField("Images", value: $viewModel.config.batchCount)
+                if viewModel.config.isVideoModel {
+                    neuConfigField("Frames", value: $viewModel.config.numFrames)
+                } else {
+                    neuConfigField("Images", value: $viewModel.config.batchCount)
+                }
                 Spacer()
             }
 

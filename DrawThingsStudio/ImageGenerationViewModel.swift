@@ -171,13 +171,10 @@ final class ImageGenerationViewModel: ObservableObject {
                     var jobConfig = job.config
                     let isVideo = jobConfig.isVideoModel
 
-                    // For video models keep the original batchCount (= frame count).
-                    // For image models force batchCount=1 and loop imagesPerJob times instead.
-                    if !isVideo {
-                        jobConfig.batchCount = 1
-                        jobConfig.batchSize = 1
-                    }
-
+                    // Video models use numFrames for frame count; batchCount stays 1.
+                    // Image models: force batchCount=1 and loop imagesPerJob times instead.
+                    jobConfig.batchCount = 1
+                    jobConfig.batchSize = 1
                     let iterationsForJob = isVideo ? 1 : imagesPerJob
 
                     for imageIndex in 0..<iterationsForJob {
@@ -403,12 +400,9 @@ final class ImageGenerationViewModel: ObservableObject {
                     stepConfig.negativePrompt = steps[index].negativePrompt
                     let isVideoStep = stepConfig.isVideoModel
 
-                    // Keep original batchCount for video models (= frame count).
-                    // Force batchCount=1 for image models to stay deterministic.
-                    if !isVideoStep {
-                        stepConfig.batchCount = 1
-                        stepConfig.batchSize = 1
-                    }
+                    // Video models use numFrames for frame count; batchCount stays 1 for both.
+                    stepConfig.batchCount = 1
+                    stepConfig.batchSize = 1
                     // Always set strength explicitly: img2img value when chaining, 1.0 otherwise.
                     // Never rely on a leftover value in config — it could trigger accidental
                     // img2img denoising (pure noise input → static output).
@@ -632,6 +626,7 @@ final class ImageGenerationViewModel: ObservableObject {
         config.resolutionDependentShift = sourceConfig.resolutionDependentShift
         config.cfgZeroStar = sourceConfig.cfgZeroStar
         config.loras = sourceConfig.loras
+        config.numFrames = sourceConfig.numFrames
         syncSweepTexts()
     }
 

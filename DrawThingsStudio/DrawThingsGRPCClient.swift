@@ -344,6 +344,7 @@ final class DrawThingsGRPCClient: DrawThingsProvider {
             stochasticSamplingGamma: Float(config.stochasticSamplingGamma),
             resolutionDependentShift: useResolutionDependentShift,
             t5TextEncoder: useT5,
+            numFrames: config.numFrames > 0 ? Int32(config.numFrames) : 14,
             refinerModel: config.refinerModel.isEmpty ? nil : config.refinerModel,
             refinerStart: Float(config.refinerStart),
             seedMode: mapSeedMode(config.seedMode)
