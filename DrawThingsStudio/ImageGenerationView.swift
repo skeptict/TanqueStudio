@@ -1305,20 +1305,15 @@ struct ImageGenerationView: View {
     }
 
     private func thumbnailView(_ generatedImage: GeneratedImage) -> some View {
-        let isVideo = generatedImage.filePath?.pathExtension.lowercased() == "mov"
-        return ThumbnailItemView(viewModel: viewModel, generatedImage: generatedImage,
-                                 onDoubleTap: isVideo ? nil : { lightboxImage = generatedImage.image })
+        ThumbnailItemView(viewModel: viewModel, generatedImage: generatedImage,
+                          onDoubleTap: generatedImage.isVideo ? nil : { lightboxImage = generatedImage.image })
     }
 
     private func imageDetailView(_ generatedImage: GeneratedImage) -> some View {
-        let isVideo = generatedImage.filePath?.pathExtension.lowercased() == "mov"
-        return VStack(spacing: 12) {
-            // Large preview — VideoPlayer for .mov, Image for everything else
-            if isVideo, let url = generatedImage.filePath {
-                VideoPlayer(player: AVPlayer(url: url))
-                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                    .shadow(color: Color.neuShadowDark.opacity(colorScheme == .dark ? 0.36 : 0.2), radius: 8, x: 4, y: 4)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+        VStack(spacing: 12) {
+            // Large preview — VideoDetailView for .mov, Image for everything else
+            if generatedImage.isVideo, let url = generatedImage.filePath {
+                VideoDetailView(url: url)
             } else {
                 Image(nsImage: generatedImage.image)
                     .resizable()
@@ -1723,6 +1718,31 @@ struct ImageGenerationView: View {
     }
 }
 
+// MARK: - Video Detail View
+
+/// Wraps AVPlayer in a stable @State so it is created once per selected video
+/// and not re-created whenever unrelated parent state changes trigger a re-render.
+private struct VideoDetailView: View {
+    let url: URL
+    @State private var player: AVPlayer
+    @Environment(\.colorScheme) private var colorScheme
+
+    init(url: URL) {
+        self.url = url
+        _player = State(initialValue: AVPlayer(url: url))
+    }
+
+    var body: some View {
+        VideoPlayer(player: player)
+            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .shadow(color: Color.neuShadowDark.opacity(colorScheme == .dark ? 0.36 : 0.2), radius: 8, x: 4, y: 4)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .onChange(of: url) { _, newURL in
+                player = AVPlayer(url: newURL)
+            }
+    }
+}
+
 // MARK: - Save Pipeline Sheet
 
 struct SavePipelineSheet: View {
@@ -1843,7 +1863,7 @@ private struct ThumbnailItemView: View {
 
     private var isSelected: Bool { viewModel.selectedImage?.id == generatedImage.id }
 
-    private var isVideo: Bool { generatedImage.filePath?.pathExtension.lowercased() == "mov" }
+    private var isVideo: Bool { generatedImage.isVideo }
 
     var body: some View {
         Image(nsImage: generatedImage.image)

@@ -62,6 +62,8 @@ struct GeneratedImage: Identifiable {
         self.inferenceTimeMs = inferenceTimeMs
         self.filePath = filePath
     }
+
+    var isVideo: Bool { filePath?.pathExtension.lowercased() == "mov" }
 }
 
 // MARK: - Generation Config
