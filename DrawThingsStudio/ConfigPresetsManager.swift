@@ -37,6 +37,7 @@ struct DrawThingsConfigData: Codable {
     var batchSize: Int?
     var resolutionDependentShift: Bool?
     var cfgZeroStar: Bool?
+    var loras: [DrawThingsGenerationConfig.LoRAConfig]?
 
     // We preserve other fields when round-tripping
     var additionalFields: [String: AnyCodable]?
@@ -44,7 +45,7 @@ struct DrawThingsConfigData: Codable {
     enum CodingKeys: String, CodingKey {
         case width, height, steps, guidanceScale
         case sampler, shift, strength, stochasticSamplingGamma, clipSkip, seed, seedMode, model
-        case batchCount, batchSize, resolutionDependentShift, cfgZeroStar
+        case batchCount, batchSize, resolutionDependentShift, cfgZeroStar, loras
     }
 
     init(
@@ -63,7 +64,8 @@ struct DrawThingsConfigData: Codable {
         batchCount: Int? = nil,
         batchSize: Int? = nil,
         resolutionDependentShift: Bool? = nil,
-        cfgZeroStar: Bool? = nil
+        cfgZeroStar: Bool? = nil,
+        loras: [DrawThingsGenerationConfig.LoRAConfig]? = nil
     ) {
         self.width = width
         self.height = height
@@ -81,6 +83,7 @@ struct DrawThingsConfigData: Codable {
         self.batchSize = batchSize
         self.resolutionDependentShift = resolutionDependentShift
         self.cfgZeroStar = cfgZeroStar
+        self.loras = loras
     }
 
     init(from decoder: Decoder) throws {
@@ -101,6 +104,7 @@ struct DrawThingsConfigData: Codable {
         batchSize = try container.decodeIfPresent(Int.self, forKey: .batchSize)
         resolutionDependentShift = try container.decodeIfPresent(Bool.self, forKey: .resolutionDependentShift)
         cfgZeroStar = try container.decodeIfPresent(Bool.self, forKey: .cfgZeroStar)
+        loras = try container.decodeIfPresent([DrawThingsGenerationConfig.LoRAConfig].self, forKey: .loras)
     }
 
     func encode(to encoder: Encoder) throws {
@@ -121,6 +125,7 @@ struct DrawThingsConfigData: Codable {
         try container.encodeIfPresent(batchSize, forKey: .batchSize)
         try container.encodeIfPresent(resolutionDependentShift, forKey: .resolutionDependentShift)
         try container.encodeIfPresent(cfgZeroStar, forKey: .cfgZeroStar)
+        try container.encodeIfPresent(loras, forKey: .loras)
     }
 }
 
@@ -144,6 +149,7 @@ struct StudioConfigPreset: Codable, Identifiable {
     var seedMode: Int?
     var resolutionDependentShift: Bool?
     var cfgZeroStar: Bool?
+    var loras: [DrawThingsGenerationConfig.LoRAConfig]
     var isBuiltIn: Bool
     var createdAt: Date
     var modifiedAt: Date
@@ -165,6 +171,7 @@ struct StudioConfigPreset: Codable, Identifiable {
         seedMode: Int? = nil,
         resolutionDependentShift: Bool? = nil,
         cfgZeroStar: Bool? = nil,
+        loras: [DrawThingsGenerationConfig.LoRAConfig] = [],
         isBuiltIn: Bool,
         createdAt: Date = Date(),
         modifiedAt: Date = Date()
@@ -185,6 +192,7 @@ struct StudioConfigPreset: Codable, Identifiable {
         self.seedMode = seedMode
         self.resolutionDependentShift = resolutionDependentShift
         self.cfgZeroStar = cfgZeroStar
+        self.loras = loras
         self.isBuiltIn = isBuiltIn
         self.createdAt = createdAt
         self.modifiedAt = modifiedAt
@@ -207,6 +215,7 @@ struct StudioConfigPreset: Codable, Identifiable {
         self.seedMode = modelConfig.seedMode
         self.resolutionDependentShift = modelConfig.resolutionDependentShift
         self.cfgZeroStar = modelConfig.cfgZeroStar
+        self.loras = modelConfig.loras
         self.isBuiltIn = modelConfig.isBuiltIn
         self.createdAt = modelConfig.createdAt
         self.modifiedAt = modelConfig.modifiedAt
@@ -229,6 +238,7 @@ struct StudioConfigPreset: Codable, Identifiable {
             seedMode: seedMode,
             resolutionDependentShift: resolutionDependentShift,
             cfgZeroStar: cfgZeroStar,
+            loras: loras,
             isBuiltIn: isBuiltIn
         )
         return config
@@ -336,7 +346,8 @@ final class ConfigPresetsManager {
             batchCount: nil,
             batchSize: nil,
             resolutionDependentShift: config.resolutionDependentShift,
-            cfgZeroStar: config.cfgZeroStar
+            cfgZeroStar: config.cfgZeroStar,
+            loras: config.loras.isEmpty ? nil : config.loras
         )
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
@@ -422,6 +433,7 @@ final class ConfigPresetsManager {
                 seedMode: dt.configuration.seedMode,
                 resolutionDependentShift: dt.configuration.resolutionDependentShift,
                 cfgZeroStar: dt.configuration.cfgZeroStar,
+                loras: dt.configuration.loras ?? [],
                 isBuiltIn: false,
                 createdAt: Date(),
                 modifiedAt: Date()
@@ -478,6 +490,7 @@ final class ConfigPresetsManager {
                     seedMode: dt.configuration.seedMode,
                     resolutionDependentShift: dt.configuration.resolutionDependentShift,
                     cfgZeroStar: dt.configuration.cfgZeroStar,
+                    loras: dt.configuration.loras ?? [],
                     isBuiltIn: false,
                     createdAt: Date(),
                     modifiedAt: Date()
@@ -524,6 +537,7 @@ final class ConfigPresetsManager {
                 seedMode: configData.seedMode,
                 resolutionDependentShift: configData.resolutionDependentShift,
                 cfgZeroStar: configData.cfgZeroStar,
+                loras: configData.loras ?? [],
                 isBuiltIn: false,
                 createdAt: Date(),
                 modifiedAt: Date()

@@ -33,11 +33,24 @@ class ModelConfig {
     var resolutionDependentShift: Bool?
     var cfgZeroStar: Bool?
     var isFavorite: Bool = false
+    /// JSON-encoded `[DrawThingsGenerationConfig.LoRAConfig]`
+    var lorasData: Data?
 
     // Metadata
     var isBuiltIn: Bool
     var createdAt: Date
     var modifiedAt: Date
+
+    /// Decoded LoRA list (empty if none stored).
+    var loras: [DrawThingsGenerationConfig.LoRAConfig] {
+        get {
+            guard let data = lorasData else { return [] }
+            return (try? JSONDecoder().decode([DrawThingsGenerationConfig.LoRAConfig].self, from: data)) ?? []
+        }
+        set {
+            lorasData = newValue.isEmpty ? nil : try? JSONEncoder().encode(newValue)
+        }
+    }
 
     init(
         name: String,
@@ -55,6 +68,7 @@ class ModelConfig {
         seedMode: Int? = nil,
         resolutionDependentShift: Bool? = nil,
         cfgZeroStar: Bool? = nil,
+        loras: [DrawThingsGenerationConfig.LoRAConfig] = [],
         isFavorite: Bool = false,
         isBuiltIn: Bool = false
     ) {
@@ -74,6 +88,7 @@ class ModelConfig {
         self.seedMode = seedMode
         self.resolutionDependentShift = resolutionDependentShift
         self.cfgZeroStar = cfgZeroStar
+        self.lorasData = loras.isEmpty ? nil : try? JSONEncoder().encode(loras)
         self.isFavorite = isFavorite
         self.isBuiltIn = isBuiltIn
         self.createdAt = Date()

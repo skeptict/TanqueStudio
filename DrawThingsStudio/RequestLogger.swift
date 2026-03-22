@@ -63,6 +63,7 @@ final class RequestLogger {
         entry += "strength:                 \(config.strength)\n"
         entry += "batchCount:               \(config.batchCount)\n"
         entry += "batchSize:                \(config.batchSize)\n"
+        entry += "numFrames:                \(config.numFrames)\n"
         entry += "t5TextEncoder:            \(config.t5TextEncoder)\n"
         entry += "resolutionDependentShift: \(config.resolutionDependentShift)\n"
         entry += "cfgZeroStar:              \(config.cfgZeroStar)\n"
@@ -74,6 +75,12 @@ final class RequestLogger {
             }
         }
         append(entry)
+    }
+
+    // MARK: - Response
+
+    func logGRPCResponse(imageCount: Int) {
+        append("→ Draw Things returned \(imageCount) image(s)\n")
     }
 
     // MARK: - Utilities

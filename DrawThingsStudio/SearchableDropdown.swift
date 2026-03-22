@@ -208,12 +208,12 @@ struct LoRAConfigRow: View {
 
             // Weight slider
             HStack(spacing: 4) {
-                Slider(value: $weight, in: 0...2, step: 0.1)
+                Slider(value: $weight, in: 0...2, step: 0.05)
                     .frame(width: 80)
                     .accessibilityLabel("Weight for \(lora.name)")
-                    .accessibilityValue(String(format: "%.1f", weight))
+                    .accessibilityValue(String(format: "%.2f", weight))
 
-                Text(String(format: "%.1f", weight))
+                Text(String(format: "%.2f", weight))
                     .font(.system(.caption, design: .monospaced))
                     .foregroundColor(.secondary)
                     .frame(width: 30, alignment: .trailing)
@@ -453,12 +453,12 @@ private struct LoRAConfigRowSimple: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
 
             // Weight slider
-            Slider(value: $weight, in: 0...2, step: 0.1)
+            Slider(value: $weight, in: 0...2, step: 0.05)
                 .frame(width: 70)
                 .accessibilityLabel("Weight for \(name)")
-                .accessibilityValue(String(format: "%.1f", weight))
+                .accessibilityValue(String(format: "%.2f", weight))
 
-            Text(String(format: "%.1f", weight))
+            Text(String(format: "%.2f", weight))
                 .font(.system(.caption, design: .monospaced))
                 .foregroundColor(.secondary)
                 .frame(width: 30, alignment: .trailing)

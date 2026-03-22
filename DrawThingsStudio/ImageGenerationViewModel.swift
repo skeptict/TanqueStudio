@@ -205,6 +205,7 @@ final class ImageGenerationViewModel: ObservableObject {
                         )
 
                         if isVideo && images.count > 1 {
+                            logger.info("Video generation: requested \(jobConfig.numFrames) frames, received \(images.count) frames from Draw Things")
                             if let saved = await storageManager.saveVideo(
                                 images,
                                 prompt: job.prompt,
@@ -655,6 +656,7 @@ final class ImageGenerationViewModel: ObservableObject {
         }
         config.resolutionDependentShift = modelConfig.resolutionDependentShift
         config.cfgZeroStar = modelConfig.cfgZeroStar
+        config.loras = modelConfig.loras
         syncSweepTexts()
     }
 

@@ -84,6 +84,7 @@ final class DrawThingsGRPCClient: DrawThingsProvider {
             )
 
             onProgress?(.complete)
+            RequestLogger.shared.logGRPCResponse(imageCount: images.count)
 
             for (idx, img) in images.enumerated() {
                 logger.debug("Image \(idx): \(img.pixelWidth)x\(img.pixelHeight) pixels")
@@ -373,8 +374,10 @@ final class DrawThingsGRPCClient: DrawThingsProvider {
             return .eulerasubstep
         case "dpm++sdesubstep", "dpmppsdesubstep":
             return .dpmppsdesubstep
-        case "tcd", "tcdtrailing":
+        case "tcd":
             return .tcd
+        case "tcdtrailing":
+            return .tcdtrailing
         case "euleratrailing", "euler_a_trailing":
             return .euleratrailing
         case "dpm++sdetrailing", "dpmppsdetrailing":
