@@ -469,10 +469,10 @@
 /* Begin XCRemoteSwiftPackageReference section */
 		FD31E3EF2F1A0000003E0C4C /* XCRemoteSwiftPackageReference "DT-gRPC-Swift-Client" */ = {
 			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/skeptict/DT-gRPC-Swift-Client.git";
+			repositoryURL = "https://github.com/euphoriacyberware-ai/DT-gRPC-Swift-Client.git";
 			requirement = {
 				kind = revision;
-				revision = 54d76c287e828f844bd72bb345b854942fc55721;
+				revision = 17ed119b2afd010f647803928ed27a2b3bd30ea0;
 			};
 		};
 /* End XCRemoteSwiftPackageReference section */
