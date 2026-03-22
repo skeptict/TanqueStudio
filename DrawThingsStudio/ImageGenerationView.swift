@@ -1720,6 +1720,25 @@ struct ImageGenerationView: View {
 
 // MARK: - Video Detail View
 
+/// AppKit AVPlayerView wrapped in NSViewRepresentable.
+/// Avoids the _AVKit_SwiftUI private framework that crashes on macOS Tahoe.
+private struct AVPlayerNSView: NSViewRepresentable {
+    let player: AVPlayer
+
+    func makeNSView(context: Context) -> AVPlayerView {
+        let view = AVPlayerView()
+        view.player = player
+        view.controlsStyle = .inline
+        return view
+    }
+
+    func updateNSView(_ nsView: AVPlayerView, context: Context) {
+        if nsView.player !== player {
+            nsView.player = player
+        }
+    }
+}
+
 /// Wraps AVPlayer in a stable @State so it is created once per selected video
 /// and not re-created whenever unrelated parent state changes trigger a re-render.
 private struct VideoDetailView: View {
@@ -1733,7 +1752,7 @@ private struct VideoDetailView: View {
     }
 
     var body: some View {
-        VideoPlayer(player: player)
+        AVPlayerNSView(player: player)
             .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
             .shadow(color: Color.neuShadowDark.opacity(colorScheme == .dark ? 0.36 : 0.2), radius: 8, x: 4, y: 4)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
