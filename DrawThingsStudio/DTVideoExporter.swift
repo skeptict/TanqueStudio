@@ -15,6 +15,39 @@ import Foundation
 import AVFoundation
 import AppKit
 
+// MARK: - DrawThingsMetadata
+
+/// Matches the DrawThingsMetadata JSON format used by Draw Things in image EXIF
+/// and by DTM in video comment fields.  Interoperable with FFMPEG `-metadata comment=`.
+struct DrawThingsMetadata: Encodable {
+    let c: String       // positive prompt
+    let model: String
+    let sampler: String
+    let scale: Double   // guidance scale (CFG)
+    let seed: Int
+    let seed_mode: String
+    let shift: Double
+    let size: String    // "WxH"
+    let steps: Int
+    let strength: Double
+    let uc: String      // negative prompt
+
+    init(prompt: String, negativePrompt: String, config: DrawThingsGenerationConfig,
+         width: Int, height: Int) {
+        c         = prompt
+        uc        = negativePrompt
+        model     = config.model
+        sampler   = config.sampler
+        scale     = config.guidanceScale
+        seed      = max(config.seed, 0)
+        seed_mode = config.seedMode
+        shift     = config.shift
+        size      = "\(width)x\(height)"
+        steps     = config.steps
+        strength  = config.strength
+    }
+}
+
 // MARK: - Error
 
 enum DTVideoExportError: LocalizedError {
@@ -47,11 +80,13 @@ struct DTVideoExporter {
         _ frames: [NSImage],
         fps: Double = 16.0,
         prompt: String = "",
+        negativePrompt: String = "",
         config: DrawThingsGenerationConfig
     ) async throws -> URL {
         let width  = config.width  > 0 ? config.width  : Int(frames.first?.size.width  ?? 0)
         let height = config.height > 0 ? config.height : Int(frames.first?.size.height ?? 0)
-        let meta   = buildMetadata(prompt: prompt, config: config, width: width, height: height)
+        let meta   = buildMetadata(prompt: prompt, negativePrompt: negativePrompt,
+                                   config: config, width: width, height: height)
 
         return try await withCheckedThrowingContinuation { continuation in
             DispatchQueue.global(qos: .userInitiated).async {
@@ -83,7 +118,8 @@ struct DTVideoExporter {
         cfg.guidanceScale = Double(clip.guidanceScale)
         cfg.sampler = clip.sampler; cfg.model = clip.model
         cfg.loras = clip.loras.map { .init(file: $0.file, weight: Double($0.weight)) }
-        let meta = buildMetadata(prompt: clip.prompt, config: cfg, width: width, height: height)
+        let meta = buildMetadata(prompt: clip.prompt, negativePrompt: clip.negativePrompt,
+                                 config: cfg, width: width, height: height)
 
         return try await withCheckedThrowingContinuation { continuation in
             DispatchQueue.global(qos: .userInitiated).async {
@@ -179,11 +215,14 @@ struct DTVideoExporter {
 
     private static func buildMetadata(
         prompt: String,
+        negativePrompt: String = "",
         config: DrawThingsGenerationConfig,
         width: Int,
         height: Int
     ) -> [AVMetadataItem] {
         var items: [AVMetadataItem] = []
+
+        // Title — prompt (for QuickTime-aware players)
         if !prompt.isEmpty {
             let item = AVMutableMetadataItem()
             item.identifier = .commonIdentifierTitle
@@ -191,6 +230,8 @@ struct DTVideoExporter {
             item.value = String(prompt.prefix(255)) as NSString
             items.append(item)
         }
+
+        // Description — human-readable summary (backward compat)
         let parts: [String] = [
             config.model.isEmpty ? nil : "Model: \(config.model)",
             "Seed: \(config.seed)",
@@ -209,6 +250,22 @@ struct DTVideoExporter {
             item.value = parts.joined(separator: "\n") as NSString
             items.append(item)
         }
+
+        // Comment — DrawThingsMetadata JSON (interoperable with DTM and FFMPEG -metadata comment=)
+        let dtMeta = DrawThingsMetadata(
+            prompt: prompt, negativePrompt: negativePrompt,
+            config: config, width: width, height: height
+        )
+        if let jsonData = try? JSONEncoder().encode(dtMeta),
+           let jsonString = String(data: jsonData, encoding: .utf8) {
+            let item = AVMutableMetadataItem()
+            item.keySpace = .quickTimeUserData
+            item.key = "©cmt" as NSString
+            item.locale = Locale(identifier: "und")
+            item.value = jsonString as NSString
+            items.append(item)
+        }
+
         return items
     }
 }

@@ -153,7 +153,8 @@ final class ImageStorageManager: ObservableObject {
         // Export .mov — exportFrames runs all work on DispatchQueue.global internally,
         // using a single outer continuation with no actor hops inside the export path.
         do {
-            let tmpURL = try await DTVideoExporter.exportFrames(frames, fps: 16.0, prompt: prompt, config: config)
+            let tmpURL = try await DTVideoExporter.exportFrames(frames, fps: 16.0, prompt: prompt,
+                                                                negativePrompt: negativePrompt, config: config)
             try FileManager.default.moveItem(at: tmpURL, to: movDestURL)
         } catch {
             logger.error("Video export failed: \(error.localizedDescription)")
