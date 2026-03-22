@@ -8,6 +8,7 @@
 import SwiftUI
 import SwiftData
 import UniformTypeIdentifiers
+import AVKit
 
 struct ImageGenerationView: View {
     @ObservedObject var viewModel: ImageGenerationViewModel
@@ -32,6 +33,7 @@ struct ImageGenerationView: View {
     @State private var lightboxImage: NSImage?
     @State private var imageForStoryStudio: GeneratedImage?
     @State private var imageCopied = false
+    @AppStorage("showAdvancedGenerationSettings") private var showAdvancedSettings = false
 
     var body: some View {
         HStack(spacing: 0) {
@@ -1053,7 +1055,7 @@ struct ImageGenerationView: View {
                 Spacer()
             }
 
-            // Seed & Shift
+            // Seed
             HStack(spacing: 12) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Seed").font(.caption).foregroundColor(.neuTextSecondary)
@@ -1061,27 +1063,7 @@ struct ImageGenerationView: View {
                         .textFieldStyle(NeumorphicTextFieldStyle())
                         .frame(width: 90)
                 }
-                sweepableDoubleField("Shift", text: $viewModel.shiftText) {
-                    viewModel.config.shift = $0
-                }
                 Spacer()
-            }
-
-            // SSS (Stochastic Sampling) — TCD family samplers
-            if viewModel.config.sampler == "TCD" || viewModel.config.sampler == "TCD Trailing" {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Stochastic Sampling (SSS)").font(.caption).foregroundColor(.neuTextSecondary)
-                    HStack(spacing: 8) {
-                        Slider(value: $viewModel.config.stochasticSamplingGamma, in: 0...1, step: 0.01)
-                            .tint(Color.neuAccent)
-                            .accessibilityLabel("Stochastic Sampling Gamma")
-                            .accessibilityValue(String(format: "%.0f percent", viewModel.config.stochasticSamplingGamma * 100))
-                        Text(String(format: "%.0f%%", viewModel.config.stochasticSamplingGamma * 100))
-                            .font(.caption)
-                            .foregroundColor(.neuTextSecondary)
-                            .frame(width: 35)
-                    }
-                }
             }
 
             // LoRAs
@@ -1093,34 +1075,67 @@ struct ImageGenerationView: View {
                 selectedLoRAs: $viewModel.config.loras
             )
 
-            // Refiner model
+            // Advanced Settings
             Divider()
                 .padding(.vertical, 4)
 
-            VStack(alignment: .leading, spacing: 8) {
-                NeuSectionHeader("Refiner", icon: "sparkles.rectangle.stack")
-                ModelSelectorView(
-                    availableModels: assetManager.allModels,
-                    selection: $viewModel.config.refinerModel,
-                    isLoading: assetManager.isLoading || assetManager.isCloudLoading,
-                    label: "Refiner Model"
-                )
+            DisclosureGroup(isExpanded: $showAdvancedSettings) {
+                VStack(alignment: .leading, spacing: 12) {
+                    // Shift
+                    sweepableDoubleField("Shift", text: $viewModel.shiftText) {
+                        viewModel.config.shift = $0
+                    }
 
-                if !viewModel.config.refinerModel.isEmpty {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Refiner Start").font(.caption).foregroundColor(.neuTextSecondary)
-                        HStack(spacing: 8) {
-                            Slider(value: $viewModel.config.refinerStart, in: 0.0...1.0, step: 0.01)
-                                .tint(Color.neuAccent)
-                                .accessibilityLabel("Refiner Start")
-                                .accessibilityValue(String(format: "%.0f percent", viewModel.config.refinerStart * 100))
-                            Text(String(format: "%.0f%%", viewModel.config.refinerStart * 100))
-                                .font(.caption)
-                                .foregroundColor(.neuTextSecondary)
-                                .frame(width: 35)
+                    // SSS (Stochastic Sampling) — TCD family samplers
+                    if viewModel.config.sampler == "TCD" || viewModel.config.sampler == "TCD Trailing" {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Stochastic Sampling (SSS)").font(.caption).foregroundColor(.neuTextSecondary)
+                            HStack(spacing: 8) {
+                                Slider(value: $viewModel.config.stochasticSamplingGamma, in: 0...1, step: 0.01)
+                                    .tint(Color.neuAccent)
+                                    .accessibilityLabel("Stochastic Sampling Gamma")
+                                    .accessibilityValue(String(format: "%.0f percent", viewModel.config.stochasticSamplingGamma * 100))
+                                Text(String(format: "%.0f%%", viewModel.config.stochasticSamplingGamma * 100))
+                                    .font(.caption)
+                                    .foregroundColor(.neuTextSecondary)
+                                    .frame(width: 35)
+                            }
+                        }
+                    }
+
+                    // Refiner model
+                    Divider()
+                        .padding(.vertical, 2)
+
+                    NeuSectionHeader("Refiner", icon: "sparkles.rectangle.stack")
+                    ModelSelectorView(
+                        availableModels: assetManager.allModels,
+                        selection: $viewModel.config.refinerModel,
+                        isLoading: assetManager.isLoading || assetManager.isCloudLoading,
+                        label: "Refiner Model"
+                    )
+
+                    if !viewModel.config.refinerModel.isEmpty {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Refiner Start").font(.caption).foregroundColor(.neuTextSecondary)
+                            HStack(spacing: 8) {
+                                Slider(value: $viewModel.config.refinerStart, in: 0.0...1.0, step: 0.01)
+                                    .tint(Color.neuAccent)
+                                    .accessibilityLabel("Refiner Start")
+                                    .accessibilityValue(String(format: "%.0f percent", viewModel.config.refinerStart * 100))
+                                Text(String(format: "%.0f%%", viewModel.config.refinerStart * 100))
+                                    .font(.caption)
+                                    .foregroundColor(.neuTextSecondary)
+                                    .frame(width: 35)
+                            }
                         }
                     }
                 }
+                .padding(.top, 8)
+            } label: {
+                Label("Advanced", systemImage: "slider.horizontal.3")
+                    .font(.caption)
+                    .foregroundColor(.neuTextSecondary)
             }
         }
     }
@@ -1290,20 +1305,29 @@ struct ImageGenerationView: View {
     }
 
     private func thumbnailView(_ generatedImage: GeneratedImage) -> some View {
-        ThumbnailItemView(viewModel: viewModel, generatedImage: generatedImage,
-                          onDoubleTap: { lightboxImage = generatedImage.image })
+        let isVideo = generatedImage.filePath?.pathExtension.lowercased() == "mov"
+        return ThumbnailItemView(viewModel: viewModel, generatedImage: generatedImage,
+                                 onDoubleTap: isVideo ? nil : { lightboxImage = generatedImage.image })
     }
 
     private func imageDetailView(_ generatedImage: GeneratedImage) -> some View {
-        VStack(spacing: 12) {
-            // Large image preview — tap to open lightbox
-            Image(nsImage: generatedImage.image)
-                .resizable()
-                .aspectRatio(contentMode: .fit)
-                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                .shadow(color: Color.neuShadowDark.opacity(colorScheme == .dark ? 0.36 : 0.2), radius: 8, x: 4, y: 4)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .onTapGesture { lightboxImage = generatedImage.image }
+        let isVideo = generatedImage.filePath?.pathExtension.lowercased() == "mov"
+        return VStack(spacing: 12) {
+            // Large preview — VideoPlayer for .mov, Image for everything else
+            if isVideo, let url = generatedImage.filePath {
+                VideoPlayer(player: AVPlayer(url: url))
+                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    .shadow(color: Color.neuShadowDark.opacity(colorScheme == .dark ? 0.36 : 0.2), radius: 8, x: 4, y: 4)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                Image(nsImage: generatedImage.image)
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    .shadow(color: Color.neuShadowDark.opacity(colorScheme == .dark ? 0.36 : 0.2), radius: 8, x: 4, y: 4)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .onTapGesture { lightboxImage = generatedImage.image }
+            }
 
             // Image info card
             VStack(alignment: .leading, spacing: 0) {
