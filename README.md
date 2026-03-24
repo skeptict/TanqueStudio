@@ -79,6 +79,7 @@ Visual narrative system for creating stories with consistent characters across s
 - Fetches ~400 models from [drawthingsai/community-models](https://github.com/drawthingsai/community-models) GitHub repo
 - Auto-refreshes every 24 hours with manual refresh available
 - Combined with local Draw Things models (local shown first, no duplicates)
+- Thanks to [kcjerrell/dt-models](https://github.com/kcjerrell/dt-models)
 
 ### AI-Assisted Features
 
