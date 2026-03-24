@@ -303,14 +303,18 @@ final class DrawThingsGRPCClient: DrawThingsProvider {
             useT5 = false
         }
 
-        // Resolution-dependent shift: use config value if set, otherwise auto-detect
-        // Flux uses resolution-dependent shift; zImage turbo models do NOT
+        // Resolution-dependent shift: use config value if set, otherwise auto-detect.
+        // Both Flux and SD3 are rectified-flow families and use resolution-dependent shift.
+        // NOTE: The FlatBuffer library writes `false` as an absent field (uses `def: false`),
+        // but DT's read-side default for this field is `true`. This means the value `false`
+        // cannot be reliably transmitted to DT via the current DT-gRPC-Swift-Client library.
+        // This is an upstream issue in the library, not fixable here.
         let useResolutionDependentShift: Bool
         if let explicit = config.resolutionDependentShift {
             useResolutionDependentShift = explicit
         } else {
             switch modelFamily {
-            case .flux:
+            case .flux, .sd3:
                 useResolutionDependentShift = true
             default:
                 useResolutionDependentShift = false

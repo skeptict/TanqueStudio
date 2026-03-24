@@ -52,6 +52,7 @@ struct DTGenerationEntry: Identifiable, Hashable {
     let sampler: String
     let seedMode: String
     let shift: Float
+    let resolutionDependentShift: Bool  // FlatBuffer schema default is true (absent → true)
     let stochasticSamplingGamma: Float
     let wallClock: Date
     let loras: [DTLoRAEntry]
@@ -192,7 +193,8 @@ private struct FBReader {
     static let VT_LORAS: Int = 64            // field 30, [LoRA]
     static let VT_PREVIEW_ID: Int = 86           // field 41, long
     static let VT_SCALE_FACTOR_BY_120: Int = 92  // field 44, int (default 120 = 1.0×)
-    static let VT_SHIFT: Int = 136               // field 66, float
+    static let VT_SHIFT: Int = 136                         // field 66, float
+    static let VT_RESOLUTION_DEPENDENT_SHIFT: Int = 146   // field 71, bool (default true)
     static let VT_TEXT_PROMPT: Int = 200      // field 98, string
     static let VT_NEG_TEXT_PROMPT: Int = 202  // field 99, string
 
@@ -495,6 +497,9 @@ final class DTProjectDatabase: @unchecked Sendable {
         let rawScaleBy120 = foff(FBReader.VT_SCALE_FACTOR_BY_120).map { Int(fb.readInt32(at: tablePos + $0)) } ?? 120
         let scaleFactorBy120 = rawScaleBy120 > 0 ? rawScaleBy120 : 120
         let shift = foff(FBReader.VT_SHIFT).map { fb.readFloat(at: tablePos + $0) } ?? 1.0
+        // resolutionDependentShift: FlatBuffer bool, absent → schema default true
+        let resolutionDependentShift = foff(FBReader.VT_RESOLUTION_DEPENDENT_SHIFT)
+            .map { fb.readUInt8(at: tablePos + $0) != 0 } ?? true
 
         let model = foff(FBReader.VT_MODEL).flatMap { fb.readString(tablePos: tablePos, fieldRelOffset: $0) } ?? ""
         let textPrompt = foff(FBReader.VT_TEXT_PROMPT).flatMap { fb.readString(tablePos: tablePos, fieldRelOffset: $0) } ?? ""
@@ -524,6 +529,7 @@ final class DTProjectDatabase: @unchecked Sendable {
             sampler: Self.samplerName(samplerByte),
             seedMode: Self.seedModeName(seedModeByte),
             shift: shift,
+            resolutionDependentShift: resolutionDependentShift,
             // NOTE: stochasticSamplingGamma is not yet parsed from the FlatBuffer blob
             // because the VTable slot for this field is not yet defined in this reader.
             // The FlatBuffer schema default is 0.3, so we use that as a safe fallback.

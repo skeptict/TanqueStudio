@@ -1331,6 +1331,7 @@ private struct DTDetailPanel: View {
                         if entry.shift != 1.0 {
                             paramRow("Shift", String(format: "%.2f", entry.shift))
                         }
+                        paramRow("Res Shift", entry.resolutionDependentShift ? "on" : "off")
                         if entry.sampler == "TCD" || entry.sampler == "TCD Trailing" {
                             paramRow("SSS", String(format: "%.0f%%", entry.stochasticSamplingGamma * 100))
                         }

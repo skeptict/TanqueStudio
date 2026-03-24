@@ -41,6 +41,7 @@ struct PNGMetadata {
     var model: String?
     var strength: Double?
     var shift: Double?
+    var resolutionDependentShift: Bool?
     var seedMode: String?
     var loras: [PNGMetadataLoRA] = []
     var refinerModel: String?
@@ -118,7 +119,8 @@ struct PNGMetadataParser {
 
         // Try Draw Things format: XMP metadata via CGImageSource
         if let url = url {
-            if let meta = parseDrawThingsXMP(url: url) {
+            if var meta = parseDrawThingsXMP(url: url) {
+                enrichFromDTSMetadata(&meta, chunks: chunks)
                 return meta
             }
         }
@@ -127,11 +129,35 @@ struct PNGMetadataParser {
         if let xmp = chunks["XML:com.adobe.xmp"] {
             var meta = parseDrawThingsFromXMP(xmp)
             if meta.hasPrompt || meta.hasConfig {
+                enrichFromDTSMetadata(&meta, chunks: chunks)
+                return meta
+            }
+        }
+
+        // Fallback: DTS-only images (e.g. generated externally but saved with dts_metadata only)
+        if let dtsStr = chunks["dts_metadata"],
+           let dtsData = dtsStr.data(using: .utf8),
+           let dtsJSON = try? JSONSerialization.jsonObject(with: dtsData) as? [String: Any],
+           let configJSON = dtsJSON["config"] as? [String: Any] {
+            var meta = PNGMetadata()
+            meta.resolutionDependentShift = configJSON["resolutionDependentShift"] as? Bool
+            if meta.resolutionDependentShift != nil {
                 return meta
             }
         }
 
         return nil
+    }
+
+    /// Enriches parsed metadata with fields from the DTS-embedded `dts_metadata` iTXt chunk.
+    private static func enrichFromDTSMetadata(_ meta: inout PNGMetadata, chunks: [String: String]) {
+        guard let dtsStr = chunks["dts_metadata"],
+              let dtsData = dtsStr.data(using: .utf8),
+              let dtsJSON = try? JSONSerialization.jsonObject(with: dtsData) as? [String: Any],
+              let configJSON = dtsJSON["config"] as? [String: Any] else { return }
+        if let rds = configJSON["resolutionDependentShift"] as? Bool {
+            meta.resolutionDependentShift = rds
+        }
     }
 
     // MARK: - PNG Chunk Extraction

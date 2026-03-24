@@ -17,13 +17,15 @@ struct InspectedImage: Identifiable {
     let metadata: PNGMetadata?
     let sourceName: String
     let inspectedAt: Date
+    let source: DTImageSource
 
-    init(id: UUID = UUID(), image: NSImage, metadata: PNGMetadata?, sourceName: String, inspectedAt: Date) {
+    init(id: UUID = UUID(), image: NSImage, metadata: PNGMetadata?, sourceName: String, inspectedAt: Date, source: DTImageSource = .imported(sourceURL: nil)) {
         self.id = id
         self.image = image
         self.metadata = metadata
         self.sourceName = sourceName
         self.inspectedAt = inspectedAt
+        self.source = source
     }
 }
 
@@ -45,6 +47,7 @@ private struct PersistedInspectorEntry: Codable {
     let model: String?
     let strength: Double?
     let shift: Double?
+    let resolutionDependentShift: Bool?
     let seedMode: String?
     let loras: [PersistedLoRA]
     let format: String
@@ -53,6 +56,10 @@ private struct PersistedInspectorEntry: Codable {
     // Raw configs stored as JSON data
     let rawV2ConfigJSON: Data?
     let rawTopLevelJSON: Data?
+
+    // Source provenance (optional for backward compat with pre-step2 entries)
+    let sourceType: String?
+    let sourceURLString: String?
 
     struct PersistedLoRA: Codable {
         let file: String
@@ -77,10 +84,27 @@ private struct PersistedInspectorEntry: Codable {
         self.model = meta?.model
         self.strength = meta?.strength
         self.shift = meta?.shift
+        self.resolutionDependentShift = meta?.resolutionDependentShift
         self.seedMode = meta?.seedMode
         self.loras = meta?.loras.map { PersistedLoRA(file: $0.file, weight: $0.weight, mode: $0.mode) } ?? []
         self.format = meta?.format.rawValue ?? PNGMetadataFormat.unknown.rawValue
         self.rawText = meta?.rawText
+
+        // Source provenance
+        switch entry.source {
+        case .drawThings(let url):
+            self.sourceType = "drawThings"
+            self.sourceURLString = url.absoluteString
+        case .civitai(let url):
+            self.sourceType = "civitai"
+            self.sourceURLString = url?.absoluteString
+        case .imported(let url):
+            self.sourceType = "imported"
+            self.sourceURLString = url?.absoluteString
+        case .unknown:
+            self.sourceType = "unknown"
+            self.sourceURLString = nil
+        }
 
         // Serialize raw configs
         if let v2 = meta?.rawV2Config {
@@ -114,6 +138,7 @@ private struct PersistedInspectorEntry: Codable {
         meta.model = model
         meta.strength = strength
         meta.shift = shift
+        meta.resolutionDependentShift = resolutionDependentShift
         meta.seedMode = seedMode
         meta.loras = loras.map { PNGMetadataLoRA(file: $0.file, weight: $0.weight, mode: $0.mode) }
         meta.format = PNGMetadataFormat(rawValue: format) ?? .unknown
@@ -130,7 +155,53 @@ private struct PersistedInspectorEntry: Codable {
 
         return meta
     }
+
+    func toSource() -> DTImageSource {
+        switch sourceType {
+        case "drawThings":
+            let url = sourceURLString.flatMap { URL(string: $0) } ?? URL(fileURLWithPath: "/")
+            return .drawThings(projectURL: url)
+        case "civitai":
+            return .civitai(sourceURL: sourceURLString.flatMap { URL(string: $0) })
+        case "imported":
+            return .imported(sourceURL: sourceURLString.flatMap { URL(string: $0) })
+        default:
+            return .imported(sourceURL: nil) // legacy entries without sourceType → imported
+        }
+    }
 }
+
+// MARK: - Layout State
+
+enum LayoutState: String, CaseIterable {
+    case balanced, focus, immersive
+
+    var label: String {
+        switch self {
+        case .balanced:  return "Balanced"
+        case .focus:     return "Focus"
+        case .immersive: return "Immersive"
+        }
+    }
+
+    var indicatorText: String {
+        switch self {
+        case .balanced:  return "Balanced · click to expand"
+        case .focus:     return "Focus · click for immersive"
+        case .immersive: return "Immersive · click to restore"
+        }
+    }
+
+    func next() -> LayoutState {
+        switch self {
+        case .balanced:  return .focus
+        case .focus:     return .immersive
+        case .immersive: return .balanced
+        }
+    }
+}
+
+// MARK: - ViewModel
 
 @MainActor
 final class ImageInspectorViewModel: ObservableObject {
@@ -138,10 +209,37 @@ final class ImageInspectorViewModel: ObservableObject {
     private static let maxHistoryCount = 50
     private let logger = Logger(subsystem: "com.drawthingsstudio", category: "inspector")
 
+    @Published var layoutState: LayoutState
+    @Published var sourceFilter: SourceFilter = .all
     @Published var history: [InspectedImage] = []
     @Published var selectedImage: InspectedImage?
     @Published var errorMessage: String?
     @Published var isProcessing = false
+    /// Set by the Assist tab when the user taps "Use in Draw Things"; ContentView forwards this to imageGenViewModel.
+    @Published var pendingAssistPrompt: String? = nil
+
+    /// History filtered by the current sourceFilter tab.
+    var filteredHistory: [InspectedImage] {
+        guard sourceFilter != .all else { return history }
+        return history.filter { $0.source.matches(sourceFilter) }
+    }
+
+    /// Images in filteredHistory (excluding selected) that share the same non-empty prompt.
+    var filmstripSiblings: [InspectedImage] {
+        guard let selected = selectedImage,
+              let prompt = selected.metadata?.prompt,
+              !prompt.trimmingCharacters(in: .whitespaces).isEmpty else { return [] }
+        return filteredHistory.filter { $0.id != selected.id && $0.metadata?.prompt == prompt }
+    }
+
+    /// Remaining filteredHistory items: excludes selected image and siblings.
+    var filmstripHistory: [InspectedImage] {
+        let siblingIDs = Set(filmstripSiblings.map(\.id))
+        let selectedID = selectedImage?.id
+        return filteredHistory.filter { $0.id != selectedID && !siblingIDs.contains($0.id) }
+    }
+
+    private var cancellables = Set<AnyCancellable>()
 
     // MARK: - Persistence
 
@@ -157,12 +255,22 @@ final class ImageInspectorViewModel: ObservableObject {
     }
 
     init() {
+        layoutState = UserDefaults.standard.string(forKey: "inspector.layoutState")
+            .flatMap(LayoutState.init(rawValue:)) ?? .balanced
+
+        $layoutState
+            .dropFirst()
+            .sink { state in
+                UserDefaults.standard.set(state.rawValue, forKey: "inspector.layoutState")
+            }
+            .store(in: &cancellables)
+
         loadHistoryFromDisk()
     }
 
     // MARK: - Load Image from URL
 
-    func loadImage(url: URL) {
+    func loadImage(url: URL, source: DTImageSource? = nil) {
         isProcessing = true
         errorMessage = nil
 
@@ -185,7 +293,8 @@ final class ImageInspectorViewModel: ObservableObject {
             image: image,
             metadata: metadata,
             sourceName: url.lastPathComponent,
-            inspectedAt: Date()
+            inspectedAt: Date(),
+            source: source ?? .imported(sourceURL: url)
         )
         history.insert(entry, at: 0)
         trimHistoryIfNeeded()
@@ -201,7 +310,7 @@ final class ImageInspectorViewModel: ObservableObject {
 
     // MARK: - Load Image from Data
 
-    func loadImage(data: Data, sourceName: String = "Dropped Image") {
+    func loadImage(data: Data, sourceName: String = "Dropped Image", source: DTImageSource? = nil) {
         isProcessing = true
         errorMessage = nil
 
@@ -228,7 +337,8 @@ final class ImageInspectorViewModel: ObservableObject {
             image: image,
             metadata: metadata,
             sourceName: sourceName,
-            inspectedAt: Date()
+            inspectedAt: Date(),
+            source: source ?? .imported(sourceURL: nil)
         )
         history.insert(entry, at: 0)
         trimHistoryIfNeeded()
@@ -251,12 +361,51 @@ final class ImageInspectorViewModel: ObservableObject {
         Task { @MainActor in
             do {
                 let (data, _) = try await URLSession.shared.data(from: webURL)
-                loadImage(data: data, sourceName: webURL.lastPathComponent)
+                loadImage(data: data, sourceName: webURL.lastPathComponent, source: .imported(sourceURL: webURL))
             } catch {
                 errorMessage = "Failed to download image: \(error.localizedDescription)"
                 isProcessing = false
             }
         }
+    }
+
+    // MARK: - Keyboard Navigation
+
+    func selectPrevious() {
+        let list = filteredHistory
+        guard !list.isEmpty else { return }
+        if let current = selectedImage,
+           let idx = list.firstIndex(where: { $0.id == current.id }), idx > 0 {
+            selectedImage = list[idx - 1]
+        } else if selectedImage == nil {
+            selectedImage = list.first
+        }
+        errorMessage = nil
+    }
+
+    func selectNext() {
+        let list = filteredHistory
+        guard !list.isEmpty else { return }
+        if let current = selectedImage,
+           let idx = list.firstIndex(where: { $0.id == current.id }), idx < list.count - 1 {
+            selectedImage = list[idx + 1]
+        } else if selectedImage == nil {
+            selectedImage = list.first
+        }
+        errorMessage = nil
+    }
+
+    // MARK: - File URL
+
+    /// Returns a local file URL for the image: prefers the original source URL if it's a local
+    /// file, falls back to the saved copy in InspectorHistory.
+    func localURL(for image: InspectedImage) -> URL? {
+        if case .imported(let url) = image.source, let url, url.isFileURL,
+           FileManager.default.fileExists(atPath: url.path) {
+            return url
+        }
+        let saved = storageDirectory.appendingPathComponent("\(image.id.uuidString).png")
+        return FileManager.default.fileExists(atPath: saved.path) ? saved : nil
     }
 
     // MARK: - Delete / Select
@@ -369,7 +518,8 @@ final class ImageInspectorViewModel: ObservableObject {
                 image: image,
                 metadata: metadata,
                 sourceName: persisted.sourceName,
-                inspectedAt: persisted.inspectedAt
+                inspectedAt: persisted.inspectedAt,
+                source: persisted.toSource()
             )
             loaded.append(entry)
         }
