@@ -93,6 +93,19 @@ struct ContentView: View {
                     imageInspectorViewModel.pendingAssistPrompt = nil
                     selectedItem = .generateImage
                 }
+                .onChange(of: imageInspectorViewModel.pendingCropForGenerate) { _, cropped in
+                    guard let cropped else { return }
+                    imageGenViewModel.loadInputImage(from: cropped, name: "Cropped Image")
+                    imageInspectorViewModel.pendingCropForGenerate = nil
+                    selectedItem = .generateImage
+                }
+                .onChange(of: imageInspectorViewModel.pendingInpaintForGenerate) { _, req in
+                    guard let req else { return }
+                    imageGenViewModel.loadInputImage(from: req.image, name: "Inpainting Source")
+                    imageGenViewModel.inputMask = req.mask
+                    imageInspectorViewModel.pendingInpaintForGenerate = nil
+                    selectedItem = .generateImage
+                }
 
                 StoryStudioView(viewModel: storyStudioViewModel)
                     .opacity(selectedItem == .storyStudio ? 1 : 0)

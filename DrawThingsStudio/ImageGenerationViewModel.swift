@@ -53,9 +53,10 @@ final class ImageGenerationViewModel: ObservableObject {
     // MARK: - Prompt Enhancement
     @Published var isEnhancing: Bool = false
 
-    // MARK: - img2img Source
+    // MARK: - img2img / inpainting Source
     @Published var inputImage: NSImage?
     @Published var inputImageName: String?
+    @Published var inputMask: NSImage?
 
     // MARK: - Sweep / Wildcard State
 
@@ -195,7 +196,7 @@ final class ImageGenerationViewModel: ObservableObject {
                         let images = try await client.generateImage(
                             prompt: job.prompt,
                             sourceImage: inputImage,
-                            mask: nil,
+                            mask: inputMask,
                             config: jobConfig,
                             onProgress: { [weak self] prog in
                                 guard let self else { return }
@@ -306,6 +307,7 @@ final class ImageGenerationViewModel: ObservableObject {
         selectedImage = generatedImages.first
         inputImage = nil
         inputImageName = nil
+        inputMask = nil
         syncSweepTexts()
     }
 
@@ -352,6 +354,7 @@ final class ImageGenerationViewModel: ObservableObject {
         selectedImage = generatedImages.first
         inputImage = nil
         inputImageName = nil
+        inputMask = nil
         syncSweepTexts()
     }
 
@@ -420,7 +423,7 @@ final class ImageGenerationViewModel: ObservableObject {
                     let images = try await client.generateImage(
                         prompt: steps[index].prompt,
                         sourceImage: sourceImage,
-                        mask: nil,
+                        mask: index == 0 ? inputMask : nil,
                         config: stepConfig,
                         onProgress: { [weak self] prog in
                             guard let self else { return }
@@ -563,6 +566,7 @@ final class ImageGenerationViewModel: ObservableObject {
         selectedImage = nil
         inputImage = nil
         inputImageName = nil
+        inputMask = nil
         switchStep(to: 0)
     }
 
@@ -585,6 +589,7 @@ final class ImageGenerationViewModel: ObservableObject {
     func clearInputImage() {
         inputImage = nil
         inputImageName = nil
+        inputMask = nil
         config.strength = 1.0  // back to full denoising (txt2img)
     }
 

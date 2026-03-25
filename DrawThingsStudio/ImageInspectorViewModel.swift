@@ -18,14 +18,17 @@ struct InspectedImage: Identifiable {
     let sourceName: String
     let inspectedAt: Date
     let source: DTImageSource
+    /// Non-nil when this image was cropped from another entry.
+    let cropNote: String?
 
-    init(id: UUID = UUID(), image: NSImage, metadata: PNGMetadata?, sourceName: String, inspectedAt: Date, source: DTImageSource = .imported(sourceURL: nil)) {
+    init(id: UUID = UUID(), image: NSImage, metadata: PNGMetadata?, sourceName: String, inspectedAt: Date, source: DTImageSource = .imported(sourceURL: nil), cropNote: String? = nil) {
         self.id = id
         self.image = image
         self.metadata = metadata
         self.sourceName = sourceName
         self.inspectedAt = inspectedAt
         self.source = source
+        self.cropNote = cropNote
     }
 }
 
@@ -60,6 +63,9 @@ private struct PersistedInspectorEntry: Codable {
     // Source provenance (optional for backward compat with pre-step2 entries)
     let sourceType: String?
     let sourceURLString: String?
+
+    // Crop provenance (optional, added in step3)
+    let cropNote: String?
 
     struct PersistedLoRA: Codable {
         let file: String
@@ -105,6 +111,9 @@ private struct PersistedInspectorEntry: Codable {
             self.sourceType = "unknown"
             self.sourceURLString = nil
         }
+
+        // Crop note
+        self.cropNote = entry.cropNote
 
         // Serialize raw configs
         if let v2 = meta?.rawV2Config {
@@ -200,6 +209,30 @@ enum LayoutState: String, CaseIterable {
     }
 }
 
+// MARK: - Inpaint Request
+
+struct InpaintRequest: Equatable {
+    let id: UUID
+    let image: NSImage
+    let mask: NSImage
+
+    init(image: NSImage, mask: NSImage) {
+        self.id = UUID()
+        self.image = image
+        self.mask = mask
+    }
+
+    static func == (lhs: Self, rhs: Self) -> Bool { lhs.id == rhs.id }
+}
+
+// MARK: - Stage Mode
+
+enum StageMode {
+    case view    // default — zoom/pan only
+    case crop    // drag to select a crop region
+    case paint   // inpainting mask brush
+}
+
 // MARK: - ViewModel
 
 @MainActor
@@ -209,6 +242,7 @@ final class ImageInspectorViewModel: ObservableObject {
     private let logger = Logger(subsystem: "com.drawthingsstudio", category: "inspector")
 
     @Published var layoutState: LayoutState
+    @Published var stageMode: StageMode = .view
     @Published var sourceFilter: SourceFilter = .all
     @Published var history: [InspectedImage] = []
     @Published var selectedImage: InspectedImage?
@@ -216,6 +250,14 @@ final class ImageInspectorViewModel: ObservableObject {
     @Published var isProcessing = false
     /// Set by the Assist tab when the user taps "Use in Draw Things"; ContentView forwards this to imageGenViewModel.
     @Published var pendingAssistPrompt: String? = nil
+    /// Set by crop "Send to Generate"; ContentView forwards the cropped image to imageGenViewModel.
+    @Published var pendingCropForGenerate: NSImage? = nil
+    /// Set by mask "Send to Draw Things"; ContentView forwards both to imageGenViewModel.
+    @Published var pendingInpaintForGenerate: InpaintRequest? = nil
+    /// Full-resolution mask bitmap (black background, white = painted region). Nil outside paint mode.
+    @Published var maskImage: NSImage? = nil
+    /// Cached mutable backing bitmap for the mask — avoids TIFF roundtrip on every brush stroke.
+    private var maskBitmap: NSBitmapImageRep? = nil
 
     /// History filtered by the current sourceFilter tab.
     var filteredHistory: [InspectedImage] {
@@ -223,19 +265,20 @@ final class ImageInspectorViewModel: ObservableObject {
         return history.filter { $0.source.matches(sourceFilter) }
     }
 
-    /// Images in filteredHistory (excluding selected) that share the same non-empty prompt.
+    /// Images in filteredHistory that share the same non-empty prompt as the selected image.
+    /// Includes the selected image itself so it stays visible in the filmstrip when tapped.
     var filmstripSiblings: [InspectedImage] {
         guard let selected = selectedImage,
               let prompt = selected.metadata?.prompt,
               !prompt.trimmingCharacters(in: .whitespaces).isEmpty else { return [] }
-        return filteredHistory.filter { $0.id != selected.id && $0.metadata?.prompt == prompt }
+        return filteredHistory.filter { $0.metadata?.prompt == prompt }
     }
 
-    /// Remaining filteredHistory items: excludes selected image and siblings.
+    /// Remaining filteredHistory items (those not in siblings).
+    /// Includes the selected image so it stays visible in the filmstrip when tapped.
     var filmstripHistory: [InspectedImage] {
         let siblingIDs = Set(filmstripSiblings.map(\.id))
-        let selectedID = selectedImage?.id
-        return filteredHistory.filter { $0.id != selectedID && !siblingIDs.contains($0.id) }
+        return filteredHistory.filter { !siblingIDs.contains($0.id) }
     }
 
     private var cancellables = Set<AnyCancellable>()
@@ -261,6 +304,31 @@ final class ImageInspectorViewModel: ObservableObject {
             .dropFirst()
             .sink { state in
                 UserDefaults.standard.set(state.rawValue, forKey: "inspector.layoutState")
+            }
+            .store(in: &cancellables)
+
+        $selectedImage
+            .removeDuplicates(by: { $0?.id == $1?.id })
+            .dropFirst()
+            .sink { [weak self] _ in
+                self?.stageMode = .view
+                self?.maskImage = nil
+                self?.maskBitmap = nil
+            }
+            .store(in: &cancellables)
+
+        $stageMode
+            .dropFirst()
+            .sink { [weak self] mode in
+                guard let self else { return }
+                if mode == .paint {
+                    if let image = self.selectedImage?.image {
+                        self.initializeMask(for: image)
+                    }
+                } else {
+                    self.maskImage = nil
+                    self.maskBitmap = nil
+                }
             }
             .store(in: &cancellables)
 
@@ -518,7 +586,8 @@ final class ImageInspectorViewModel: ObservableObject {
                 metadata: metadata,
                 sourceName: persisted.sourceName,
                 inspectedAt: persisted.inspectedAt,
-                source: persisted.toSource()
+                source: persisted.toSource(),
+                cropNote: persisted.cropNote
             )
             loaded.append(entry)
         }
@@ -721,6 +790,142 @@ final class ImageInspectorViewModel: ObservableObject {
         if let shift = meta.shift { config.shift = shift }
 
         return config
+    }
+
+    // MARK: - Mask (Inpainting)
+
+    func initializeMask(for image: NSImage) {
+        guard let tiff = image.tiffRepresentation,
+              let srcBmp = NSBitmapImageRep(data: tiff) else { return }
+        let w = srcBmp.pixelsWide
+        let h = srcBmp.pixelsHigh
+        guard w > 0, h > 0,
+              let bmp = NSBitmapImageRep(
+                bitmapDataPlanes: nil, pixelsWide: w, pixelsHigh: h,
+                bitsPerSample: 8, samplesPerPixel: 3, hasAlpha: false,
+                isPlanar: false, colorSpaceName: .deviceRGB,
+                bitmapFormat: [], bytesPerRow: 0, bitsPerPixel: 0
+              ) else { return }
+        guard let ctx = NSGraphicsContext(bitmapImageRep: bmp) else { return }
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = ctx
+        NSColor.black.setFill()
+        NSBezierPath.fill(CGRect(x: 0, y: 0, width: w, height: h))
+        NSGraphicsContext.restoreGraphicsState()
+        maskBitmap = bmp
+        refreshMaskImage()
+    }
+
+    /// Paint (or erase) a filled circle onto the mask at the given normalized coordinate.
+    /// `brushRadiusNorm` is the radius in normalized [0–1] space based on image width.
+    func paintMask(at normPt: CGPoint, brushRadiusNorm: CGFloat, erasing: Bool) {
+        guard let bmp = maskBitmap,
+              let ctx = NSGraphicsContext(bitmapImageRep: bmp) else { return }
+        let pw = CGFloat(bmp.pixelsWide)
+        let ph = CGFloat(bmp.pixelsHigh)
+        let px = normPt.x * pw
+        let py = (1.0 - normPt.y) * ph   // flip Y: display y=0 top → bitmap y=0 bottom
+        let radiusPx = brushRadiusNorm * pw
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = ctx
+        (erasing ? NSColor.black : NSColor.white).setFill()
+        NSBezierPath(ovalIn: CGRect(
+            x: px - radiusPx, y: py - radiusPx,
+            width: radiusPx * 2, height: radiusPx * 2
+        )).fill()
+        NSGraphicsContext.restoreGraphicsState()
+        refreshMaskImage()
+    }
+
+    /// Reset mask to all-black (unpainted).
+    func clearMask() {
+        guard let image = selectedImage?.image else { return }
+        initializeMask(for: image)
+    }
+
+    private func refreshMaskImage() {
+        guard let bmp = maskBitmap else { maskImage = nil; return }
+        let img = NSImage(size: NSSize(width: bmp.pixelsWide, height: bmp.pixelsHigh))
+        img.addRepresentation(bmp)
+        maskImage = img
+    }
+
+    // MARK: - Crop Utilities
+
+    /// Crop an NSImage to the given normalized rect (0–1 in image-coordinate space).
+    /// Returns nil if the rect is degenerate or conversion fails.
+    func cropImage(_ image: NSImage, to normalizedRect: CGRect) -> NSImage? {
+        guard let tiff = image.tiffRepresentation,
+              let bitmap = NSBitmapImageRep(data: tiff),
+              let cgImage = bitmap.cgImage else { return nil }
+
+        let pixelW = CGFloat(cgImage.width)
+        let pixelH = CGFloat(cgImage.height)
+
+        // NSImage coordinate space has y=0 at bottom; CGImage has y=0 at top.
+        // normalizedRect uses display-space y (0=top), which matches CGImage.
+        let pixelRect = CGRect(
+            x: normalizedRect.origin.x * pixelW,
+            y: normalizedRect.origin.y * pixelH,
+            width: normalizedRect.width * pixelW,
+            height: normalizedRect.height * pixelH
+        )
+
+        guard pixelRect.width > 0, pixelRect.height > 0,
+              let cropped = cgImage.cropping(to: pixelRect) else { return nil }
+
+        let result = NSImage(cgImage: cropped, size: NSSize(width: pixelRect.width, height: pixelRect.height))
+        return result
+    }
+
+    /// Save a cropped image as a new entry at the top of the inspector collection.
+    func saveCroppedToInspector(_ croppedImage: NSImage, parent: InspectedImage) {
+        let newID = UUID()
+        let parentName = parent.sourceName
+        let newName: String = {
+            let base = (parentName as NSString).deletingPathExtension
+            return "\(base)_crop.png"
+        }()
+        let note = "Cropped from \(parentName)"
+
+        let entry = InspectedImage(
+            id: newID,
+            image: croppedImage,
+            metadata: parent.metadata,
+            sourceName: newName,
+            inspectedAt: Date(),
+            source: .imported(sourceURL: nil),
+            cropNote: note
+        )
+        history.insert(entry, at: 0)
+        trimHistoryIfNeeded()
+        selectedImage = entry
+
+        // Persist — write the cropped PNG and sidecar
+        guard isPersistenceEnabled else { return }
+        ensureDirectoryExists()
+        let idStr = newID.uuidString
+        let imageURL = storageDirectory.appendingPathComponent("\(idStr).png")
+        if let tiff = croppedImage.tiffRepresentation,
+           let bmp = NSBitmapImageRep(data: tiff),
+           let pngData = bmp.representation(using: .png, properties: [:]) {
+            try? pngData.write(to: imageURL)
+        }
+        let metaURL = storageDirectory.appendingPathComponent("\(idStr).json")
+        let persisted = PersistedInspectorEntry(from: entry)
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        if let jsonData = try? encoder.encode(persisted) {
+            try? jsonData.write(to: metaURL)
+        }
+    }
+
+    /// Packages the current source image + mask and signals ContentView to send them to ImageGenerationViewModel.
+    func sendMaskToDrawThings() {
+        guard let sourceImage = selectedImage?.image,
+              let mask = maskImage else { return }
+        pendingInpaintForGenerate = InpaintRequest(image: sourceImage, mask: mask)
+        stageMode = .view
     }
 
     // MARK: - Private
