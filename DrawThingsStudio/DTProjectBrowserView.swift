@@ -15,6 +15,7 @@ private struct IdentifiableNSImage: Identifiable {
 struct DTProjectBrowserView: View {
     @ObservedObject var viewModel: DTProjectBrowserViewModel
     @ObservedObject var imageGenViewModel: ImageGenerationViewModel
+    @ObservedObject var imageInspectorViewModel: ImageInspectorViewModel
     @Binding var selectedSidebarItem: SidebarItem?
 
     @State private var entryToDelete: DTGenerationEntry?
@@ -431,6 +432,20 @@ struct DTProjectBrowserView: View {
                                             Label("Export .mov", systemImage: "square.and.arrow.up")
                                         }
                                     }
+                                    Button {
+                                        if let thumbnail = clip.thumbnail,
+                                           let tiff = thumbnail.tiffRepresentation {
+                                            imageInspectorViewModel.loadImage(
+                                                data: tiff,
+                                                sourceName: clip.model.isEmpty ? "DT Project" : clip.model,
+                                                source: .drawThings(projectURL: nil)
+                                            )
+                                            selectedSidebarItem = .imageInspector
+                                        }
+                                    } label: {
+                                        Label("Send to Inspector", systemImage: "magnifyingglass")
+                                    }
+                                    .disabled(clip.thumbnail == nil)
                                     Divider()
                                     Button(role: .destructive) {
                                         clipToDelete = clip
@@ -484,6 +499,20 @@ struct DTProjectBrowserView: View {
                                         viewModel.exportImage(entry)
                                     } label: {
                                         Label("Save Image…", systemImage: "square.and.arrow.down")
+                                    }
+                                    .disabled(entry.thumbnail == nil)
+                                    Button {
+                                        if let thumbnail = entry.thumbnail,
+                                           let tiff = thumbnail.tiffRepresentation {
+                                            imageInspectorViewModel.loadImage(
+                                                data: tiff,
+                                                sourceName: entry.model.isEmpty ? "DT Project" : entry.model,
+                                                source: .drawThings(projectURL: nil)
+                                            )
+                                            selectedSidebarItem = .imageInspector
+                                        }
+                                    } label: {
+                                        Label("Send to Inspector", systemImage: "magnifyingglass")
                                     }
                                     .disabled(entry.thumbnail == nil)
                                     Divider()
@@ -630,6 +659,7 @@ struct DTProjectBrowserView: View {
                     clip: clip,
                     viewModel: viewModel,
                     imageGenViewModel: imageGenViewModel,
+                    imageInspectorViewModel: imageInspectorViewModel,
                     selectedSidebarItem: $selectedSidebarItem,
                     lightboxImage: $lightboxImage,
                     onDelete: {
@@ -641,6 +671,7 @@ struct DTProjectBrowserView: View {
                 DTDetailPanel(
                     entry: entry,
                     imageGenViewModel: imageGenViewModel,
+                    imageInspectorViewModel: imageInspectorViewModel,
                     selectedSidebarItem: $selectedSidebarItem,
                     lightboxImage: $lightboxImage,
                     onDelete: {
@@ -923,6 +954,7 @@ private struct DTClipDetailPanel: View {
     let clip: DTVideoClip
     @ObservedObject var viewModel: DTProjectBrowserViewModel
     @ObservedObject var imageGenViewModel: ImageGenerationViewModel
+    @ObservedObject var imageInspectorViewModel: ImageInspectorViewModel
     @Binding var selectedSidebarItem: SidebarItem?
     @Binding var lightboxImage: NSImage?
     let onDelete: () -> Void
@@ -1129,6 +1161,17 @@ private struct DTClipDetailPanel: View {
             .buttonStyle(NeumorphicButtonStyle(isProminent: !clip.isVideo))
             .controlSize(.large)
 
+            Button(action: sendToInspector) {
+                HStack {
+                    Image(systemName: "magnifyingglass")
+                    Text("Send to Inspector")
+                }
+                .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(NeumorphicButtonStyle())
+            .controlSize(.large)
+            .disabled(clip.frames[min(selectedFrameIndex, clip.frames.count - 1)].thumbnail == nil)
+
             Button { showSendToStoryStudio = true } label: {
                 HStack {
                     Image(systemName: "theatermasks.fill")
@@ -1229,6 +1272,18 @@ private struct DTClipDetailPanel: View {
         selectedSidebarItem = .generateImage
     }
 
+    private func sendToInspector() {
+        let idx = min(selectedFrameIndex, clip.frames.count - 1)
+        guard let thumbnail = clip.frames[idx].thumbnail,
+              let tiff = thumbnail.tiffRepresentation else { return }
+        imageInspectorViewModel.loadImage(
+            data: tiff,
+            sourceName: clip.model.isEmpty ? "DT Project" : clip.model,
+            source: .drawThings(projectURL: nil)
+        )
+        selectedSidebarItem = .imageInspector
+    }
+
     private func paramRow(_ label: String, _ value: String) -> some View {
         HStack {
             Text(label)
@@ -1249,6 +1304,7 @@ private struct DTClipDetailPanel: View {
 private struct DTDetailPanel: View {
     let entry: DTGenerationEntry
     @ObservedObject var imageGenViewModel: ImageGenerationViewModel
+    @ObservedObject var imageInspectorViewModel: ImageInspectorViewModel
     @Binding var selectedSidebarItem: SidebarItem?
     @Binding var lightboxImage: NSImage?
     let onDelete: () -> Void
@@ -1399,6 +1455,17 @@ private struct DTDetailPanel: View {
             }
             .buttonStyle(NeumorphicButtonStyle(isProminent: true))
             .controlSize(.large)
+
+            Button(action: sendToInspector) {
+                HStack {
+                    Image(systemName: "magnifyingglass")
+                    Text("Send to Inspector")
+                }
+                .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(NeumorphicButtonStyle())
+            .controlSize(.large)
+            .disabled(entry.thumbnail == nil)
 
             Button { showSendToStoryStudio = true } label: {
                 HStack {
@@ -1559,6 +1626,17 @@ private struct DTDetailPanel: View {
         }
         imageGenViewModel.syncSweepTexts()
         selectedSidebarItem = .generateImage
+    }
+
+    private func sendToInspector() {
+        guard let thumbnail = entry.thumbnail,
+              let tiff = thumbnail.tiffRepresentation else { return }
+        imageInspectorViewModel.loadImage(
+            data: tiff,
+            sourceName: entry.model.isEmpty ? "DT Project" : entry.model,
+            source: .drawThings(projectURL: nil)
+        )
+        selectedSidebarItem = .imageInspector
     }
 
     private func paramRow(_ label: String, _ value: String) -> some View {

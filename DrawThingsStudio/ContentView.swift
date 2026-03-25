@@ -126,6 +126,7 @@ struct ContentView: View {
                     DTProjectBrowserView(
                         viewModel: projectBrowserViewModel,
                         imageGenViewModel: imageGenViewModel,
+                        imageInspectorViewModel: imageInspectorViewModel,
                         selectedSidebarItem: $selectedItem
                     )
                     .transition(.opacity.combined(with: .scale(scale: 0.98)))

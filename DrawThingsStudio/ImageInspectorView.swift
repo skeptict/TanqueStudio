@@ -149,8 +149,6 @@ struct ImageInspectorView: View {
                         .scaleEffect(zoomScale)
                         .offset(panOffset)
                         .allowsHitTesting(false)
-                } else {
-                    stageEmptyState
                 }
 
                 // Crop selection overlay (rendered below gesture layer so handles are above)
@@ -307,6 +305,11 @@ struct ImageInspectorView: View {
                             }
                         )
                     )
+
+                // Empty state sits above the gesture overlay so "Open File…" button receives hits
+                if viewModel.selectedImage == nil {
+                    stageEmptyState
+                }
 
                 // Crop resize handles
                 if viewModel.stageMode == .crop, let sel = cropSelection,

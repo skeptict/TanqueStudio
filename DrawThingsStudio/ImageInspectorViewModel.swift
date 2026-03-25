@@ -356,12 +356,17 @@ final class ImageInspectorViewModel: ObservableObject {
             metadata = PNGMetadataParser.parse(data: data, url: url)
         }
 
+        let inferredSource: DTImageSource = source ?? {
+            metadata?.format == .drawThings
+                ? .drawThings(projectURL: url)
+                : .imported(sourceURL: url)
+        }()
         let entry = InspectedImage(
             image: image,
             metadata: metadata,
             sourceName: url.lastPathComponent,
             inspectedAt: Date(),
-            source: source ?? .imported(sourceURL: url)
+            source: inferredSource
         )
         history.insert(entry, at: 0)
         trimHistoryIfNeeded()
@@ -400,12 +405,17 @@ final class ImageInspectorViewModel: ObservableObject {
             }
         }
 
+        let inferredSource: DTImageSource = source ?? {
+            metadata?.format == .drawThings
+                ? .drawThings(projectURL: nil)
+                : .imported(sourceURL: nil)
+        }()
         let entry = InspectedImage(
             image: image,
             metadata: metadata,
             sourceName: sourceName,
             inspectedAt: Date(),
-            source: source ?? .imported(sourceURL: nil)
+            source: inferredSource
         )
         history.insert(entry, at: 0)
         trimHistoryIfNeeded()
