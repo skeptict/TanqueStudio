@@ -106,6 +106,10 @@ struct ContentView: View {
                     imageInspectorViewModel.pendingInpaintForGenerate = nil
                     selectedItem = .generateImage
                 }
+                .onChange(of: imageInspectorViewModel.pendingSendToGenerate) { _, req in
+                    guard let req else { return }
+                    applyInspectorSendToGenerate(req)
+                }
 
                 StoryStudioView(viewModel: storyStudioViewModel)
                     .opacity(selectedItem == .storyStudio ? 1 : 0)
@@ -175,6 +179,20 @@ struct ContentView: View {
             await DrawThingsAssetManager.shared.fetchAssets()
             await DrawThingsAssetManager.shared.fetchCloudCatalogIfNeeded()
         }
+    }
+
+    // MARK: - Inspector → Generate Image Transfer
+
+    private func applyInspectorSendToGenerate(_ req: SendToGenerateRequest) {
+        imageGenViewModel.prompt = req.prompt
+        imageGenViewModel.negativePrompt = req.negativePrompt
+        imageGenViewModel.config = req.config
+        if req.config.steps > 0 { imageGenViewModel.stepsText = "\(req.config.steps)" }
+        if req.config.guidanceScale > 0 { imageGenViewModel.guidanceText = String(format: "%.1f", req.config.guidanceScale) }
+        if req.config.shift > 0 { imageGenViewModel.shiftText = String(format: "%.1f", req.config.shift) }
+        imageGenViewModel.loadInputImage(from: req.sourceImage, name: "Inspector Image")
+        imageInspectorViewModel.pendingSendToGenerate = nil
+        selectedItem = .generateImage
     }
 
     // MARK: - Drop Routing
@@ -1036,11 +1054,11 @@ struct TemplateRowView: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(template.title)
                     .fontWeight(.medium)
-                    .foregroundColor(isSelected ? .white : .primary)
+                    .foregroundColor(isSelected ? Color.neuBackground : .primary)
 
                 Text(template.description)
                     .font(.caption)
-                    .foregroundColor(isSelected ? .white.opacity(0.8) : .secondary)
+                    .foregroundColor(isSelected ? Color.neuBackground.opacity(0.85) : .secondary)
                     .lineLimit(1)
             }
 

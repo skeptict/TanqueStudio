@@ -794,13 +794,17 @@ struct ImageInspectorView: View {
             } else if viewModel.filmstripSiblings.isEmpty {
                 // Empty state — no images at all
                 Spacer()
-                HStack(spacing: 8) {
+                VStack(spacing: 4) {
                     Image(systemName: "film.stack")
-                        .font(.caption)
-                        .foregroundColor(.neuTextSecondary.opacity(0.3))
-                    Text("Drop images to inspect")
-                        .font(.caption2)
-                        .foregroundColor(.neuTextSecondary.opacity(0.3))
+                        .font(.system(size: 18))
+                        .foregroundColor(.neuTextSecondary.opacity(0.4))
+                        .symbolEffect(.pulse, options: .repeating)
+                    Text("No images in history")
+                        .font(.system(size: 13))
+                        .foregroundColor(.neuTextSecondary)
+                    Text("Drop a PNG to begin")
+                        .font(NeuTypography.caption)
+                        .foregroundColor(.neuTextSecondary.opacity(0.6))
                 }
                 Spacer()
             }
@@ -884,7 +888,7 @@ struct ImageInspectorView: View {
             // Header
             HStack {
                 Text("COLLECTION")
-                    .font(.system(size: 10, weight: .medium))
+                    .font(NeuTypography.microMedium)
                     .foregroundColor(.neuTextSecondary)
                     .kerning(0.5)
                 Spacer()
@@ -984,12 +988,17 @@ struct ImageInspectorView: View {
         VStack(spacing: 8) {
             Spacer()
             Image(systemName: "photo.badge.arrow.down")
-                .font(.title2)
+                .font(.system(size: 28))
                 .foregroundColor(.neuTextSecondary.opacity(0.4))
                 .symbolEffect(.pulse, options: .repeating)
-            Text("Drop images here")
-                .font(.caption)
+            Text("No images yet")
+                .font(.system(size: 13))
                 .foregroundColor(.neuTextSecondary)
+            Text("Drop a PNG or use the Import button")
+                .font(NeuTypography.caption)
+                .foregroundColor(.neuTextSecondary.opacity(0.6))
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 12)
             Spacer()
         }
         .frame(maxWidth: .infinity)
@@ -1186,7 +1195,7 @@ private struct LayoutPillButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.system(size: 11, weight: .medium))
-            .foregroundColor(isActive ? .white : Color(NSColor.secondaryLabelColor))
+            .foregroundColor(isActive ? Color.neuBackground : Color(NSColor.secondaryLabelColor))
             .padding(.horizontal, 10)
             .padding(.vertical, 4)
             .background(
@@ -1230,6 +1239,7 @@ private struct CollectionThumbnailCell: View {
         )
         .scaleEffect(isHovered && !isSelected ? 1.03 : 1.0)
         .animation(.spring(response: 0.2, dampingFraction: 0.7), value: isHovered)
+        .animation(.spring(response: 0.3, dampingFraction: 0.75), value: isSelected)
         .onHover { isHovered = $0 }
     }
 }
@@ -1239,6 +1249,8 @@ private struct CollectionThumbnailCell: View {
 private struct FilmstripCell: View {
     let entry: InspectedImage
     let isSelected: Bool
+
+    @State private var isHovered = false
 
     var body: some View {
         ZStack(alignment: .bottom) {
@@ -1273,6 +1285,10 @@ private struct FilmstripCell: View {
                     lineWidth: isSelected ? 2 : 0.5
                 )
         )
+        .scaleEffect(isHovered && !isSelected ? 1.05 : 1.0)
+        .animation(.spring(response: 0.2, dampingFraction: 0.7), value: isHovered)
+        .animation(.spring(response: 0.3, dampingFraction: 0.75), value: isSelected)
+        .onHover { isHovered = $0 }
     }
 }
 

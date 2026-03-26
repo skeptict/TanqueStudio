@@ -581,8 +581,7 @@ struct ImageGenerationView: View {
                         }
                         .frame(maxHeight: 200)
                     }
-                    .background(Color.neuSurface)
-                    .cornerRadius(8)
+                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
                     .shadow(color: .black.opacity(0.1), radius: 4, x: 0, y: 2)
                     .onAppear {
                         isPresetSearchFocused = true
@@ -1286,18 +1285,18 @@ struct ImageGenerationView: View {
     }
 
     private var emptyGalleryView: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: 10) {
             Spacer()
             Image(systemName: "photo.on.rectangle.angled")
-                .font(.system(size: 48))
-                .foregroundColor(.neuTextSecondary.opacity(0.5))
+                .font(.system(size: 36))
+                .foregroundColor(.neuTextSecondary.opacity(0.4))
                 .symbolEffect(.pulse, options: .repeating)
             Text("No Images Generated")
-                .font(.title3)
+                .font(.system(size: 13))
                 .foregroundColor(.neuTextSecondary)
             Text("Enter a prompt and click Generate.")
-                .font(.callout)
-                .foregroundColor(.neuTextSecondary.opacity(0.7))
+                .font(NeuTypography.caption)
+                .foregroundColor(.neuTextSecondary.opacity(0.6))
             Button("Open Output Folder") { viewModel.openOutputFolder() }
                 .buttonStyle(NeumorphicButtonStyle())
             Spacer()
@@ -1637,8 +1636,9 @@ struct ImageGenerationView: View {
                 importMessage = "No config found in clipboard"
                 return
             }
-            // Apply first config immediately
-            viewModel.loadPreset(first.toModelConfig())
+            // Apply first config immediately — use StudioConfigPreset overload to avoid
+            // ModelConfig.lorasData being dropped on an uninserted SwiftData object.
+            viewModel.loadPreset(first)
             // Save all to SwiftData (same as file import)
             for preset in presets {
                 modelContext.insert(preset.toModelConfig())
@@ -1925,6 +1925,7 @@ private struct ThumbnailItemView: View {
             )
             .scaleEffect(isHovered ? 1.03 : 1.0)
             .animation(.spring(response: 0.2, dampingFraction: 0.7), value: isHovered)
+            .animation(.spring(response: 0.3, dampingFraction: 0.75), value: isSelected)
             .onHover { isHovered = $0 }
             .onTapGesture(count: 2) { onDoubleTap?() }
             .onTapGesture { viewModel.selectedImage = generatedImage }

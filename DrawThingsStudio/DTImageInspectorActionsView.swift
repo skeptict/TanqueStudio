@@ -13,9 +13,6 @@ struct DTImageInspectorActionsView: View {
     let entry: InspectedImage?
     @ObservedObject var viewModel: ImageInspectorViewModel
 
-    @State private var dtConnected: Bool? = nil     // nil = checking
-    @State private var isSending = false
-    @State private var sendMessage: String? = nil
     @State private var showDeleteConfirm = false
 
     private static let importDateFormatter: DateFormatter = {
@@ -28,7 +25,7 @@ struct DTImageInspectorActionsView: View {
         if let entry {
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 8) {
-                    sendToDrawThingsSection(entry)
+                    sendToGenerateImageSection(entry)
 
                     if let meta = entry.metadata,
                        let prompt = meta.prompt, !prompt.isEmpty {
@@ -54,48 +51,32 @@ struct DTImageInspectorActionsView: View {
             } message: {
                 Text("\"\(entry.sourceName)\" will be removed from the inspector history. This cannot be undone.")
             }
-            .onAppear { checkConnection() }
         } else {
             emptyState
         }
     }
 
-    // MARK: - Send to Draw Things
+    // MARK: - Send to Generate Image
 
     @ViewBuilder
-    private func sendToDrawThingsSection(_ entry: InspectedImage) -> some View {
-        VStack(alignment: .leading, spacing: 5) {
-            Button {
-                Task { @MainActor in await sendToDrawThings(entry) }
-            } label: {
-                HStack(spacing: 6) {
-                    if isSending {
-                        ProgressView().controlSize(.small).tint(.white)
-                    } else {
-                        Image(systemName: "wand.and.sparkles")
-                    }
-                    Text(isSending ? "Generating…" : "Send to Draw Things")
-                }
-                .frame(maxWidth: .infinity)
+    private func sendToGenerateImageSection(_ entry: InspectedImage) -> some View {
+        Button {
+            let config = viewModel.toGenerationConfig()
+            viewModel.pendingSendToGenerate = SendToGenerateRequest(
+                prompt: entry.metadata?.prompt ?? "",
+                negativePrompt: entry.metadata?.negativePrompt ?? "",
+                config: config,
+                sourceImage: entry.image
+            )
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "photo.badge.plus")
+                Text("Send to Generate Image")
             }
-            .buttonStyle(PrimaryActionButtonStyle())
-            .disabled(dtConnected != true || isSending ||
-                      entry.metadata?.prompt?.isEmpty != false)
-
-            if dtConnected == false {
-                Text("Connect Draw Things in Preferences")
-                    .font(.system(size: 11))
-                    .foregroundColor(.neuTextSecondary)
-            } else if dtConnected == nil {
-                Text("Checking connection…")
-                    .font(.system(size: 11))
-                    .foregroundColor(.neuTextSecondary)
-            } else if let msg = sendMessage {
-                Text(msg)
-                    .font(.system(size: 11))
-                    .foregroundColor(msg.hasPrefix("Error") ? .orange : .neuTextSecondary)
-            }
+            .frame(maxWidth: .infinity)
         }
+        .buttonStyle(PrimaryActionButtonStyle())
+        .disabled(entry.metadata?.prompt?.isEmpty != false)
     }
 
     // MARK: - Metadata Actions
@@ -148,7 +129,7 @@ struct DTImageInspectorActionsView: View {
 
             VStack(alignment: .leading, spacing: 6) {
                 Text("IMPORT INFO")
-                    .font(.system(size: 10, weight: .medium))
+                    .font(NeuTypography.microMedium)
                     .foregroundColor(.neuTextSecondary)
                     .kerning(0.3)
 
@@ -159,7 +140,7 @@ struct DTImageInspectorActionsView: View {
                 if let url = sourceURL {
                     Button(action: { NSWorkspace.shared.open(url) }) {
                         Text(url.absoluteString)
-                            .font(.system(size: 10))
+                            .font(NeuTypography.micro)
                             .foregroundColor(.neuAccent)
                             .lineLimit(2)
                             .truncationMode(.middle)
@@ -188,52 +169,12 @@ struct DTImageInspectorActionsView: View {
             Image(systemName: "photo.badge.arrow.down")
                 .font(.system(size: 28))
                 .foregroundColor(.neuTextSecondary.opacity(0.4))
+                .symbolEffect(.pulse, options: .repeating)
             Text("No image selected")
                 .font(.system(size: 13))
             Spacer()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-
-    // MARK: - Async: Send to Draw Things
-
-    @MainActor
-    private func sendToDrawThings(_ entry: InspectedImage) async {
-        guard let prompt = entry.metadata?.prompt, !prompt.isEmpty else { return }
-        isSending = true
-        sendMessage = nil
-
-        let client = AppSettings.shared.createDrawThingsClient()
-        let config = viewModel.toGenerationConfig()
-
-        do {
-            let images = try await client.generateImage(
-                prompt: prompt,
-                sourceImage: nil,
-                mask: nil,
-                config: config,
-                onProgress: { _ in }
-            )
-            if let first = images.first,
-               let tiff = first.tiffRepresentation {
-                viewModel.loadImage(data: tiff, sourceName: "DT Output", source: .drawThings(projectURL: nil))
-            }
-            let n = images.count
-            sendMessage = "\(n) image\(n == 1 ? "" : "s") generated"
-        } catch {
-            sendMessage = "Error: \(error.localizedDescription)"
-        }
-        isSending = false
-    }
-
-    // MARK: - Connection Check
-
-    private func checkConnection() {
-        dtConnected = nil
-        Task { @MainActor in
-            let client = AppSettings.shared.createDrawThingsClient()
-            dtConnected = await client.checkConnection()
-        }
     }
 
     // MARK: - Copy Actions
@@ -307,7 +248,7 @@ private struct ActionButtonStyle: ButtonStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.system(size: 12))
+            .font(NeuTypography.caption)
             .foregroundColor(isDestructive ? Color(.systemRed) : Color(NSColor.labelColor))
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 12)
@@ -327,7 +268,7 @@ private struct ActionButtonStyle: ButtonStyle {
 private struct PrimaryActionButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.system(size: 12, weight: .medium))
+            .font(NeuTypography.captionMedium)
             .foregroundColor(.white)
             .frame(maxWidth: .infinity)
             .padding(.horizontal, 12)

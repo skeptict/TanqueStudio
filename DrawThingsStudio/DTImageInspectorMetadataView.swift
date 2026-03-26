@@ -135,7 +135,7 @@ struct DTImageInspectorMetadataView: View {
 
     private func sectionLabel(_ text: String) -> some View {
         Text(text.uppercased())
-            .font(.system(size: 10, weight: .medium))
+            .font(NeuTypography.microMedium)
             .foregroundColor(.neuTextSecondary)
             .kerning(0.3)
     }
@@ -143,10 +143,10 @@ struct DTImageInspectorMetadataView: View {
     private func configCell(label: String, value: String) -> some View {
         VStack(alignment: .leading, spacing: 3) {
             Text(label.uppercased())
-                .font(.system(size: 10))
+                .font(NeuTypography.micro)
                 .foregroundColor(.neuTextSecondary)
             Text(value)
-                .font(.system(size: 12, weight: .medium))
+                .font(NeuTypography.captionMedium)
                 .lineLimit(1)
                 .truncationMode(.middle)
         }
@@ -197,7 +197,7 @@ struct DTImageInspectorMetadataView: View {
                 .font(.system(size: 13))
                 .multilineTextAlignment(.center)
             Text("Use the Assist tab to analyze this image with vision AI")
-                .font(.system(size: 12))
+                .font(NeuTypography.caption)
                 .foregroundColor(.neuTextSecondary)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 16)

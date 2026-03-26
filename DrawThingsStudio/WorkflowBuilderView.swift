@@ -313,17 +313,17 @@ struct InstructionListView: View {
 
             // List
             if viewModel.instructions.isEmpty {
-                VStack(spacing: 12) {
+                VStack(spacing: 10) {
                     Image(systemName: "doc.text")
                         .font(.system(size: 36))
-                        .foregroundColor(.neuTextSecondary.opacity(0.5))
+                        .foregroundColor(.neuTextSecondary.opacity(0.45))
                         .symbolEffect(.pulse, options: .repeating)
                     Text("No Instructions")
-                        .font(.headline)
+                        .font(.system(size: 13))
                         .foregroundColor(.neuTextSecondary)
                     Text("Add instructions using the + button\nor load a template to get started")
-                        .font(.caption)
-                        .foregroundColor(.neuTextSecondary.opacity(0.7))
+                        .font(NeuTypography.caption)
+                        .foregroundColor(.neuTextSecondary.opacity(0.6))
                         .multilineTextAlignment(.center)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)

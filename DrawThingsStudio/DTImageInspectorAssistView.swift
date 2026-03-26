@@ -59,6 +59,7 @@ struct DTImageInspectorAssistView: View {
     @State private var selectedModelName: String =
         UserDefaults.standard.string(forKey: "assist.selectedModel") ?? ""
     @State private var lastEntryID: UUID? = nil
+    @State private var sendTapCount = 0
 
     private var hasPrompt: Bool {
         guard let p = entry?.metadata?.prompt else { return false }
@@ -381,6 +382,7 @@ struct DTImageInspectorAssistView: View {
             Image(systemName: "wand.and.stars")
                 .font(.system(size: 28))
                 .foregroundColor(Color(NSColor.tertiaryLabelColor))
+                .symbolEffect(.pulse, options: .repeating)
             Text("Ask about this image")
                 .font(.system(size: 13))
                 .multilineTextAlignment(.center)
@@ -465,11 +467,13 @@ struct DTImageInspectorAssistView: View {
             )
 
             Button {
+                sendTapCount += 1
                 Task { await sendMessage() }
             } label: {
                 Image(systemName: "arrow.up.circle.fill")
                     .font(.system(size: 26))
                     .foregroundColor(canSend ? Color.accentColor : Color(NSColor.tertiaryLabelColor))
+                    .symbolEffect(.bounce, value: sendTapCount)
             }
             .buttonStyle(.plain)
             .disabled(!canSend)

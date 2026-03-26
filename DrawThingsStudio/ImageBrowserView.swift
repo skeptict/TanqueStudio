@@ -389,18 +389,27 @@ struct ImageBrowserView: View {
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if viewModel.filteredImages.isEmpty {
-                VStack(spacing: 12) {
+                VStack(spacing: 10) {
                     Image(systemName: "photo.stack")
-                        .font(.system(size: 44))
-                        .foregroundColor(.neuAccent.opacity(0.4))
+                        .font(.system(size: 32))
+                        .foregroundColor(.neuTextSecondary.opacity(0.4))
+                        .symbolEffect(.pulse, options: .repeating)
                     Text(viewModel.searchText.isEmpty ? "No images in this folder" : "No images match your search")
-                        .font(.callout)
+                        .font(.system(size: 13))
                         .foregroundColor(.neuTextSecondary)
                     if viewModel.searchText.isEmpty {
+                        Text("Choose a folder containing images to browse")
+                            .font(NeuTypography.caption)
+                            .foregroundColor(.neuTextSecondary.opacity(0.6))
+                            .multilineTextAlignment(.center)
                         Button(action: { viewModel.selectFolder() }) {
                             Label("Choose Folder", systemImage: "folder.badge.plus")
                         }
                         .buttonStyle(NeumorphicButtonStyle(isProminent: true))
+                    } else {
+                        Text("Try a different search term")
+                            .font(NeuTypography.caption)
+                            .foregroundColor(.neuTextSecondary.opacity(0.6))
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -496,6 +505,8 @@ private struct BrowserThumbnailCell: View {
     let image: BrowserImage
     let isSelected: Bool
 
+    @State private var isHovered = false
+
     var body: some View {
         VStack(spacing: 0) {
             ZStack(alignment: .bottom) {
@@ -527,7 +538,7 @@ private struct BrowserThumbnailCell: View {
                     .padding(.horizontal, 6)
                     .padding(.vertical, 4)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Color.neuBackground.opacity(0.85))
+                    .background(.ultraThinMaterial)
             }
         }
         .clipShape(RoundedRectangle(cornerRadius: 10))
@@ -537,6 +548,9 @@ private struct BrowserThumbnailCell: View {
         )
         .neuCard(cornerRadius: 10)
         .contentShape(Rectangle())
+        .scaleEffect(isHovered && !isSelected ? 1.03 : 1.0)
+        .animation(.spring(response: 0.2, dampingFraction: 0.7), value: isHovered)
+        .onHover { isHovered = $0 }
         .accessibilityLabel(image.filename)
     }
 }

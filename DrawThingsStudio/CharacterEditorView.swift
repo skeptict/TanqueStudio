@@ -768,6 +768,7 @@ struct AppearanceEditorSheet: View {
                                     ProgressView().scaleEffect(0.6)
                                 } else {
                                     Image(systemName: "wand.and.stars")
+                                        .symbolEffect(.pulse, options: .repeating)
                                 }
                                 Text("Generate Reference")
                             }

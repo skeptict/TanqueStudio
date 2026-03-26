@@ -57,15 +57,17 @@ struct StoryProjectLibraryView: View {
 
                 if projects.isEmpty {
                     Spacer()
-                    VStack(spacing: 12) {
+                    VStack(spacing: 10) {
                         Image(systemName: "book.pages")
-                            .font(.system(size: 40))
-                            .foregroundColor(.secondary)
+                            .font(.system(size: 30))
+                            .foregroundColor(.neuTextSecondary.opacity(0.4))
+                            .symbolEffect(.pulse, options: .repeating)
                         Text("No Story Projects")
-                            .font(.headline)
+                            .font(.system(size: 13))
+                            .foregroundColor(.neuTextSecondary)
                         Text("Create a project in Story Studio\nto see it here.")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
+                            .font(NeuTypography.caption)
+                            .foregroundColor(.neuTextSecondary.opacity(0.6))
                             .multilineTextAlignment(.center)
                     }
                     Spacer()

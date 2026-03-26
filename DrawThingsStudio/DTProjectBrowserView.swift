@@ -184,11 +184,17 @@ struct DTProjectBrowserView: View {
                 Spacer()
                 VStack(spacing: 8) {
                     Image(systemName: "questionmark.folder")
-                        .font(.title)
-                        .foregroundColor(.secondary)
+                        .font(.system(size: 30))
+                        .foregroundColor(.neuTextSecondary.opacity(0.4))
+                        .symbolEffect(.pulse, options: .repeating)
                     Text("No databases found")
-                        .font(.callout)
-                        .foregroundColor(.secondary)
+                        .font(.system(size: 13))
+                        .foregroundColor(.neuTextSecondary)
+                    Text("Check that the folder contains .sqlite3 files")
+                        .font(NeuTypography.caption)
+                        .foregroundColor(.neuTextSecondary.opacity(0.6))
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 16)
                 }
                 Spacer()
             } else {
@@ -369,11 +375,17 @@ struct DTProjectBrowserView: View {
                 Spacer()
                 VStack(spacing: 8) {
                     Image(systemName: viewModel.searchText.isEmpty ? "photo.on.rectangle.angled" : "magnifyingglass")
-                        .font(.title2)
-                        .foregroundColor(.secondary)
+                        .font(.system(size: 30))
+                        .foregroundColor(.neuTextSecondary.opacity(0.4))
+                        .symbolEffect(.pulse, options: .repeating)
                     Text(viewModel.searchText.isEmpty ? "No generations found" : "No matching results")
-                        .font(.callout)
-                        .foregroundColor(.secondary)
+                        .font(.system(size: 13))
+                        .foregroundColor(.neuTextSecondary)
+                    Text(viewModel.searchText.isEmpty ? "Select a different project or add more folders" : "Try adjusting your search")
+                        .font(NeuTypography.caption)
+                        .foregroundColor(.neuTextSecondary.opacity(0.6))
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 16)
                 }
                 Spacer()
             } else {
@@ -737,6 +749,7 @@ private struct DTProjectRow: View {
                     radius: 3, x: 1, y: 1
                 )
         )
+        .animation(.spring(response: 0.3, dampingFraction: 0.75), value: isSelected)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(project.name), \(DTProjectBrowserViewModel.formatFileSize(project.fileSize))")
         .accessibilityAddTraits(isSelected ? .isSelected : [])
@@ -838,6 +851,8 @@ private struct DTVideoClipCell: View {
         )
         .shadow(color: Color.neuShadowDark.opacity(colorScheme == .dark ? 0.36 : 0.2), radius: isSelected ? 6 : 3, x: 2, y: 2)
         .shadow(color: Color.neuShadowLight.opacity(colorScheme == .dark ? 0.17 : 0.6), radius: isSelected ? 6 : 3, x: -2, y: -2)
+        .scaleEffect(isHovering && !isSelected ? 1.03 : 1.0)
+        .animation(.spring(response: 0.2, dampingFraction: 0.7), value: isHovering)
         .onHover { isHovering = $0 }
         .task(id: isHovering) {
             // Animate through frames at 8 fps while hovering
@@ -851,6 +866,7 @@ private struct DTVideoClipCell: View {
                 frameIndex = (frameIndex + 1) % clip.frames.count
             }
         }
+        .animation(.spring(response: 0.3, dampingFraction: 0.75), value: isSelected)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(
             clip.isVideo
@@ -867,6 +883,7 @@ private struct DTThumbnailCell: View {
     let isSelected: Bool
     var isInSelection: Bool = false
     @Environment(\.colorScheme) private var colorScheme
+    @State private var isHovered = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -943,6 +960,10 @@ private struct DTThumbnailCell: View {
             radius: isSelected ? 6 : 3,
             x: -2, y: -2
         )
+        .scaleEffect(isHovered && !isSelected ? 1.03 : 1.0)
+        .animation(.spring(response: 0.2, dampingFraction: 0.7), value: isHovered)
+        .animation(.spring(response: 0.3, dampingFraction: 0.75), value: isSelected)
+        .onHover { isHovered = $0 }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(entry.prompt.isEmpty ? "Generation \(entry.id)" : entry.prompt)
     }

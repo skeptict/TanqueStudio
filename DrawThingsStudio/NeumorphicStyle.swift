@@ -49,6 +49,19 @@ extension Color {
     })
 }
 
+// MARK: - Typography Tokens
+
+struct NeuTypography {
+    static let title          = Font.system(size: 18, weight: .semibold)
+    static let sectionHeader  = Font.system(size: 13, weight: .semibold)
+    static let body           = Font.system(size: 14, weight: .regular)
+    static let bodyMedium     = Font.system(size: 14, weight: .medium)
+    static let caption        = Font.system(size: 12, weight: .regular)
+    static let captionMedium  = Font.system(size: 12, weight: .medium)
+    static let micro          = Font.system(size: 10, weight: .regular)
+    static let microMedium    = Font.system(size: 10, weight: .medium)
+}
+
 // MARK: - Neumorphic Card Modifier (Raised/Convex)
 
 struct NeumorphicCard: ViewModifier {
@@ -119,7 +132,7 @@ struct NeumorphicButtonStyle: ButtonStyle {
                         y: configuration.isPressed ? -1 : -4
                     )
             )
-            .foregroundColor(isProminent ? .white : .primary)
+            .foregroundColor(isProminent ? Color.neuBackground : .primary)
             .scaleEffect(configuration.isPressed ? 0.97 : 1.0)
             .animation(.spring(response: 0.2, dampingFraction: 0.7), value: configuration.isPressed)
     }
