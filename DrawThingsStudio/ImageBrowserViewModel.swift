@@ -102,6 +102,16 @@ final class ImageBrowserViewModel: ObservableObject {
 
         restoreBookmark()
         loadImages()
+
+        // Auto-refresh when ImageStorageManager saves a new image (default directory only).
+        ImageStorageManager.shared.$savedImages
+            .dropFirst()                          // skip initial value emitted on subscription
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                guard let self, self.directoryURL == self.defaultURL else { return }
+                self.loadImages()
+            }
+            .store(in: &cancellables)
     }
 
     deinit {
