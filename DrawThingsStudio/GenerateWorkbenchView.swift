@@ -10,23 +10,6 @@ import SwiftData
 import Combine
 import UniformTypeIdentifiers
 
-// MARK: - Sidebar nav entries for the workbench
-
-private struct WorkbenchNavEntry {
-    let icon: String
-    let label: String
-    let item: SidebarItem
-}
-
-private let workbenchNavEntries: [WorkbenchNavEntry] = [
-    WorkbenchNavEntry(icon: "photo.badge.plus",         label: "Generate",     item: .generateImage),
-    WorkbenchNavEntry(icon: "cylinder.split.1x2",       label: "DT Projects",  item: .projectBrowser),
-    WorkbenchNavEntry(icon: "hammer",                   label: "StoryFlow",    item: .workflow),
-    WorkbenchNavEntry(icon: "book.pages",               label: "Story Studio", item: .storyStudio),
-    WorkbenchNavEntry(icon: "photo.stack",              label: "Image Browser",item: .imageBrowser),
-    WorkbenchNavEntry(icon: "gearshape",                label: "Preferences",  item: .settings),
-]
-
 // MARK: - Main View
 
 struct GenerateWorkbenchView: View {
@@ -64,6 +47,16 @@ struct GenerateWorkbenchView: View {
     @State private var enhanceError: String?
     @State private var importMessage: String?
 
+    // Preset picker state
+    @State private var isPresetExpanded = false
+    @State private var presetSearchText = ""
+    @State private var isPresetHovered = false
+    @FocusState private var isPresetSearchFocused: Bool
+
+    // Imported gallery images (dropped or browsed from right panel)
+    @State private var importedGalleryImages: [GeneratedImage] = []
+    @State private var importedImageIDs: Set<UUID> = []
+
     // Gallery
     @State private var galleryMode: GalleryMode = .history
     @State private var selectedGalleryImageID: UUID? = nil
@@ -77,32 +70,37 @@ struct GenerateWorkbenchView: View {
     @State private var immersiveNavIndex: Int = 0
 
     var body: some View {
-        HStack(spacing: 0) {
-            // Sidebar — 36pt fixed
-            workbenchSidebar
+        ZStack {
+            HStack(spacing: 0) {
+                // Left panel — 210pt, hidden when collapsed
+                if !isLeftPanelCollapsed {
+                    workbenchLeftPanel
+                        .frame(width: 210)
+                        .transition(.move(edge: .leading).combined(with: .opacity))
+                }
 
-            // Left panel — 210pt, hidden when collapsed
-            if !isLeftPanelCollapsed {
-                workbenchLeftPanel
-                    .frame(width: 210)
-                    .transition(.move(edge: .leading).combined(with: .opacity))
+                // Canvas — flexible
+                workbenchCanvas
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+                // Gallery strip — 88pt fixed
+                workbenchGalleryStrip
+                    .frame(width: 88)
+
+                // Right panel — 270pt fixed
+                workbenchRightPanel
+                    .frame(width: 270)
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .neuBackground()
+            .animation(.spring(response: 0.3, dampingFraction: 0.82), value: isLeftPanelCollapsed)
 
-            // Canvas — flexible
-            workbenchCanvas
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-
-            // Gallery strip — 88pt fixed
-            workbenchGalleryStrip
-                .frame(width: 88)
-
-            // Right panel — 270pt fixed
-            workbenchRightPanel
-                .frame(width: 270)
+            // Full-window immersive overlay
+            if rightPanelImmersive {
+                rightPanelImmersiveOverlay
+                    .ignoresSafeArea()
+            }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .neuBackground()
-        .animation(.spring(response: 0.3, dampingFraction: 0.82), value: isLeftPanelCollapsed)
         // Auto-select most recently generated image in gallery
         .onChange(of: storageManager.savedImages.count) { _, _ in
             if let first = storageManager.savedImages.first, selectedGalleryImageID == nil {
@@ -191,7 +189,7 @@ struct GenerateWorkbenchView: View {
         meta.strength = gi.config.strength < 1.0 ? gi.config.strength : nil
         meta.seedMode = gi.config.seedMode.isEmpty ? nil : gi.config.seedMode
         meta.resolutionDependentShift = gi.config.resolutionDependentShift
-        meta.loras = gi.config.loras.map { PNGMetadataLoRA(file: $0.file, weight: $0.weight) }
+        meta.loras = gi.config.loras.map { PNGMetadataLoRA(file: $0.file, weight: $0.weight, mode: $0.mode) }
         meta.format = .drawThings
         return InspectedImage(
             image: gi.image,
@@ -200,6 +198,149 @@ struct GenerateWorkbenchView: View {
             inspectedAt: gi.generatedAt,
             source: .drawThings(projectURL: nil)
         )
+    }
+
+    // MARK: - Preset Helpers
+
+    private var filteredPresets: [ModelConfig] {
+        presetSearchText.isEmpty ? modelConfigs : modelConfigs.filter { $0.name.localizedCaseInsensitiveContains(presetSearchText) }
+    }
+
+    private var presetDisplayText: String {
+        guard !selectedPresetID.isEmpty else { return "Custom" }
+        return modelConfigs.first(where: { $0.id.uuidString == selectedPresetID })?.name ?? "Custom"
+    }
+
+    private func copyConfigToClipboard() {
+        guard let json = ConfigPresetsManager.shared.drawThingsJSON(for: viewModel.config) else {
+            importMessage = "Failed to serialize config"; return
+        }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(json, forType: .string)
+        importMessage = "Config copied to clipboard"
+    }
+
+    private func handleClipboardPaste() {
+        guard let text = NSPasteboard.general.string(forType: .string),
+              let data = text.data(using: .utf8) else {
+            importMessage = "Clipboard doesn't contain text"; return
+        }
+        do {
+            let presets = try ConfigPresetsManager.shared.importPresetsFromData(data)
+            guard let first = presets.first else { importMessage = "No config found in clipboard"; return }
+            viewModel.loadPreset(first)
+            for preset in presets { modelContext.insert(preset.toModelConfig()) }
+            importMessage = "Pasted config"
+        } catch {
+            importMessage = "Paste failed: \(error.localizedDescription)"
+        }
+    }
+
+    private var workbenchPresetSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 4) {
+                Text("Preset").font(.caption).foregroundColor(.neuTextSecondary)
+                Spacer()
+                Button(action: copyConfigToClipboard) { Image(systemName: "doc.on.doc") }
+                    .buttonStyle(NeumorphicIconButtonStyle()).help("Copy config to clipboard")
+                Button(action: handleClipboardPaste) { Image(systemName: "doc.on.clipboard") }
+                    .buttonStyle(NeumorphicIconButtonStyle()).help("Paste config from clipboard")
+                Button { showingConfigImport = true } label: { Image(systemName: "square.and.arrow.down") }
+                    .buttonStyle(NeumorphicIconButtonStyle()).help("Import presets from JSON")
+            }
+
+            VStack(spacing: 0) {
+                Button {
+                    withAnimation(.spring(response: 0.2, dampingFraction: 0.7)) {
+                        isPresetExpanded.toggle()
+                        if isPresetExpanded { presetSearchText = "" }
+                    }
+                } label: {
+                    HStack {
+                        Text(presetDisplayText)
+                            .font(.caption)
+                            .foregroundColor(selectedPresetID.isEmpty ? .secondary : .primary)
+                            .lineLimit(1).truncationMode(.middle)
+                        Spacer()
+                        Image(systemName: isPresetExpanded ? "chevron.up" : "chevron.down")
+                            .foregroundColor(.secondary).font(.caption)
+                    }
+                    .padding(.horizontal, 8).padding(.vertical, 6)
+                    .background(
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .fill(isPresetHovered ? Color.neuSurface.opacity(0.9) : Color.neuSurface)
+                    )
+                }
+                .buttonStyle(.plain)
+                .onHover { isPresetHovered = $0 }
+                .help(selectedPresetID.isEmpty ? "" : presetDisplayText)
+
+                if isPresetExpanded {
+                    VStack(spacing: 0) {
+                        HStack {
+                            Image(systemName: "magnifyingglass").foregroundColor(.secondary).font(.caption)
+                            TextField("Search presets...", text: $presetSearchText)
+                                .textFieldStyle(.plain).font(.caption).focused($isPresetSearchFocused)
+                        }
+                        .padding(.horizontal, 8).padding(.vertical, 6)
+                        .background(Color.neuBackground)
+                        Divider()
+                        ScrollView {
+                            LazyVStack(alignment: .leading, spacing: 0) {
+                                if presetSearchText.isEmpty {
+                                    Button {
+                                        selectedPresetID = ""
+                                        withAnimation(.easeInOut(duration: 0.2)) { isPresetExpanded = false }
+                                    } label: {
+                                        HStack {
+                                            Text("Custom").font(.caption).foregroundColor(.secondary)
+                                            Spacer()
+                                            if selectedPresetID.isEmpty { Image(systemName: "checkmark").font(.caption).foregroundColor(.accentColor) }
+                                        }
+                                        .padding(.horizontal, 8).padding(.vertical, 5)
+                                        .background(selectedPresetID.isEmpty ? Color.accentColor.opacity(0.1) : Color.clear)
+                                        .contentShape(Rectangle())
+                                    }.buttonStyle(.plain)
+                                }
+                                if filteredPresets.isEmpty && !presetSearchText.isEmpty {
+                                    Text("No presets found").foregroundColor(.secondary).font(.caption)
+                                        .padding(.horizontal, 8).padding(.vertical, 6)
+                                } else {
+                                    ForEach(filteredPresets) { config in
+                                        let isSel = selectedPresetID == config.id.uuidString
+                                        Button {
+                                            selectedPresetID = config.id.uuidString
+                                            viewModel.loadPreset(config)
+                                            withAnimation(.easeInOut(duration: 0.2)) { isPresetExpanded = false }
+                                        } label: {
+                                            HStack {
+                                                Text(config.name).font(.caption).lineLimit(1).truncationMode(.middle)
+                                                Spacer()
+                                                if isSel { Image(systemName: "checkmark").font(.caption).foregroundColor(.accentColor) }
+                                            }
+                                            .padding(.horizontal, 8).padding(.vertical, 5)
+                                            .contentShape(Rectangle())
+                                        }
+                                        .buttonStyle(.plain)
+                                        .background(isSel ? Color.accentColor.opacity(0.1) : Color.clear)
+                                        .contextMenu {
+                                            Button("Delete", role: .destructive) {
+                                                if selectedPresetID == config.id.uuidString { selectedPresetID = "" }
+                                                modelContext.delete(config)
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        .frame(maxHeight: 180)
+                    }
+                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+                    .shadow(color: .black.opacity(0.1), radius: 4, x: 0, y: 2)
+                    .onAppear { isPresetSearchFocused = true }
+                }
+            }
+        }
     }
 
     private var workbenchRightPanel: some View {
@@ -223,7 +364,7 @@ struct GenerateWorkbenchView: View {
                     case .assist:
                         DTImageInspectorAssistView(entry: rightPanelEntry, viewModel: inspectorViewModel)
                     case .actions:
-                        DTImageInspectorActionsView(entry: rightPanelEntry, viewModel: inspectorViewModel)
+                        workbenchActionsTab
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -253,6 +394,80 @@ struct GenerateWorkbenchView: View {
             if rightPanelImmersive {
                 rightPanelImmersiveOverlay
             }
+        }
+    }
+
+    private var workbenchActionsTab: some View {
+        ScrollView(showsIndicators: false) {
+            VStack(alignment: .leading, spacing: 10) {
+                if let entry = rightPanelEntry {
+                    Text("Send to Generate").font(.caption).foregroundColor(.neuTextSecondary)
+
+                    Button {
+                        sendToGenerate(entry: entry, image: true, prompt: true, config: true)
+                    } label: {
+                        Text("Use all").frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(NeumorphicButtonStyle(isProminent: true))
+
+                    HStack(spacing: 6) {
+                        Button("Prompt") { sendToGenerate(entry: entry, image: false, prompt: true, config: false) }
+                        Button("Config") { sendToGenerate(entry: entry, image: false, prompt: false, config: true) }
+                        Button("As i2i") { sendToGenerate(entry: entry, image: true, prompt: false, config: false) }
+                    }
+                    .font(.caption2)
+                    .buttonStyle(NeumorphicButtonStyle())
+
+                    Button {
+                        sendToGenerate(entry: entry, image: true, prompt: true, config: true)
+                        viewModel.generateOrRunPipeline()
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "wand.and.stars")
+                            Text("Generate again")
+                        }
+                        .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(NeumorphicButtonStyle())
+                    .disabled(viewModel.isGenerating)
+
+                    Divider().padding(.vertical, 4)
+
+                    if let meta = entry.metadata {
+                        if let prompt = meta.prompt {
+                            Button {
+                                viewModel.prompt = prompt
+                            } label: {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "text.quote")
+                                    Text("Use prompt")
+                                }
+                                .frame(maxWidth: .infinity)
+                            }
+                            .buttonStyle(NeumorphicButtonStyle())
+                        }
+                        if let negPrompt = meta.negativePrompt, !negPrompt.isEmpty {
+                            Button {
+                                viewModel.negativePrompt = negPrompt
+                            } label: {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "text.quote")
+                                    Text("Use negative prompt")
+                                }
+                                .frame(maxWidth: .infinity)
+                            }
+                            .buttonStyle(NeumorphicButtonStyle())
+                        }
+                    }
+                } else {
+                    Text("Select an image to see actions")
+                        .font(.caption)
+                        .foregroundColor(.neuTextSecondary)
+                        .frame(maxWidth: .infinity, alignment: .center)
+                        .padding(.top, 20)
+                }
+            }
+            .padding(10)
         }
     }
 
@@ -427,6 +642,8 @@ struct GenerateWorkbenchView: View {
         }
         .onKeyPress(.leftArrow)  { navigateImmersive(by: -1); return .handled }
         .onKeyPress(.rightArrow) { navigateImmersive(by: 1);  return .handled }
+        .onKeyPress(.escape) { rightPanelImmersive = false; return .handled }
+        .focusable()
     }
 
     private func navigateImmersive(by delta: Int) {
@@ -462,7 +679,10 @@ struct GenerateWorkbenchView: View {
                     let meta = PNGMetadataParser.parse(url: url)
                     let entry = InspectedImage(image: image, metadata: meta, sourceName: url.lastPathComponent,
                                                inspectedAt: Date(), source: .imported(sourceURL: url))
-                    await MainActor.run { droppedEntry = entry; showSendBar = true; rightPanelTab = .metadata }
+                    await MainActor.run {
+                        droppedEntry = entry; showSendBar = true; rightPanelTab = .metadata
+                        addImportedToGallery(image: image, name: url.lastPathComponent, meta: meta)
+                    }
                     return
                 }
             }
@@ -476,11 +696,31 @@ struct GenerateWorkbenchView: View {
                 if let image {
                     let entry = InspectedImage(image: image, metadata: nil, sourceName: "Dropped Image",
                                                inspectedAt: Date(), source: .imported(sourceURL: nil))
-                    await MainActor.run { droppedEntry = entry; showSendBar = true; rightPanelTab = .metadata }
+                    await MainActor.run {
+                        droppedEntry = entry; showSendBar = true; rightPanelTab = .metadata
+                        addImportedToGallery(image: image, name: "Dropped Image", meta: nil)
+                    }
                 }
             }
         }
         return true
+    }
+
+    private func addImportedToGallery(image: NSImage, name: String, meta: PNGMetadata?) {
+        var cfg = DrawThingsGenerationConfig()
+        if let m = meta {
+            cfg.model = m.model ?? ""
+            cfg.steps = m.steps ?? 0
+            cfg.width = m.width ?? Int(image.size.width)
+            cfg.height = m.height ?? Int(image.size.height)
+        } else {
+            cfg.width = Int(image.size.width)
+            cfg.height = Int(image.size.height)
+        }
+        let gi = GeneratedImage(image: image, prompt: meta?.prompt ?? "", negativePrompt: meta?.negativePrompt ?? "", config: cfg)
+        importedGalleryImages.insert(gi, at: 0)
+        importedImageIDs.insert(gi.id)
+        selectedGalleryImageID = gi.id
     }
 
     private func browseForRightPanelImage() {
@@ -497,6 +737,7 @@ struct GenerateWorkbenchView: View {
             droppedEntry = entry
             showSendBar = true
             rightPanelTab = .metadata
+            addImportedToGallery(image: image, name: url.lastPathComponent, meta: meta)
         }
     }
 
@@ -505,14 +746,20 @@ struct GenerateWorkbenchView: View {
     private enum GalleryMode { case history, siblings }
 
     private var galleryImages: [GeneratedImage] {
-        let all = storageManager.savedImages
+        let generated = storageManager.savedImages
+        let base: [GeneratedImage]
         switch galleryMode {
         case .history:
-            return all
+            base = generated
         case .siblings:
-            guard let sel = selectedGalleryImage else { return all }
-            return all.filter { $0.prompt == sel.prompt }
+            if let sel = selectedGalleryImage {
+                base = generated.filter { $0.prompt == sel.prompt }
+            } else {
+                base = generated
+            }
         }
+        // Prepend imported images so they appear at the top of the strip (gray outline)
+        return importedGalleryImages + base
     }
 
     private var selectedGalleryImage: GeneratedImage? {
@@ -553,7 +800,7 @@ struct GenerateWorkbenchView: View {
                 LazyVStack(spacing: 4) {
                     ForEach(galleryImages) { img in
                         let isSelected = selectedGalleryImageID == img.id
-                        let isGenerated = true  // all storageManager images are generated by this app
+                        let isGenerated = !importedImageIDs.contains(img.id)
 
                         Button {
                             selectedGalleryImageID = img.id
@@ -786,58 +1033,6 @@ struct GenerateWorkbenchView: View {
         }
     }
 
-    // MARK: - Sidebar
-
-    private var workbenchSidebar: some View {
-        VStack(spacing: 0) {
-            // Collapse/expand toggle
-            Button {
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.82)) {
-                    isLeftPanelCollapsed.toggle()
-                }
-            } label: {
-                Image(systemName: "chevron.left")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundColor(.neuTextSecondary)
-                    .rotationEffect(.degrees(isLeftPanelCollapsed ? 180 : 0))
-                    .frame(width: 28, height: 28)
-            }
-            .buttonStyle(.plain)
-            .padding(.top, 10)
-            .help(isLeftPanelCollapsed ? "Expand panel" : "Collapse panel")
-
-            Divider()
-                .padding(.vertical, 6)
-                .padding(.horizontal, 6)
-
-            // Nav icons
-            ForEach(workbenchNavEntries, id: \.item.rawValue) { entry in
-                let isActiveItem = selectedSidebarItem == entry.item
-                Button {
-                    if !isActiveItem {
-                        selectedSidebarItem = entry.item
-                    }
-                } label: {
-                    Image(systemName: entry.icon)
-                        .font(.system(size: 14))
-                        .foregroundColor(isActiveItem ? .neuAccent : .neuTextSecondary)
-                        .frame(width: 28, height: 28)
-                        .background(
-                            RoundedRectangle(cornerRadius: 7, style: .continuous)
-                                .fill(isActiveItem ? Color.neuAccent.opacity(0.15) : Color.clear)
-                        )
-                }
-                .buttonStyle(.plain)
-                .help(entry.label)
-                .padding(.vertical, 2)
-            }
-
-            Spacer()
-        }
-        .frame(width: 36)
-        .background(Color.neuSurface.opacity(0.6))
-    }
-
     // MARK: - Left Panel
 
     private var workbenchLeftPanel: some View {
@@ -979,6 +1174,9 @@ struct GenerateWorkbenchView: View {
 
     @ViewBuilder
     private var leftPanelConfigForm: some View {
+        // Config Preset
+        workbenchPresetSection
+
         // Model
         ModelSelectorView(
             availableModels: assetManager.allModels,
@@ -1017,21 +1215,36 @@ struct GenerateWorkbenchView: View {
                 .textFieldStyle(NeumorphicTextFieldStyle())
         }
 
-        // Shift
-        wbSweepDoubleField("Shift", text: $viewModel.shiftText) { viewModel.config.shift = $0 }
-
-        // Strength (img2img)
-        VStack(alignment: .leading, spacing: 4) {
-            Text("Strength").font(.caption).foregroundColor(.neuTextSecondary)
-            HStack(spacing: 6) {
-                Slider(value: $viewModel.config.strength, in: 0...1, step: 0.05)
-                    .tint(Color.neuAccent)
-                Text(String(format: "%.2f", viewModel.config.strength))
-                    .font(.caption2)
-                    .foregroundColor(.neuTextSecondary)
-                    .frame(width: 30)
+        // Shift + RDS
+        HStack(alignment: .bottom, spacing: 8) {
+            if viewModel.config.resolutionDependentShift == true {
+                // RDS on: show computed shift as read-only
+                let computed = DrawThingsGenerationConfig.rdsComputedShift(width: viewModel.config.width, height: viewModel.config.height)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Shift (RDS)").font(.caption).foregroundColor(.neuTextSecondary)
+                    Text(String(format: "%.2f", computed))
+                        .font(.caption).foregroundColor(.neuTextSecondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 8).padding(.vertical, 6)
+                        .background(RoundedRectangle(cornerRadius: 8).fill(Color.neuSurface.opacity(0.5)))
+                }
+            } else {
+                wbSweepDoubleField("Shift", text: $viewModel.shiftText) { viewModel.config.shift = $0 }
+            }
+            VStack(alignment: .leading, spacing: 2) {
+                Text("RDS").font(.caption).foregroundColor(.neuTextSecondary)
+                Picker("", selection: $viewModel.config.resolutionDependentShift) {
+                    Text("Auto").tag(Bool?.none)
+                    Text("On").tag(Bool?.some(true))
+                    Text("Off").tag(Bool?.some(false))
+                }
+                .labelsHidden().pickerStyle(.menu)
+                .frame(maxWidth: 70)
             }
         }
+
+        // Source Image + Strength
+        workbenchSourceImageSection
 
         // LoRAs
         Divider()
@@ -1039,6 +1252,105 @@ struct GenerateWorkbenchView: View {
             availableLoRAs: assetManager.loras,
             selectedLoRAs: $viewModel.config.loras
         )
+    }
+
+    // MARK: - Source Image Section
+
+    @ViewBuilder
+    private var workbenchSourceImageSection: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 4) {
+                Text("Source Image").font(.caption).foregroundColor(.neuTextSecondary)
+                Spacer()
+                if viewModel.inputImage != nil {
+                    Button { viewModel.clearInputImage() } label: {
+                        Image(systemName: "xmark.circle.fill").foregroundColor(.neuTextSecondary)
+                    }
+                    .buttonStyle(.plain).help("Remove source image")
+                }
+            }
+
+            if let inputImage = viewModel.inputImage {
+                HStack(spacing: 8) {
+                    Image(nsImage: inputImage)
+                        .resizable().aspectRatio(contentMode: .fill)
+                        .frame(width: 52, height: 52).clipped()
+                        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(viewModel.inputImageName ?? "Source Image")
+                            .font(.caption).lineLimit(1).truncationMode(.middle)
+                        Text("img2img").font(.caption2).foregroundColor(.neuAccent)
+                    }
+                    Spacer()
+                    Button { showSourceImagePicker = true } label: {
+                        Image(systemName: "arrow.triangle.2.circlepath")
+                    }
+                    .buttonStyle(NeumorphicIconButtonStyle()).help("Replace source image")
+                }
+                .padding(6)
+                .background(RoundedRectangle(cornerRadius: 8).fill(Color.neuSurface.opacity(0.5)))
+            } else {
+                VStack(spacing: 6) {
+                    Image(systemName: "photo.badge.arrow.down")
+                        .font(.title3)
+                        .foregroundColor(isSourceDropTargeted ? .neuAccent : .neuTextSecondary.opacity(0.4))
+                    Text("Drop or click to browse")
+                        .font(.system(size: 10))
+                        .foregroundColor(.neuTextSecondary)
+                }
+                .frame(maxWidth: .infinity).frame(height: 64)
+                .background(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .strokeBorder(
+                            isSourceDropTargeted ? Color.neuAccent : Color.neuTextSecondary.opacity(0.2),
+                            style: StrokeStyle(lineWidth: 1.5, dash: [5, 3])
+                        )
+                        .background(
+                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .fill(isSourceDropTargeted ? Color.neuAccent.opacity(0.05) : Color.clear)
+                        )
+                )
+                .onDrop(of: [.fileURL, .url, .png, .tiff, .image], isTargeted: $isSourceDropTargeted) { providers in
+                    guard let provider = providers.first else { return false }
+                    Task { await loadSourceFromProvider(provider) }
+                    return true
+                }
+                .onTapGesture { showSourceImagePicker = true }
+            }
+
+            // Strength slider (always shown)
+            HStack(spacing: 6) {
+                Text("Strength").font(.caption).foregroundColor(.neuTextSecondary).frame(width: 50, alignment: .leading)
+                Slider(value: $viewModel.config.strength, in: 0...1, step: 0.05).tint(Color.neuAccent)
+                Text(String(format: "%.2f", viewModel.config.strength))
+                    .font(.caption2).foregroundColor(.neuTextSecondary).frame(width: 30)
+            }
+        }
+    }
+
+    private func loadSourceFromProvider(_ provider: NSItemProvider) async {
+        if provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) {
+            do {
+                if let url = try await provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier) as? URL {
+                    await MainActor.run { viewModel.loadInputImage(from: url) }
+                    return
+                }
+                if let data = try await provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier) as? Data,
+                   let url = URL(dataRepresentation: data, relativeTo: nil), url.isFileURL {
+                    await MainActor.run { viewModel.loadInputImage(from: url) }
+                    return
+                }
+            } catch {}
+        }
+        if provider.canLoadObject(ofClass: NSImage.self) {
+            if let image = try? await withCheckedThrowingContinuation({ (cont: CheckedContinuation<NSImage?, Error>) in
+                provider.loadObject(ofClass: NSImage.self) { obj, err in
+                    if let err { cont.resume(throwing: err) } else { cont.resume(returning: obj as? NSImage) }
+                }
+            }) {
+                await MainActor.run { viewModel.loadInputImage(from: image, name: "Dropped Image") }
+            }
+        }
     }
 
     // MARK: - Left Panel Helpers
