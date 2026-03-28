@@ -286,6 +286,9 @@ struct LoRAConfigurationView: View {
                 .buttonStyle(NeumorphicIconButtonStyle())
                 .accessibilityIdentifier("lora_addButton")
                 .accessibilityLabel("Add LoRA")
+                .popover(isPresented: $showAddLoRA, arrowEdge: .trailing) {
+                    loraAddPopover
+                }
             }
 
             // Selected LoRAs - always show, even if not in available list
@@ -313,100 +316,93 @@ struct LoRAConfigurationView: View {
                 }
             }
 
-            // Add LoRA dropdown
-            if showAddLoRA {
-                VStack(spacing: 0) {
-                    // Manual entry field (always available)
-                    HStack {
-                        Image(systemName: "pencil")
-                            .foregroundColor(.secondary)
-                            .font(.caption)
+        }
+    }
 
-                        TextField("Enter LoRA filename...", text: $manualLoRAName)
-                            .textFieldStyle(.plain)
-                            .font(.caption)
-                            .onSubmit {
-                                addManualLoRA()
-                            }
-                            .accessibilityIdentifier("lora_manualEntryField")
-                            .accessibilityLabel("Enter LoRA filename manually")
+    @ViewBuilder
+    private var loraAddPopover: some View {
+        VStack(spacing: 0) {
+            // Manual entry field
+            HStack {
+                Image(systemName: "pencil")
+                    .foregroundColor(.secondary)
+                    .font(.caption)
 
-                        if !manualLoRAName.isEmpty {
-                            Button {
-                                addManualLoRA()
-                            } label: {
-                                Image(systemName: "plus.circle.fill")
-                                    .foregroundColor(.neuAccent)
-                                    .font(.caption)
-                            }
-                            .buttonStyle(.plain)
-                        }
+                TextField("Enter LoRA filename...", text: $manualLoRAName)
+                    .textFieldStyle(.plain)
+                    .font(.caption)
+                    .onSubmit { addManualLoRA() }
+                    .accessibilityIdentifier("lora_manualEntryField")
+                    .accessibilityLabel("Enter LoRA filename manually")
+
+                if !manualLoRAName.isEmpty {
+                    Button { addManualLoRA() } label: {
+                        Image(systemName: "plus.circle.fill")
+                            .foregroundColor(.neuAccent)
+                            .font(.caption)
                     }
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 8)
-                    .background(Color.neuSurface)
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
 
-                    if !availableLoRAs.isEmpty {
-                        Divider()
+            if !availableLoRAs.isEmpty {
+                Divider()
 
-                        // Search field for available LoRAs
-                        HStack {
-                            Image(systemName: "magnifyingglass")
+                HStack {
+                    Image(systemName: "magnifyingglass")
+                        .foregroundColor(.secondary)
+                        .font(.caption)
+
+                    TextField("Search available LoRAs...", text: $searchText)
+                        .textFieldStyle(.plain)
+                        .font(.caption)
+                        .accessibilityLabel("Search LoRAs")
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 8)
+
+                Divider()
+
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 0) {
+                        if filteredLoRAs.isEmpty {
+                            Text("No matching LoRAs")
                                 .foregroundColor(.secondary)
                                 .font(.caption)
-
-                            TextField("Search available LoRAs...", text: $searchText)
-                                .textFieldStyle(.plain)
-                                .font(.caption)
-                                .accessibilityLabel("Search LoRAs")
-                        }
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 8)
-                        .background(Color.neuBackground)
-
-                        Divider()
-
-                        // Results
-                        ScrollView {
-                            LazyVStack(alignment: .leading, spacing: 0) {
-                                if filteredLoRAs.isEmpty {
-                                    Text("No matching LoRAs")
-                                        .foregroundColor(.secondary)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 8)
+                        } else {
+                            ForEach(filteredLoRAs) { lora in
+                                Button {
+                                    selectedLoRAs.append(
+                                        DrawThingsGenerationConfig.LoRAConfig(
+                                            file: lora.filename,
+                                            weight: 0.6
+                                        )
+                                    )
+                                    showAddLoRA = false
+                                    searchText = ""
+                                } label: {
+                                    Text(lora.name)
                                         .font(.caption)
                                         .padding(.horizontal, 10)
-                                        .padding(.vertical, 8)
-                                } else {
-                                    ForEach(filteredLoRAs) { lora in
-                                        Button {
-                                            selectedLoRAs.append(
-                                                DrawThingsGenerationConfig.LoRAConfig(
-                                                    file: lora.filename,
-                                                    weight: 0.6
-                                                )
-                                            )
-                                            showAddLoRA = false
-                                            searchText = ""
-                                        } label: {
-                                            Text(lora.name)
-                                                .font(.caption)
-                                                .padding(.horizontal, 10)
-                                                .padding(.vertical, 6)
-                                                .frame(maxWidth: .infinity, alignment: .leading)
-                                                .contentShape(Rectangle())
-                                        }
-                                        .buttonStyle(.plain)
-                                        .accessibilityLabel("Add \(lora.name)")
-                                    }
+                                        .padding(.vertical, 6)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                        .contentShape(Rectangle())
                                 }
+                                .buttonStyle(.plain)
+                                .accessibilityLabel("Add \(lora.name)")
                             }
                         }
-                        .frame(maxHeight: 150)
                     }
                 }
-                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
-                .shadow(color: .black.opacity(0.1), radius: 4, x: 0, y: 2)
+                .frame(maxHeight: 200)
             }
         }
+        .frame(width: 240)
+        .padding(.vertical, 4)
     }
 
     private func addManualLoRA() {
