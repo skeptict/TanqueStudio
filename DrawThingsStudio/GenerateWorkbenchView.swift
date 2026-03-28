@@ -53,6 +53,12 @@ struct GenerateWorkbenchView: View {
     @State private var isPresetHovered = false
     @FocusState private var isPresetSearchFocused: Bool
 
+    // Immersive overlay focus
+    @FocusState private var immersiveOverlayFocused: Bool
+
+    // ScrollView refresh for LoRA height changes
+    @State private var configScrollRefreshID = UUID()
+
     // Imported gallery images (dropped or browsed from right panel)
     @State private var importedGalleryImages: [GeneratedImage] = []
     @State private var importedImageIDs: Set<UUID> = []
@@ -99,6 +105,8 @@ struct GenerateWorkbenchView: View {
             if rightPanelImmersive {
                 rightPanelImmersiveOverlay
                     .ignoresSafeArea()
+                    .focused($immersiveOverlayFocused)
+                    .onAppear { immersiveOverlayFocused = true }
             }
         }
         // Auto-select most recently generated image in gallery
@@ -356,7 +364,7 @@ struct GenerateWorkbenchView: View {
 
                 Divider()
 
-                // Tab content
+                // Tab content — capped height so the drop zone below can expand
                 Group {
                     switch rightPanelTab {
                     case .metadata:
@@ -367,7 +375,7 @@ struct GenerateWorkbenchView: View {
                         workbenchActionsTab
                     }
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .frame(maxWidth: .infinity, maxHeight: 220)
 
                 // Send bar (visible after drop)
                 if showSendBar, let entry = droppedEntry {
@@ -542,33 +550,33 @@ struct GenerateWorkbenchView: View {
 
     private var rightPanelDropZone: some View {
         ZStack {
-            RoundedRectangle(cornerRadius: 0)
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .fill(rightDropTargeted ? Color.neuAccent.opacity(0.06) : Color.clear)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .stroke(
+                            rightDropTargeted ? Color.neuAccent.opacity(0.5) : Color.neuShadowDark.opacity(0.12),
+                            style: StrokeStyle(lineWidth: 1, dash: rightDropTargeted ? [] : [5, 3])
+                        )
+                )
 
-            HStack(spacing: 6) {
+            VStack(spacing: 8) {
                 Image(systemName: "square.and.arrow.down.on.square")
-                    .font(.caption)
-                    .foregroundColor(rightDropTargeted ? .neuAccent : .neuTextSecondary)
-                Text("Drop image to inspect · click to browse")
+                    .font(.system(size: 22))
+                    .foregroundColor(rightDropTargeted ? .neuAccent : .neuTextSecondary.opacity(0.4))
+                Text("Drop image to inspect\nor click to browse")
                     .font(.system(size: 10))
+                    .multilineTextAlignment(.center)
                     .foregroundColor(rightDropTargeted ? .neuAccent : .neuTextSecondary)
             }
-            .padding(.vertical, 12)
         }
-        .frame(height: 48)
+        .frame(maxWidth: .infinity, minHeight: 80, maxHeight: .infinity)
         .onDrop(of: [.image, .fileURL], isTargeted: $rightDropTargeted) { providers in
             handleRightPanelDrop(providers)
         }
         .onTapGesture {
             browseForRightPanelImage()
         }
-        .overlay(
-            Rectangle()
-                .stroke(
-                    rightDropTargeted ? Color.neuAccent.opacity(0.4) : Color.neuShadowDark.opacity(0.08),
-                    style: StrokeStyle(lineWidth: 1, dash: rightDropTargeted ? [] : [4, 3])
-                )
-        )
         .padding(.horizontal, 8)
         .padding(.vertical, 6)
     }
@@ -672,11 +680,18 @@ struct GenerateWorkbenchView: View {
     private func handleRightPanelDrop(_ providers: [NSItemProvider]) -> Bool {
         guard let provider = providers.first else { return false }
         Task {
-            // Try file URL first
+            // Try file URL first — must access security scope so PNGMetadataParser.parse
+            // can read PNG chunks via Data(contentsOf:) (NSImage bypasses this restriction)
             if provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) {
-                if let url = try? await provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier) as? URL,
-                   let image = NSImage(contentsOf: url) {
+                var resolvedURL: URL? = try? await provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier) as? URL
+                if resolvedURL == nil,
+                   let data = try? await provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier) as? Data {
+                    resolvedURL = URL(dataRepresentation: data, relativeTo: nil)
+                }
+                if let url = resolvedURL, let image = NSImage(contentsOf: url) {
+                    let accessed = url.startAccessingSecurityScopedResource()
                     let meta = PNGMetadataParser.parse(url: url)
+                    if accessed { url.stopAccessingSecurityScopedResource() }
                     let entry = InspectedImage(image: image, metadata: meta, sourceName: url.lastPathComponent,
                                                inspectedAt: Date(), source: .imported(sourceURL: url))
                     await MainActor.run {
@@ -758,13 +773,14 @@ struct GenerateWorkbenchView: View {
                 base = generated
             }
         }
-        // Prepend imported images so they appear at the top of the strip (gray outline)
-        return importedGalleryImages + base
+        // Merge imported and generated images, sorted chronologically (newest first)
+        return (importedGalleryImages + base).sorted { $0.generatedAt > $1.generatedAt }
     }
 
     private var selectedGalleryImage: GeneratedImage? {
         guard let id = selectedGalleryImageID else { return nil }
         return storageManager.savedImages.first { $0.id == id }
+            ?? importedGalleryImages.first { $0.id == id }
     }
 
     private var workbenchGalleryStrip: some View {
@@ -889,8 +905,33 @@ struct GenerateWorkbenchView: View {
                             .scaleEffect(canvasZoomScale)
                             .offset(canvasPanOffset)
                             .allowsHitTesting(false)
+                            .opacity(viewModel.isGenerating ? 0.4 : 1.0)
+                            .animation(.easeInOut(duration: 0.25), value: viewModel.isGenerating)
                     } else {
                         canvasEmptyState
+                    }
+
+                    // Generation progress overlay
+                    if viewModel.isGenerating {
+                        VStack(spacing: 14) {
+                            ProgressView()
+                                .progressViewStyle(.circular)
+                                .controlSize(.large)
+                                .tint(.white)
+                            Text("Generating…")
+                                .font(.system(size: 13, weight: .medium))
+                                .foregroundColor(.white.opacity(0.85))
+                            if viewModel.progressFraction > 0 {
+                                ProgressView(value: viewModel.progressFraction)
+                                    .progressViewStyle(.linear)
+                                    .tint(Color.neuAccent)
+                                    .frame(width: 160)
+                            }
+                        }
+                        .padding(24)
+                        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                        .allowsHitTesting(false)
+                        .transition(.opacity.combined(with: .scale(scale: 0.9)))
                     }
 
                     // Zoom indicator
@@ -1047,9 +1088,12 @@ struct GenerateWorkbenchView: View {
                 VStack(alignment: .leading, spacing: 14) {
                     leftPanelConfigForm
                 }
+                .frame(maxWidth: .infinity)
                 .padding(.horizontal, 10)
                 .padding(.vertical, 10)
+                .id(configScrollRefreshID)
             }
+            .onChange(of: viewModel.config.loras.count) { _, _ in configScrollRefreshID = UUID() }
         }
         .background(Color.neuSurface.opacity(0.4))
         .overlay(alignment: .trailing) {
@@ -1252,6 +1296,7 @@ struct GenerateWorkbenchView: View {
             availableLoRAs: assetManager.loras,
             selectedLoRAs: $viewModel.config.loras
         )
+        .fixedSize(horizontal: false, vertical: true)
     }
 
     // MARK: - Source Image Section
