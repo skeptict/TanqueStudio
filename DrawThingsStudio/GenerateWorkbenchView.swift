@@ -721,6 +721,9 @@ struct GenerateWorkbenchView: View {
             if let sampler = meta.sampler { viewModel.config.sampler = sampler }
             if let w = meta.width { viewModel.config.width = w }
             if let h = meta.height { viewModel.config.height = h }
+            viewModel.config.loras = meta.loras.map {
+                DrawThingsGenerationConfig.LoRAConfig(file: $0.file, weight: $0.weight, mode: $0.mode)
+            }
         }
     }
 

@@ -76,9 +76,6 @@ struct PNGMetadataParser {
         // Extract PNG text chunks via manual binary parsing
         let chunks = extractTextChunks(from: data)
 
-        // Fix 1b diagnostic — remove after Bug 1 is confirmed fixed
-        print("[DTS Parse] chunks: \(chunks.keys.sorted()), url: \(url?.lastPathComponent ?? "nil")")
-
         // Debug: dump all found chunk keys to /tmp for diagnostics
         var debugInfo = "PNG chunk keys found: \(chunks.keys.sorted().joined(separator: ", "))\n"
         debugInfo += "Total chunks: \(chunks.count)\n"
