@@ -74,7 +74,7 @@ struct ContentView: View {
                     .allowsHitTesting(selectedItem == .workflow)
                     .neuAnimation(.spring(response: 0.18, dampingFraction: 0.8), value: selectedItem)
 
-                ImageGenerationView(viewModel: imageGenViewModel, storyStudioViewModel: storyStudioViewModel, selectedSidebarItem: $selectedItem, isActive: selectedItem == .generateImage)
+                GenerateWorkbenchView(viewModel: imageGenViewModel, storyStudioViewModel: storyStudioViewModel, inspectorViewModel: imageInspectorViewModel, selectedSidebarItem: $selectedItem, isActive: selectedItem == .generateImage)
                     .opacity(selectedItem == .generateImage ? 1 : 0)
                     .scaleEffect(selectedItem == .generateImage ? 1 : 0.98)
                     .allowsHitTesting(selectedItem == .generateImage)
@@ -168,6 +168,13 @@ struct ContentView: View {
             .animation(.easeInOut(duration: 0.2), value: selectedItem)
             .onDrop(of: [.fileURL, .url, .png, .tiff, .image], isTargeted: $isDetailDropTargeted) { providers in
                 routeDrop(providers)
+            }
+        }
+        .toolbar {
+            if selectedItem == .imageInspector || selectedItem == nil {
+                ToolbarItem(placement: .primaryAction) {
+                    InspectorLayoutPicker(viewModel: imageInspectorViewModel)
+                }
             }
         }
         .focusedSceneValue(\.workflowViewModel, workflowViewModel)

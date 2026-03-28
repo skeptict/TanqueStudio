@@ -452,16 +452,16 @@ private struct LoRAConfigRowSimple: View {
                 .truncationMode(.middle)
                 .frame(maxWidth: .infinity, alignment: .leading)
 
-            // Weight slider
+            // Weight slider — flexible so it absorbs whatever space the name doesn't use
             Slider(value: $weight, in: 0...2, step: 0.05)
-                .frame(width: 70)
+                .frame(minWidth: 40, maxWidth: .infinity)
                 .accessibilityLabel("Weight for \(name)")
                 .accessibilityValue(String(format: "%.2f", weight))
 
             Text(String(format: "%.2f", weight))
                 .font(.system(.caption, design: .monospaced))
                 .foregroundColor(.secondary)
-                .frame(width: 30, alignment: .trailing)
+                .frame(width: 28, alignment: .trailing)
 
             // Mode picker
             Picker("", selection: $mode) {
@@ -471,7 +471,7 @@ private struct LoRAConfigRowSimple: View {
             }
             .pickerStyle(.menu)
             .labelsHidden()
-            .frame(width: 72)
+            .frame(width: 60)
             .accessibilityLabel("Mode for \(name)")
 
             // Remove button
@@ -485,7 +485,7 @@ private struct LoRAConfigRowSimple: View {
             .buttonStyle(NeumorphicIconButtonStyle())
             .accessibilityLabel("Remove \(name)")
         }
-        .padding(.horizontal, 10)
+        .padding(.horizontal, 6)
         .padding(.vertical, 6)
         .background(Color.neuSurface)
         .cornerRadius(6)

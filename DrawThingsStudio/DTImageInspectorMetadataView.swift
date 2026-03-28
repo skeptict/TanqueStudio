@@ -95,17 +95,19 @@ struct DTImageInspectorMetadataView: View {
             VStack(alignment: .leading, spacing: 6) {
                 sectionLabel("LoRAs")
                 ForEach(Array(meta.loras.enumerated()), id: \.offset) { _, lora in
-                    HStack(spacing: 8) {
+                    VStack(alignment: .leading, spacing: 3) {
                         Text(lora.file)
-                            .font(.system(size: 11))
+                            .font(NeuTypography.micro)
+                            .foregroundColor(.neuTextSecondary)
                             .lineLimit(1)
                             .truncationMode(.middle)
-                        Spacer()
+                            .frame(maxWidth: .infinity, alignment: .leading)
                         Text(String(format: "%.2f", lora.weight))
-                            .font(.system(size: 11))
-                            .foregroundColor(.neuTextSecondary)
+                            .font(NeuTypography.captionMedium)
+                            .frame(maxWidth: .infinity, alignment: .trailing)
                     }
                     .padding(8)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                     .background(
                         RoundedRectangle(cornerRadius: 6, style: .continuous)
                             .fill(Color.neuBackground.opacity(0.6))

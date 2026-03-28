@@ -845,8 +845,11 @@ final class ImageInspectorViewModel: ObservableObject {
     /// Paint (or erase) a filled circle onto the mask at the given normalized coordinate.
     /// `brushRadiusNorm` is the radius in normalized [0–1] space based on image width.
     func paintMask(at normPt: CGPoint, brushRadiusNorm: CGFloat, erasing: Bool) {
-        guard let bmp = maskBitmap,
-              let ctx = NSGraphicsContext(bitmapImageRep: bmp) else { return }
+        guard let bmp = maskBitmap else { return }
+        guard let ctx = NSGraphicsContext(bitmapImageRep: bmp) else {
+            assertionFailure("NSGraphicsContext(bitmapImageRep:) returned nil — bitmap format may be unsupported")
+            return
+        }
         let pw = CGFloat(bmp.pixelsWide)
         let ph = CGFloat(bmp.pixelsHigh)
         let px = normPt.x * pw

@@ -72,11 +72,6 @@ struct ImageInspectorView: View {
         .padding(20)
         .neuBackground()
         .lightbox(image: $lightboxImage, browseList: viewModel.filteredHistory.map(\.image))
-        .toolbar {
-            ToolbarItem(placement: .primaryAction) {
-                layoutStatePicker
-            }
-        }
         .focusable()
         .focused($isFocused)
         .onKeyPress(.upArrow)    { viewModel.selectPrevious(); return .handled }
@@ -176,17 +171,16 @@ struct ImageInspectorView: View {
                     .simultaneousGesture(
                         MagnificationGesture()
                             .onChanged { value in
-                                guard viewModel.stageMode == .view else { return }
                                 zoomScale = max(1.0, min(8.0, baseZoom * value))
                                 if zoomScale <= 1.0 { panOffset = .zero; lastPanOffset = .zero }
                                 showZoomIndicator()
                             }
                             .onEnded { value in
-                                guard viewModel.stageMode == .view else { return }
                                 baseZoom = max(1.0, min(8.0, baseZoom * value))
                                 zoomScale = baseZoom
                                 if zoomScale <= 1.0 { panOffset = .zero; lastPanOffset = .zero }
-                            }
+                            },
+                        isEnabled: viewModel.stageMode == .view
                     )
                     .simultaneousGesture(
                         DragGesture(minimumDistance: 0)
@@ -900,6 +894,7 @@ struct ImageInspectorView: View {
                 .help("Import image")
                 .accessibilityIdentifier("inspector_importButton")
             }
+            .frame(maxWidth: .infinity)
             .padding(.horizontal, 12)
             .padding(.top, 12)
             .padding(.bottom, 8)
@@ -1187,9 +1182,27 @@ private enum RightPanelTab: CaseIterable {
     }
 }
 
+// MARK: - Inspector Layout Picker (used in ContentView toolbar)
+
+struct InspectorLayoutPicker: View {
+    @ObservedObject var viewModel: ImageInspectorViewModel
+    var body: some View {
+        HStack(spacing: 2) {
+            ForEach(LayoutState.allCases, id: \.self) { state in
+                Button(state.label) {
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
+                        viewModel.layoutState = state
+                    }
+                }
+                .buttonStyle(LayoutPillButtonStyle(isActive: viewModel.layoutState == state))
+            }
+        }
+    }
+}
+
 // MARK: - Layout Pill Button Style
 
-private struct LayoutPillButtonStyle: ButtonStyle {
+struct LayoutPillButtonStyle: ButtonStyle {
     let isActive: Bool
 
     func makeBody(configuration: Configuration) -> some View {
@@ -1473,7 +1486,7 @@ private enum CropHandle: CaseIterable, Hashable {
 ///   (hasPreciseScrollingDeltas == true). Only forwarded when the caller indicates
 ///   the image is zoomed in; otherwise silently dropped at the NSView layer by
 ///   checking the `isZoomedIn` flag set by the caller.
-private struct ScrollWheelHandler: NSViewRepresentable {
+struct ScrollWheelHandler: NSViewRepresentable {
     let onZoom: (CGFloat, CGPoint) -> Void
     let onPan: (CGSize) -> Void
 

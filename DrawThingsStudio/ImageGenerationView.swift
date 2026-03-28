@@ -456,6 +456,7 @@ struct ImageGenerationView: View {
                 .onHover { hovering in
                     isPresetHovered = hovering
                 }
+                .help(selectedPresetID.isEmpty ? "" : presetDisplayText)
                 .accessibilityLabel("Config Preset: \(presetDisplayText)")
                 .accessibilityHint("Double-tap to \(isPresetExpanded ? "close" : "open") dropdown")
 
@@ -1057,7 +1058,7 @@ struct ImageGenerationView: View {
             HStack(spacing: 12) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Seed").font(.caption).foregroundColor(.neuTextSecondary)
-                    TextField("", value: $viewModel.config.seed, format: .number)
+                    TextField("", value: $viewModel.config.seed, format: .number.grouping(.never))
                         .textFieldStyle(NeumorphicTextFieldStyle())
                         .frame(width: 90)
                 }
