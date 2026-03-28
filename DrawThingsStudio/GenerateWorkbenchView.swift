@@ -58,6 +58,7 @@ private struct PanelDragHandle: View {
 
     @State private var isHovered = false
     @State private var dragStart: CGFloat = 0
+    @State private var isDragging = false
 
     var body: some View {
         Rectangle()
@@ -75,10 +76,14 @@ private struct PanelDragHandle: View {
             .gesture(
                 DragGesture(minimumDistance: 1)
                     .onChanged { value in
-                        if value.translation.width == 0 { dragStart = width }
+                        if !isDragging {
+                            dragStart = width
+                            isDragging = true
+                        }
                         width = max(minWidth, min(maxWidth, dragStart + value.translation.width))
                     }
                     .onEnded { _ in
+                        isDragging = false
                         UserDefaults.standard.set(width, forKey: udKey)
                     }
             )
@@ -1443,10 +1448,9 @@ struct GenerateWorkbenchView: View {
                 .font(NeuTypography.micro)
                 .foregroundColor(.neuTextSecondary)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .lineLimit(2)
-                .fixedSize(horizontal: false, vertical: true)
+                .lineLimit(nil)
                 .padding(.horizontal, 2)
-                .padding(.top, -2)
+                .padding(.vertical, 2)
         }
 
         // Sampler
