@@ -48,6 +48,43 @@ final class _KeyCaptureNSView: NSView {
     }
 }
 
+// MARK: - Panel Drag Handle
+
+private struct PanelDragHandle: View {
+    @Binding var width: CGFloat
+    let minWidth: CGFloat
+    let maxWidth: CGFloat
+    let udKey: String
+
+    @State private var isHovered = false
+    @State private var dragStart: CGFloat = 0
+
+    var body: some View {
+        Rectangle()
+            .foregroundColor(isHovered ? Color.neuAccent.opacity(0.25) : Color.clear)
+            .contentShape(Rectangle())
+            .frame(width: 4)
+            .onHover { hovering in
+                isHovered = hovering
+                if hovering {
+                    NSCursor.resizeLeftRight.push()
+                } else {
+                    NSCursor.pop()
+                }
+            }
+            .gesture(
+                DragGesture(minimumDistance: 1)
+                    .onChanged { value in
+                        if value.translation.width == 0 { dragStart = width }
+                        width = max(minWidth, min(maxWidth, dragStart + value.translation.width))
+                    }
+                    .onEnded { _ in
+                        UserDefaults.standard.set(width, forKey: udKey)
+                    }
+            )
+    }
+}
+
 // MARK: - Main View
 
 struct GenerateWorkbenchView: View {
@@ -65,6 +102,7 @@ struct GenerateWorkbenchView: View {
 
     // Layout
     @State private var isLeftPanelCollapsed = false
+    @State private var leftPanelWidth: CGFloat = UserDefaults.standard.object(forKey: "workbench.leftPanelWidth") as? CGFloat ?? 220
 
     // Canvas zoom/pan
     @State private var canvasZoomScale: CGFloat = 1.0
@@ -127,11 +165,15 @@ struct GenerateWorkbenchView: View {
     var body: some View {
         ZStack {
             HStack(spacing: 0) {
-                // Left panel — 210pt, hidden when collapsed
+                // Left panel — resizable, hidden when collapsed
                 if !isLeftPanelCollapsed {
                     workbenchLeftPanel
-                        .frame(width: 210)
+                        .frame(width: leftPanelWidth)
                         .transition(.move(edge: .leading).combined(with: .opacity))
+
+                    // Drag handle
+                    PanelDragHandle(width: $leftPanelWidth, minWidth: 160, maxWidth: 360,
+                                    udKey: "workbench.leftPanelWidth")
                 }
 
                 // Canvas — flexible
