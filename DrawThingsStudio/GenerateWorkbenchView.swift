@@ -1479,6 +1479,14 @@ struct GenerateWorkbenchView: View {
             wbConfigField("H", value: $viewModel.config.height)
         }
 
+        // Frames (video models only)
+        if viewModel.config.isVideoModel {
+            HStack(spacing: 8) {
+                wbConfigField("Frames", value: $viewModel.config.numFrames)
+                Spacer()
+            }
+        }
+
         // Steps & Guidance
         HStack(spacing: 8) {
             wbSweepIntField("Steps", text: $viewModel.stepsText) { viewModel.config.steps = $0 }
