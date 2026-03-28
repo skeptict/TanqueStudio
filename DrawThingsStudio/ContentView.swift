@@ -11,7 +11,7 @@ import UniformTypeIdentifiers
 import OSLog
 
 struct ContentView: View {
-    @State private var selectedItem: SidebarItem? = SidebarItem(rawValue: AppSettings.shared.defaultSidebarItem) ?? .imageInspector
+    @State private var selectedItem: SidebarItem? = SidebarItem(rawValue: AppSettings.shared.defaultSidebarItem) ?? .generateImage
     @StateObject private var workflowViewModel = WorkflowBuilderViewModel()
     @StateObject private var imageGenViewModel = ImageGenerationViewModel()
     @StateObject private var imageInspectorViewModel = ImageInspectorViewModel()
@@ -35,9 +35,9 @@ struct ContentView: View {
                     .padding(.horizontal, 16)
                     .padding(.top, 8)
 
+                sidebarButton("Generate Image", icon: "photo.badge.plus", item: .generateImage)
                 sidebarButton("Image Inspector", icon: "doc.text.magnifyingglass", item: .imageInspector)
                 sidebarButton("StoryFlow", icon: "hammer", item: .workflow)
-                sidebarButton("Generate Image", icon: "photo.badge.plus", item: .generateImage)
                 sidebarButton("Story Studio", icon: "book.pages", item: .storyStudio)
 
                 NeuSectionHeader("Library", icon: "books.vertical")
