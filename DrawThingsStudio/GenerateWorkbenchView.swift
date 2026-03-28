@@ -10,6 +10,44 @@ import SwiftData
 import Combine
 import UniformTypeIdentifiers
 
+// MARK: - KeyCaptureView
+
+/// An invisible NSView that steals AppKit first responder status so that
+/// onKeyPress works reliably inside the immersive overlay on macOS.
+private struct KeyCaptureView: NSViewRepresentable {
+    var onLeft: () -> Void
+    var onRight: () -> Void
+    var onEscape: () -> Void
+
+    func makeNSView(context: Context) -> _KeyCaptureNSView {
+        let v = _KeyCaptureNSView()
+        v.onLeft = onLeft; v.onRight = onRight; v.onEscape = onEscape
+        return v
+    }
+
+    func updateNSView(_ nsView: _KeyCaptureNSView, context: Context) {
+        nsView.onLeft = onLeft; nsView.onRight = onRight; nsView.onEscape = onEscape
+        DispatchQueue.main.async { nsView.window?.makeFirstResponder(nsView) }
+    }
+}
+
+final class _KeyCaptureNSView: NSView {
+    var onLeft: (() -> Void)?
+    var onRight: (() -> Void)?
+    var onEscape: (() -> Void)?
+
+    override var acceptsFirstResponder: Bool { true }
+
+    override func keyDown(with event: NSEvent) {
+        switch event.keyCode {
+        case 123: onLeft?()   // left arrow
+        case 124: onRight?()  // right arrow
+        case 53:  onEscape?() // escape
+        default:  super.keyDown(with: event)
+        }
+    }
+}
+
 // MARK: - Main View
 
 struct GenerateWorkbenchView: View {
@@ -53,8 +91,7 @@ struct GenerateWorkbenchView: View {
     @State private var isPresetHovered = false
     @FocusState private var isPresetSearchFocused: Bool
 
-    // Immersive overlay focus
-    @FocusState private var immersiveOverlayFocused: Bool
+    // (immersive keyboard capture is handled by KeyCaptureView, not @FocusState)
 
     // ScrollView refresh for LoRA height changes
     @State private var configScrollRefreshID = UUID()
@@ -105,8 +142,6 @@ struct GenerateWorkbenchView: View {
             if rightPanelImmersive {
                 rightPanelImmersiveOverlay
                     .ignoresSafeArea()
-                    .focused($immersiveOverlayFocused)
-                    .onAppear { immersiveOverlayFocused = true }
             }
         }
         // Auto-select most recently generated image in gallery
@@ -647,11 +682,15 @@ struct GenerateWorkbenchView: View {
                 .padding(.trailing, 12)
                 .disabled(galleryImages.isEmpty)
             }
+            // Invisible key-capture view — steals AppKit first responder so arrow
+            // keys and Escape reach keyDown(with:) reliably on macOS.
+            KeyCaptureView(
+                onLeft:   { navigateImmersive(by: -1) },
+                onRight:  { navigateImmersive(by: 1) },
+                onEscape: { rightPanelImmersive = false }
+            )
+            .frame(width: 0, height: 0)
         }
-        .onKeyPress(.leftArrow)  { navigateImmersive(by: -1); return .handled }
-        .onKeyPress(.rightArrow) { navigateImmersive(by: 1);  return .handled }
-        .onKeyPress(.escape) { rightPanelImmersive = false; return .handled }
-        .focusable()
     }
 
     private func navigateImmersive(by delta: Int) {
@@ -680,28 +719,42 @@ struct GenerateWorkbenchView: View {
     private func handleRightPanelDrop(_ providers: [NSItemProvider]) -> Bool {
         guard let provider = providers.first else { return false }
         Task {
-            // Try file URL first — must access security scope so PNGMetadataParser.parse
-            // can read PNG chunks via Data(contentsOf:) (NSImage bypasses this restriction)
-            if provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) {
-                var resolvedURL: URL? = try? await provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier) as? URL
-                if resolvedURL == nil,
-                   let data = try? await provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier) as? Data {
-                    resolvedURL = URL(dataRepresentation: data, relativeTo: nil)
+            // Load raw PNG data directly — avoids file-system access entirely, so
+            // security-scoped resource calls are not needed for Finder drags.
+            // PNGMetadataParser.parse(data:) reads the iTXt/zTXt chunks inline.
+            var sourceName = "Dropped Image"
+            var sourceURL: URL? = nil
+
+            // Grab the file name from the URL representation (display only, no FS read)
+            if provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier),
+               let rawData = try? await provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier) as? Data,
+               let url = URL(dataRepresentation: rawData, relativeTo: nil) {
+                sourceName = url.lastPathComponent
+                sourceURL = url
+            }
+
+            // Load PNG bytes and parse metadata from the data directly
+            if provider.hasItemConformingToTypeIdentifier(UTType.png.identifier) {
+                let pngData = try? await withCheckedThrowingContinuation { (cont: CheckedContinuation<Data, Error>) in
+                    provider.loadDataRepresentation(forTypeIdentifier: UTType.png.identifier) { data, err in
+                        if let err { cont.resume(throwing: err) }
+                        else if let data { cont.resume(returning: data) }
+                        else { cont.resume(throwing: CancellationError()) }
+                    }
                 }
-                if let url = resolvedURL, let image = NSImage(contentsOf: url) {
-                    let accessed = url.startAccessingSecurityScopedResource()
-                    let meta = PNGMetadataParser.parse(url: url)
-                    if accessed { url.stopAccessingSecurityScopedResource() }
-                    let entry = InspectedImage(image: image, metadata: meta, sourceName: url.lastPathComponent,
-                                               inspectedAt: Date(), source: .imported(sourceURL: url))
+                if let data = pngData, let image = NSImage(data: data) {
+                    let meta = PNGMetadataParser.parse(data: data, url: sourceURL)
+                    let entry = InspectedImage(image: image, metadata: meta, sourceName: sourceName,
+                                               inspectedAt: Date(), source: .imported(sourceURL: sourceURL))
                     await MainActor.run {
                         droppedEntry = entry; showSendBar = true; rightPanelTab = .metadata
-                        addImportedToGallery(image: image, name: url.lastPathComponent, meta: meta)
+                        addImportedToGallery(image: image, name: sourceName, meta: meta)
                     }
                     return
                 }
             }
-            // Fallback: raw image data
+
+            // Fallback: non-PNG image (JPEG, TIFF, etc.) — no metadata
             if provider.canLoadObject(ofClass: NSImage.self) {
                 let image = try? await withCheckedThrowingContinuation { (cont: CheckedContinuation<NSImage?, Error>) in
                     provider.loadObject(ofClass: NSImage.self) { obj, err in
@@ -709,11 +762,11 @@ struct GenerateWorkbenchView: View {
                     }
                 }
                 if let image {
-                    let entry = InspectedImage(image: image, metadata: nil, sourceName: "Dropped Image",
-                                               inspectedAt: Date(), source: .imported(sourceURL: nil))
+                    let entry = InspectedImage(image: image, metadata: nil, sourceName: sourceName,
+                                               inspectedAt: Date(), source: .imported(sourceURL: sourceURL))
                     await MainActor.run {
                         droppedEntry = entry; showSendBar = true; rightPanelTab = .metadata
-                        addImportedToGallery(image: image, name: "Dropped Image", meta: nil)
+                        addImportedToGallery(image: image, name: sourceName, meta: nil)
                     }
                 }
             }
@@ -732,7 +785,10 @@ struct GenerateWorkbenchView: View {
             cfg.width = Int(image.size.width)
             cfg.height = Int(image.size.height)
         }
-        let gi = GeneratedImage(image: image, prompt: meta?.prompt ?? "", negativePrompt: meta?.negativePrompt ?? "", config: cfg)
+        // Use 1 second in the past so newly-imported images sort after any in-session
+        // generated images that share the same wall-clock second.
+        let gi = GeneratedImage(image: image, prompt: meta?.prompt ?? "", negativePrompt: meta?.negativePrompt ?? "",
+                                config: cfg, generatedAt: Date().addingTimeInterval(-1))
         importedGalleryImages.insert(gi, at: 0)
         importedImageIDs.insert(gi.id)
         selectedGalleryImageID = gi.id
@@ -773,8 +829,14 @@ struct GenerateWorkbenchView: View {
                 base = generated
             }
         }
-        // Merge imported and generated images, sorted chronologically (newest first)
-        return (importedGalleryImages + base).sorted { $0.generatedAt > $1.generatedAt }
+        // Merge imported and generated images, sorted chronologically (newest first).
+        // Tie-break: generated images precede imported ones with identical timestamps.
+        return (importedGalleryImages + base).sorted { a, b in
+            if a.generatedAt != b.generatedAt { return a.generatedAt > b.generatedAt }
+            let aIsGenerated = !importedImageIDs.contains(a.id)
+            let bIsGenerated = !importedImageIDs.contains(b.id)
+            return aIsGenerated && !bIsGenerated
+        }
     }
 
     private var selectedGalleryImage: GeneratedImage? {
@@ -905,10 +967,17 @@ struct GenerateWorkbenchView: View {
                             .scaleEffect(canvasZoomScale)
                             .offset(canvasPanOffset)
                             .allowsHitTesting(false)
-                            .opacity(viewModel.isGenerating ? 0.4 : 1.0)
-                            .animation(.easeInOut(duration: 0.25), value: viewModel.isGenerating)
                     } else {
                         canvasEmptyState
+                    }
+
+                    // Stage dim — covers both the image and the empty state so the
+                    // progress card is always visible regardless of canvas content.
+                    if viewModel.isGenerating {
+                        Color.black.opacity(0.55)
+                            .ignoresSafeArea()
+                            .allowsHitTesting(false)
+                            .animation(.easeInOut(duration: 0.2), value: viewModel.isGenerating)
                     }
 
                     // Generation progress overlay
@@ -929,9 +998,8 @@ struct GenerateWorkbenchView: View {
                             }
                         }
                         .padding(24)
-                        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                        .background(Color.black.opacity(0.65), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
                         .allowsHitTesting(false)
-                        .transition(.opacity.combined(with: .scale(scale: 0.9)))
                     }
 
                     // Zoom indicator
@@ -1083,7 +1151,9 @@ struct GenerateWorkbenchView: View {
 
             Divider()
 
-            // Config form
+            // Config form — .id on the ScrollView forces NSScrollView to discard its
+            // cached documentView size when LoRAs are added/removed, preventing the
+            // content from being clipped to the old height.
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 14) {
                     leftPanelConfigForm
@@ -1091,8 +1161,8 @@ struct GenerateWorkbenchView: View {
                 .frame(maxWidth: .infinity)
                 .padding(.horizontal, 10)
                 .padding(.vertical, 10)
-                .id(configScrollRefreshID)
             }
+            .id(configScrollRefreshID)
             .onChange(of: viewModel.config.loras.count) { _, _ in configScrollRefreshID = UUID() }
         }
         .background(Color.neuSurface.opacity(0.4))
