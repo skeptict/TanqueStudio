@@ -33,7 +33,6 @@ Do not declare a task complete until all four are confirmed.
 ## Branch Conventions
 - `main` — stable, always builds. Never commit directly to main.
 - `ui-polish` — UI polish phases (NeumorphicStyle, view files)
-- `feature/generate-workbench` — Generate Image enhancements
 - Always confirm which branch you're on before touching any files.
 - When a feature branch is complete and builds cleanly, ask for
   explicit instruction before merging to main.
@@ -74,6 +73,8 @@ Sidebar items: Image Inspector (default), Generate Image, StoryFlow, Story Studi
 | `DrawThingsGRPCClient.swift` | gRPC transport (port 7859) |
 | `DrawThingsAssetManager.swift` | Local + cloud model/LoRA management |
 | `CloudModelCatalog.swift` | Fetches ~400 models from Draw Things GitHub repo |
+| `GenerateWorkbenchView.swift` | Unified Generate workbench — left config panel, canvas, gallery strip, right inspect panel, pipeline panel |
+| `PipelineStep.swift` | Data model for a single step in the multi-step pipeline |
 | `ImageGenerationView.swift` | Generate Image UI |
 | `ImageGenerationViewModel.swift` | Generation state, model validation |
 | `ImageInspectorView.swift` | Image Inspector — three-state layout, stage, filmstrip |
@@ -241,6 +242,23 @@ Max 50 entries. Loaded at launch via `loadHistoryFromDisk()`.
 - Settings reset in `tearDownWithError()` to prevent test pollution
 - Accessibility identifiers on all interactive elements
 - 10 known intermittent failures (navigation timeouts, state pollution)
+
+---
+
+## Generate Workbench (v0.9.0)
+
+`GenerateWorkbenchView` — unified generation UI replacing the old split Generate Image + Inspector workflow.
+
+**Layout:** Left config panel (collapsible, 210pt) | Canvas (zoom/pan, drag-and-drop) | Gallery strip (vertical, newest first) | Right inspect panel (Metadata / Assist / Actions tabs)
+
+**Key features:**
+- **Pipeline panel** — collapsible multi-step pipeline above the config. Each step has prompt/negative/model/sampler/steps/CFG/strength overrides. Execute runs steps sequentially, fan-out over previous step outputs.
+- **Drag-and-drop inspection** — drop any PNG onto the canvas or right panel drop zone; parses `dts_metadata`, XMP, A1111, ComfyUI metadata. Fixed: `loadFileRepresentation` (not `loadItem`) for fileURL type.
+- **Gallery strip** — in-session generated images + dropped imports. History/Siblings toggle. "Use All / Prompt / Config / As i2i / Generate again" actions copy settings back to left panel including LoRAs.
+- **Right panel metadata** — LoRA rows styled as configCell cards (filename as micro-label, weight right-aligned below).
+- **Immersive mode** — full-screen canvas overlay with keyboard nav (←/→/Esc) via `KeyCaptureView` NSViewRepresentable.
+
+**Pipeline execution notes:** `executePipeline()` saves base config, runs steps via `viewModel.generate()` + 200ms polling loop. Fan-out: each step generates against all outputs from the prior step. Cancel tears down `pipelineTask` and resets step state.
 
 ---
 
