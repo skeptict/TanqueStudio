@@ -733,12 +733,17 @@ struct GenerateWorkbenchView: View {
             var sourceName = "Dropped Image"
             var sourceURL: URL? = nil
 
-            // Grab the file name from the URL representation (display only, no FS read)
-            if provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier),
-               let rawData = try? await provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier) as? Data,
-               let url = URL(dataRepresentation: rawData, relativeTo: nil) {
-                sourceName = url.lastPathComponent
-                sourceURL = url
+            // Fix 1a: loadItem returns a URL object for fileURL, not Data.
+            // loadFileRepresentation delivers a stable file-scoped URL that
+            // CGImageSource (used by the XMP path) can read for DT-native images.
+            if provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) {
+                sourceURL = try? await withCheckedThrowingContinuation { (cont: CheckedContinuation<URL?, Error>) in
+                    provider.loadFileRepresentation(forTypeIdentifier: UTType.fileURL.identifier) { url, error in
+                        if let error { cont.resume(throwing: error) }
+                        else { cont.resume(returning: url) }
+                    }
+                }
+                if let url = sourceURL { sourceName = url.lastPathComponent }
             }
 
             // Load PNG bytes and parse metadata from the data directly
