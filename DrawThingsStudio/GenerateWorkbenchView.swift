@@ -112,6 +112,10 @@ struct GenerateWorkbenchView: View {
     @State private var rightPanelImmersive = false
     @State private var immersiveNavIndex: Int = 0
 
+    // Gallery delete confirmation
+    @State private var galleryImageToDelete: GeneratedImage? = nil
+    @State private var showGalleryDeleteConfirmation = false
+
     // Pipeline
     @State private var pipelineSteps: [PipelineStep] = []
     @State private var isPipelineExpanded: Bool = false
@@ -484,6 +488,21 @@ struct GenerateWorkbenchView: View {
 
                     Divider().padding(.vertical, 4)
 
+                    if let url = selectedGalleryImage?.filePath ?? {
+                        if case .imported(let u) = entry.source { return u } else { return nil }
+                    }() {
+                        Button {
+                            NSWorkspace.shared.activateFileViewerSelecting([url])
+                        } label: {
+                            HStack(spacing: 4) {
+                                Image(systemName: "folder")
+                                Text("Reveal in Finder")
+                            }
+                            .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(NeumorphicButtonStyle())
+                    }
+
                     if let meta = entry.metadata {
                         if let prompt = meta.prompt {
                             Button {
@@ -810,6 +829,16 @@ struct GenerateWorkbenchView: View {
         selectedGalleryImageID = gi.id
     }
 
+    private func deleteGalleryImage(_ img: GeneratedImage) {
+        if selectedGalleryImageID == img.id { selectedGalleryImageID = nil }
+        if importedImageIDs.contains(img.id) {
+            importedGalleryImages.removeAll { $0.id == img.id }
+            importedImageIDs.remove(img.id)
+        } else {
+            storageManager.deleteImage(img)
+        }
+    }
+
     private func browseForRightPanelImage() {
         let panel = NSOpenPanel()
         panel.allowedContentTypes = [.png, .jpeg, .tiff, .image]
@@ -922,6 +951,14 @@ struct GenerateWorkbenchView: View {
                         .buttonStyle(.plain)
                         .padding(.horizontal, 6)
                         .transition(.scale.combined(with: .opacity))
+                        .contextMenu {
+                            Button(role: .destructive) {
+                                galleryImageToDelete = img
+                                showGalleryDeleteConfirmation = true
+                            } label: {
+                                Label("Delete", systemImage: "trash")
+                            }
+                        }
                     }
                 }
                 .padding(.vertical, 6)
@@ -936,6 +973,23 @@ struct GenerateWorkbenchView: View {
             Rectangle()
                 .fill(Color.green.opacity(0.25))
                 .frame(width: 1)
+        }
+        .confirmationDialog(
+            "Delete Image",
+            isPresented: $showGalleryDeleteConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Delete", role: .destructive) {
+                if let img = galleryImageToDelete {
+                    deleteGalleryImage(img)
+                }
+                galleryImageToDelete = nil
+            }
+            Button("Cancel", role: .cancel) {
+                galleryImageToDelete = nil
+            }
+        } message: {
+            Text("This image will be permanently deleted.")
         }
     }
 
@@ -1342,6 +1396,16 @@ struct GenerateWorkbenchView: View {
             isLoading: assetManager.isLoading || assetManager.isCloudLoading,
             onRefresh: { Task { await assetManager.forceRefresh() } }
         )
+        if !viewModel.config.model.isEmpty {
+            Text(viewModel.config.model)
+                .font(NeuTypography.micro)
+                .foregroundColor(.neuTextSecondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.horizontal, 2)
+                .padding(.top, -2)
+        }
 
         // Sampler
         VStack(alignment: .leading, spacing: 4) {
@@ -1352,6 +1416,15 @@ struct GenerateWorkbenchView: View {
                 selection: $viewModel.config.sampler,
                 placeholder: "Search samplers..."
             )
+        }
+
+        // Stochastic Sampling Sigma
+        HStack(spacing: 6) {
+            Text("SSS").font(.caption).foregroundColor(.neuTextSecondary).frame(width: 32, alignment: .leading)
+            Slider(value: $viewModel.config.stochasticSamplingGamma, in: 0...1, step: 0.01)
+                .tint(Color.neuAccent)
+            Text(String(format: "%.0f%%", viewModel.config.stochasticSamplingGamma * 100))
+                .font(.caption2).foregroundColor(.neuTextSecondary).frame(width: 30, alignment: .trailing)
         }
 
         // Dimensions

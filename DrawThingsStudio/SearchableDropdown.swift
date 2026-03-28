@@ -444,46 +444,45 @@ private struct LoRAConfigRowSimple: View {
     let onRemove: () -> Void
 
     var body: some View {
-        HStack(spacing: 8) {
-            // LoRA name
-            Text(name)
-                .font(.caption)
-                .lineLimit(1)
-                .truncationMode(.middle)
-                .frame(maxWidth: .infinity, alignment: .leading)
-
-            // Weight slider — flexible so it absorbs whatever space the name doesn't use
-            Slider(value: $weight, in: 0...2, step: 0.05)
-                .frame(minWidth: 40, maxWidth: .infinity)
-                .accessibilityLabel("Weight for \(name)")
-                .accessibilityValue(String(format: "%.2f", weight))
-
-            Text(String(format: "%.2f", weight))
-                .font(.system(.caption, design: .monospaced))
-                .foregroundColor(.secondary)
-                .frame(width: 28, alignment: .trailing)
-
-            // Mode picker
-            Picker("", selection: $mode) {
-                Text("All").tag("all")
-                Text("Base").tag("base")
-                Text("Refiner").tag("refiner")
-            }
-            .pickerStyle(.menu)
-            .labelsHidden()
-            .frame(width: 60)
-            .accessibilityLabel("Mode for \(name)")
-
-            // Remove button
-            Button {
-                onRemove()
-            } label: {
-                Image(systemName: "xmark.circle.fill")
-                    .foregroundColor(.secondary)
+        VStack(alignment: .leading, spacing: 4) {
+            // Name row — full width so long filenames are readable
+            HStack(spacing: 4) {
+                Text(name)
                     .font(.caption)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                // Remove button aligned with name
+                Button {
+                    onRemove()
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundColor(.secondary)
+                        .font(.caption)
+                }
+                .buttonStyle(NeumorphicIconButtonStyle())
+                .accessibilityLabel("Remove \(name)")
             }
-            .buttonStyle(NeumorphicIconButtonStyle())
-            .accessibilityLabel("Remove \(name)")
+            // Controls row
+            HStack(spacing: 6) {
+                Slider(value: $weight, in: 0...2, step: 0.05)
+                    .frame(minWidth: 40, maxWidth: .infinity)
+                    .accessibilityLabel("Weight for \(name)")
+                    .accessibilityValue(String(format: "%.2f", weight))
+                Text(String(format: "%.2f", weight))
+                    .font(.system(.caption2, design: .monospaced))
+                    .foregroundColor(.secondary)
+                    .frame(width: 28, alignment: .trailing)
+                Picker("", selection: $mode) {
+                    Text("All").tag("all")
+                    Text("Base").tag("base")
+                    Text("Refiner").tag("refiner")
+                }
+                .pickerStyle(.menu)
+                .labelsHidden()
+                .frame(width: 60)
+                .accessibilityLabel("Mode for \(name)")
+            }
         }
         .padding(.horizontal, 6)
         .padding(.vertical, 6)
