@@ -156,6 +156,16 @@ struct PNGMetadataParser {
             meta.strength        = extractDouble(configJSON, key: "strength")
             meta.resolutionDependentShift = configJSON["resolutionDependentShift"] as? Bool
             meta.format          = .drawThings
+            if let loraArray = configJSON["loras"] as? [[String: Any]] {
+                for loraDict in loraArray {
+                    let file = loraDict["file"] as? String ?? ""
+                    let weight = loraDict["weight"] as? Double ?? (loraDict["weight"] as? NSNumber).map(\.doubleValue) ?? 1.0
+                    let mode = loraDict["mode"] as? String ?? "all"
+                    if !file.isEmpty {
+                        meta.loras.append(PNGMetadataLoRA(file: file, weight: weight, mode: mode))
+                    }
+                }
+            }
             if meta.prompt != nil || meta.model != nil {
                 return meta
             }
@@ -191,6 +201,16 @@ struct PNGMetadataParser {
         if meta.shift == nil           { meta.shift           = extractDouble(configJSON, key: "shift") }
         if meta.strength == nil        { meta.strength        = extractDouble(configJSON, key: "strength") }
         if meta.resolutionDependentShift == nil { meta.resolutionDependentShift = configJSON["resolutionDependentShift"] as? Bool }
+        if meta.loras.isEmpty, let loraArray = configJSON["loras"] as? [[String: Any]] {
+            for loraDict in loraArray {
+                let file = loraDict["file"] as? String ?? ""
+                let weight = loraDict["weight"] as? Double ?? (loraDict["weight"] as? NSNumber).map(\.doubleValue) ?? 1.0
+                let mode = loraDict["mode"] as? String ?? "all"
+                if !file.isEmpty {
+                    meta.loras.append(PNGMetadataLoRA(file: file, weight: weight, mode: mode))
+                }
+            }
+        }
     }
 
     // MARK: - PNG Chunk Extraction

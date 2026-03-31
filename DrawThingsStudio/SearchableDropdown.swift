@@ -241,10 +241,13 @@ struct LoRAConfigRow: View {
 struct LoRAConfigurationView: View {
     let availableLoRAs: [DrawThingsLoRA]
     @Binding var selectedLoRAs: [DrawThingsGenerationConfig.LoRAConfig]
+    /// Called when a LoRA is added from the picker (not manual entry). Use to auto-insert trigger word.
+    var onLoRAAdded: ((DrawThingsLoRA) -> Void)? = nil
+    var hasCustomMetadata: Bool = false
+    var onImportMetadata: (() -> Void)? = nil
 
     @State private var showAddLoRA = false
     @State private var searchText = ""
-    @State private var manualLoRAName = ""
 
     private var filteredLoRAs: [DrawThingsLoRA] {
         let alreadySelected = Set(selectedLoRAs.map { $0.file })
@@ -276,6 +279,17 @@ struct LoRAConfigurationView: View {
                     .font(.caption.weight(.medium))
 
                 Spacer()
+
+                if let onImport = onImportMetadata {
+                    Button {
+                        onImport()
+                    } label: {
+                        Image(systemName: hasCustomMetadata ? "doc.badge.checkmark" : "doc.badge.plus")
+                            .font(.callout)
+                    }
+                    .buttonStyle(NeumorphicIconButtonStyle())
+                    .help(hasCustomMetadata ? "LoRA metadata loaded — click to re-import" : "Import custom_lora.json for trigger words")
+                }
 
                 Button {
                     showAddLoRA.toggle()
@@ -322,52 +336,78 @@ struct LoRAConfigurationView: View {
     @ViewBuilder
     private var loraAddPopover: some View {
         VStack(spacing: 0) {
-            // Manual entry field
+            // Unified search + manual entry field
             HStack {
-                Image(systemName: "pencil")
+                Image(systemName: "magnifyingglass")
                     .foregroundColor(.secondary)
                     .font(.caption)
 
-                TextField("Enter LoRA filename...", text: $manualLoRAName)
+                TextField("Search or type exact filename...", text: $searchText)
                     .textFieldStyle(.plain)
                     .font(.caption)
-                    .onSubmit { addManualLoRA() }
-                    .accessibilityIdentifier("lora_manualEntryField")
-                    .accessibilityLabel("Enter LoRA filename manually")
+                    .onSubmit {
+                        if let match = filteredLoRAs.first {
+                            selectedLoRAs.append(
+                                DrawThingsGenerationConfig.LoRAConfig(
+                                    file: match.filename,
+                                    weight: match.defaultWeight
+                                )
+                            )
+                            onLoRAAdded?(match)
+                            showAddLoRA = false
+                            searchText = ""
+                        } else if !searchText.isEmpty {
+                            addManualLoRA()
+                        }
+                    }
+                    .accessibilityIdentifier("lora_searchField")
+                    .accessibilityLabel("Search or enter LoRA filename")
 
-                if !manualLoRAName.isEmpty {
+                if !searchText.isEmpty {
                     Button { addManualLoRA() } label: {
                         Image(systemName: "plus.circle.fill")
                             .foregroundColor(.neuAccent)
                             .font(.caption)
                     }
                     .buttonStyle(.plain)
+                    .help("Add as manual filename entry")
                 }
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 8)
 
-            if !availableLoRAs.isEmpty {
-                Divider()
+            Divider()
 
-                HStack {
-                    Image(systemName: "magnifyingglass")
-                        .foregroundColor(.secondary)
-                        .font(.caption)
-
-                    TextField("Search available LoRAs...", text: $searchText)
-                        .textFieldStyle(.plain)
-                        .font(.caption)
-                        .accessibilityLabel("Search LoRAs")
-                }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 8)
-
-                Divider()
-
+            if availableLoRAs.isEmpty {
+                Text("No LoRAs available — type a filename above and press Return or +")
+                    .foregroundColor(.secondary)
+                    .font(.caption)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 10)
+            } else {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 0) {
-                        if filteredLoRAs.isEmpty {
+                        if filteredLoRAs.isEmpty && !searchText.isEmpty {
+                            // Offer to add the typed text as a manual filename
+                            Button {
+                                addManualLoRA()
+                            } label: {
+                                HStack(spacing: 6) {
+                                    Image(systemName: "plus.circle")
+                                        .foregroundColor(.neuAccent)
+                                        .font(.caption)
+                                    Text("Add \"\(searchText)\"")
+                                        .font(.caption)
+                                        .foregroundColor(.neuAccent)
+                                    Spacer()
+                                }
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 6)
+                                .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                        } else if filteredLoRAs.isEmpty {
                             Text("No matching LoRAs")
                                 .foregroundColor(.secondary)
                                 .font(.caption)
@@ -379,18 +419,27 @@ struct LoRAConfigurationView: View {
                                     selectedLoRAs.append(
                                         DrawThingsGenerationConfig.LoRAConfig(
                                             file: lora.filename,
-                                            weight: 0.6
+                                            weight: lora.defaultWeight
                                         )
                                     )
+                                    onLoRAAdded?(lora)
                                     showAddLoRA = false
                                     searchText = ""
                                 } label: {
-                                    Text(lora.name)
-                                        .font(.caption)
-                                        .padding(.horizontal, 10)
-                                        .padding(.vertical, 6)
-                                        .frame(maxWidth: .infinity, alignment: .leading)
-                                        .contentShape(Rectangle())
+                                    VStack(alignment: .leading, spacing: 1) {
+                                        Text(lora.name)
+                                            .font(.caption)
+                                        if !lora.prefix.isEmpty {
+                                            Text(lora.prefix)
+                                                .font(.caption2)
+                                                .foregroundColor(.secondary)
+                                                .lineLimit(1)
+                                        }
+                                    }
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 6)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .contentShape(Rectangle())
                                 }
                                 .buttonStyle(.plain)
                                 .accessibilityLabel("Add \(lora.name)")
@@ -406,7 +455,7 @@ struct LoRAConfigurationView: View {
     }
 
     private func addManualLoRA() {
-        let filename = manualLoRAName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let filename = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !filename.isEmpty else { return }
 
         // Add extension if not present
@@ -417,7 +466,7 @@ struct LoRAConfigurationView: View {
 
         // Check if already selected
         guard !selectedLoRAs.contains(where: { $0.file == finalFilename }) else {
-            manualLoRAName = ""
+            searchText = ""
             return
         }
 
@@ -427,7 +476,7 @@ struct LoRAConfigurationView: View {
                 weight: 0.6
             )
         )
-        manualLoRAName = ""
+        searchText = ""
         showAddLoRA = false
     }
 }
