@@ -118,6 +118,14 @@ struct GenerateWorkbenchView: View {
     @State private var canvasZoomIndicatorVisible = false
     @State private var canvasZoomTask: Task<Void, Never>? = nil
 
+    // Canvas stage mode
+    private enum CanvasStageMode { case view, crop }
+    @State private var canvasStageMode: CanvasStageMode = .view
+    // Crop state (canvas-space coordinates within GeometryReader)
+    @State private var cropStartPt: CGPoint = .zero
+    @State private var cropCurrentPt: CGPoint = .zero
+    @State private var cropHasSelection = false
+
     // Left panel state
     @State private var selectedPresetID: String = ""
     @State private var showingConfigImport = false
@@ -158,6 +166,14 @@ struct GenerateWorkbenchView: View {
     // Gallery delete confirmation
     @State private var galleryImageToDelete: GeneratedImage? = nil
     @State private var showGalleryDeleteConfirmation = false
+    @State private var showClearGalleryConfirmation = false
+
+    // Seed mode info popover
+    @State private var showSeedModeInfo = false
+
+    // Gallery actions
+    @State private var workbenchImageForStoryStudio: GeneratedImage? = nil
+    @State private var galleryImageCopied = false
 
     // Pipeline
     @State private var pipelineSteps: [PipelineStep] = []
@@ -242,6 +258,14 @@ struct GenerateWorkbenchView: View {
         }
         .sheet(isPresented: $showEnhanceStyleEditor) {
             PromptStyleEditorView()
+        }
+        .sheet(item: $workbenchImageForStoryStudio) { gi in
+            SendToStoryStudioView(
+                prompt: gi.prompt,
+                negativePrompt: gi.negativePrompt,
+                thumbnail: gi.image,
+                onNavigate: { selectedSidebarItem = $0 }
+            )
         }
         .background(
             Group {
@@ -458,18 +482,18 @@ struct GenerateWorkbenchView: View {
 
                 Divider()
 
-                // Tab content — capped height so the drop zone below can expand
+                // Tab content — expands to fit its content
                 Group {
                     switch rightPanelTab {
                     case .metadata:
                         DTImageInspectorMetadataView(entry: rightPanelEntry)
                     case .assist:
-                        DTImageInspectorAssistView(entry: rightPanelEntry, viewModel: inspectorViewModel)
+                        DTImageInspectorAssistView(entry: rightPanelEntry, viewModel: inspectorViewModel, showContextHeader: false)
                     case .actions:
                         workbenchActionsTab
                     }
                 }
-                .frame(maxWidth: .infinity, maxHeight: 220)
+                .frame(maxWidth: .infinity)
 
                 // Send bar (visible after drop)
                 if showSendBar, let entry = droppedEntry {
@@ -535,6 +559,26 @@ struct GenerateWorkbenchView: View {
 
                     Divider().padding(.vertical, 4)
 
+                    // Copy Image
+                    Button {
+                        if let gi = selectedGalleryImage {
+                            viewModel.copyToClipboard(gi)
+                        } else {
+                            let pb = NSPasteboard.general
+                            pb.clearContents()
+                            pb.writeObjects([entry.image])
+                        }
+                        galleryImageCopied = true
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { galleryImageCopied = false }
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "doc.on.doc")
+                            Text(galleryImageCopied ? "Copied!" : "Copy Image")
+                        }
+                        .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(NeumorphicButtonStyle())
+
                     if let url = selectedGalleryImage?.filePath ?? {
                         if case .imported(let u) = entry.source { return u } else { return nil }
                     }() {
@@ -544,6 +588,20 @@ struct GenerateWorkbenchView: View {
                             HStack(spacing: 4) {
                                 Image(systemName: "folder")
                                 Text("Reveal in Finder")
+                            }
+                            .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(NeumorphicButtonStyle())
+                    }
+
+                    // Send to Story Studio (gallery images only)
+                    if let gi = selectedGalleryImage {
+                        Button {
+                            workbenchImageForStoryStudio = gi
+                        } label: {
+                            HStack(spacing: 4) {
+                                Image(systemName: "book.pages")
+                                Text("Story Studio…")
                             }
                             .frame(maxWidth: .infinity)
                         }
@@ -599,7 +657,7 @@ struct GenerateWorkbenchView: View {
                     Image(nsImage: entry.image)
                         .resizable()
                         .aspectRatio(contentMode: .fit)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .frame(maxWidth: .infinity, maxHeight: 200)
                         .background(
                             rightPanelIsGenerated
                                 ? Color.green.opacity(0.08)
@@ -679,7 +737,7 @@ struct GenerateWorkbenchView: View {
                     .foregroundColor(rightDropTargeted ? .neuAccent : .neuTextSecondary)
             }
         }
-        .frame(maxWidth: .infinity, minHeight: 80, maxHeight: .infinity)
+        .frame(maxWidth: .infinity, minHeight: 80, maxHeight: 80)
         .onDrop(of: [.image, .fileURL], isTargeted: $rightDropTargeted) { providers in
             handleRightPanelDrop(providers)
         }
@@ -858,14 +916,23 @@ struct GenerateWorkbenchView: View {
 
     private func addImportedToGallery(image: NSImage, name: String, meta: PNGMetadata?) {
         var cfg = DrawThingsGenerationConfig()
+        cfg.width = Int(image.size.width)
+        cfg.height = Int(image.size.height)
         if let m = meta {
-            cfg.model = m.model ?? ""
-            cfg.steps = m.steps ?? 0
-            cfg.width = m.width ?? Int(image.size.width)
-            cfg.height = m.height ?? Int(image.size.height)
-        } else {
-            cfg.width = Int(image.size.width)
-            cfg.height = Int(image.size.height)
+            cfg.model              = m.model              ?? cfg.model
+            cfg.steps              = m.steps              ?? cfg.steps
+            cfg.guidanceScale      = m.guidanceScale      ?? cfg.guidanceScale
+            cfg.seed               = m.seed               ?? cfg.seed
+            cfg.seedMode           = m.seedMode           ?? cfg.seedMode
+            cfg.sampler            = m.sampler            ?? cfg.sampler
+            cfg.shift              = m.shift              ?? cfg.shift
+            cfg.strength           = m.strength           ?? cfg.strength
+            cfg.width              = m.width              ?? cfg.width
+            cfg.height             = m.height             ?? cfg.height
+            cfg.resolutionDependentShift = m.resolutionDependentShift ?? cfg.resolutionDependentShift
+            cfg.loras              = m.loras.map { DrawThingsGenerationConfig.LoRAConfig(file: $0.file, weight: $0.weight, mode: $0.mode) }
+            if let rm = m.refinerModel, !rm.isEmpty { cfg.refinerModel = rm }
+            if let rs = m.refinerStart { cfg.refinerStart = rs }
         }
         // Use 1 second in the past so newly-imported images sort after any in-session
         // generated images that share the same wall-clock second.
@@ -884,6 +951,17 @@ struct GenerateWorkbenchView: View {
         } else {
             storageManager.deleteImage(img)
         }
+    }
+
+    private func clearGallery() {
+        selectedGalleryImageID = nil
+        droppedEntry = nil
+        showSendBar = false
+        for img in storageManager.savedImages {
+            storageManager.deleteImage(img)
+        }
+        importedGalleryImages = []
+        importedImageIDs = []
     }
 
     private func browseForRightPanelImage() {
@@ -941,9 +1019,26 @@ struct GenerateWorkbenchView: View {
         VStack(spacing: 0) {
             // Header
             VStack(spacing: 2) {
-                Text("Gallery")
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundColor(Color.green.opacity(0.85))
+                ZStack {
+                    Text("Gallery")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundColor(Color.green.opacity(0.85))
+                    if !galleryImages.isEmpty {
+                        HStack {
+                            Spacer()
+                            Button {
+                                showClearGalleryConfirmation = true
+                            } label: {
+                                Image(systemName: "trash")
+                                    .font(.system(size: 9))
+                                    .foregroundColor(Color.green.opacity(0.55))
+                            }
+                            .buttonStyle(.plain)
+                            .help("Clear all gallery images")
+                            .padding(.trailing, 6)
+                        }
+                    }
+                }
 
                 Button {
                     withAnimation(.easeInOut(duration: 0.15)) {
@@ -1038,6 +1133,18 @@ struct GenerateWorkbenchView: View {
         } message: {
             Text("This image will be permanently deleted.")
         }
+        .confirmationDialog(
+            "Clear Gallery",
+            isPresented: $showClearGalleryConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Clear All", role: .destructive) {
+                clearGallery()
+            }
+            Button("Cancel", role: .cancel) { }
+        } message: {
+            Text("All generated images will be permanently deleted from disk. Imported images will be removed from the gallery.")
+        }
     }
 
     // MARK: - Canvas
@@ -1050,20 +1157,58 @@ struct GenerateWorkbenchView: View {
     private var workbenchCanvas: some View {
         VStack(spacing: 0) {
             // Canvas toolbar
-            HStack(spacing: 4) {
-                Spacer()
-                Button {
-                    withAnimation(.spring(response: 0.2)) {
-                        canvasZoomScale = 1.0; canvasBaseZoom = 1.0
-                        canvasPanOffset = .zero; canvasLastPan = .zero
-                    }
-                } label: {
-                    Image(systemName: "arrow.up.left.and.arrow.down.right")
+            Group {
+                if canvasStageMode == .crop {
+                    HStack(spacing: 8) {
+                        Button("Cancel") {
+                            canvasStageMode = .view
+                            cropHasSelection = false
+                        }
                         .font(.caption)
+                        .buttonStyle(NeumorphicButtonStyle())
+
+                        Spacer()
+
+                        Text("Crop")
+                            .font(.caption.weight(.semibold))
+                            .foregroundColor(.neuTextSecondary)
+
+                        Spacer()
+
+                        Button("Use as Source") {
+                            applyCropAsSource()
+                        }
+                        .font(.caption)
+                        .buttonStyle(NeumorphicButtonStyle(isProminent: true))
+                        .disabled(!cropHasSelection)
+                    }
+                } else {
+                    HStack(spacing: 4) {
+                        Spacer()
+                        Button {
+                            enterCropMode()
+                        } label: {
+                            Image(systemName: "crop")
+                                .font(.caption)
+                        }
+                        .buttonStyle(NeumorphicIconButtonStyle())
+                        .help("Crop image and use as img2img source")
+                        .disabled(canvasActiveImage == nil)
+
+                        Button {
+                            withAnimation(.spring(response: 0.2)) {
+                                canvasZoomScale = 1.0; canvasBaseZoom = 1.0
+                                canvasPanOffset = .zero; canvasLastPan = .zero
+                            }
+                        } label: {
+                            Image(systemName: "arrow.up.left.and.arrow.down.right")
+                                .font(.caption)
+                        }
+                        .buttonStyle(NeumorphicIconButtonStyle())
+                        .help("Reset zoom")
+                        .disabled(canvasActiveImage == nil)
+                    }
                 }
-                .buttonStyle(NeumorphicIconButtonStyle())
-                .help("Reset zoom")
-                .disabled(canvasActiveImage == nil)
             }
             .padding(.horizontal, 8)
             .padding(.vertical, 6)
@@ -1132,17 +1277,24 @@ struct GenerateWorkbenchView: View {
                             .animation(.easeOut(duration: 0.3), value: canvasZoomIndicatorVisible)
                     }
 
+                    // Crop selection overlay (crop mode only)
+                    if canvasStageMode == .crop, let img = canvasActiveImage {
+                        canvasCropOverlay(geo: geo, image: img)
+                    }
+
                     // Gesture overlay
                     Color.clear
                         .contentShape(Rectangle())
                         .simultaneousGesture(
                             MagnificationGesture()
                                 .onChanged { value in
+                                    guard canvasStageMode == .view else { return }
                                     canvasZoomScale = max(1.0, min(8.0, canvasBaseZoom * value))
                                     if canvasZoomScale <= 1.0 { canvasPanOffset = .zero; canvasLastPan = .zero }
                                     flashCanvasZoomIndicator()
                                 }
                                 .onEnded { value in
+                                    guard canvasStageMode == .view else { return }
                                     canvasBaseZoom = max(1.0, min(8.0, canvasBaseZoom * value))
                                     canvasZoomScale = canvasBaseZoom
                                     if canvasZoomScale <= 1.0 { canvasPanOffset = .zero; canvasLastPan = .zero }
@@ -1151,15 +1303,31 @@ struct GenerateWorkbenchView: View {
                         .simultaneousGesture(
                             DragGesture(minimumDistance: 1)
                                 .onChanged { value in
-                                    guard canvasZoomScale > 1.0 else { return }
-                                    canvasPanOffset = CGSize(
-                                        width: canvasLastPan.width + value.translation.width,
-                                        height: canvasLastPan.height + value.translation.height
-                                    )
+                                    if canvasStageMode == .crop {
+                                        if !cropHasSelection {
+                                            cropStartPt = value.startLocation
+                                        }
+                                        cropCurrentPt = value.location
+                                        cropHasSelection = abs(value.translation.width) > 4 || abs(value.translation.height) > 4
+                                    } else {
+                                        guard canvasZoomScale > 1.0 else { return }
+                                        canvasPanOffset = CGSize(
+                                            width: canvasLastPan.width + value.translation.width,
+                                            height: canvasLastPan.height + value.translation.height
+                                        )
+                                    }
                                 }
-                                .onEnded { _ in canvasLastPan = canvasPanOffset }
+                                .onEnded { value in
+                                    if canvasStageMode == .crop {
+                                        cropCurrentPt = value.location
+                                        cropHasSelection = abs(value.translation.width) > 4 || abs(value.translation.height) > 4
+                                    } else {
+                                        canvasLastPan = canvasPanOffset
+                                    }
+                                }
                         )
                         .onTapGesture(count: 2) {
+                            guard canvasStageMode == .view else { return }
                             withAnimation(.spring(response: 0.25)) {
                                 canvasZoomScale = 1.0; canvasBaseZoom = 1.0
                                 canvasPanOffset = .zero; canvasLastPan = .zero
@@ -1168,7 +1336,7 @@ struct GenerateWorkbenchView: View {
                         .background(
                             ScrollWheelHandler(
                                 onZoom: { delta, location in
-                                    guard canvasActiveImage != nil else { return }
+                                    guard canvasStageMode == .view, canvasActiveImage != nil else { return }
                                     let oldScale = canvasZoomScale
                                     let newScale = max(1.0, min(8.0, canvasZoomScale + delta * 0.05))
                                     guard newScale != oldScale else { return }
@@ -1186,7 +1354,7 @@ struct GenerateWorkbenchView: View {
                                     flashCanvasZoomIndicator()
                                 },
                                 onPan: { translation in
-                                    guard canvasZoomScale > 1.0 else { return }
+                                    guard canvasStageMode == .view, canvasZoomScale > 1.0 else { return }
                                     let newPan = CGSize(
                                         width: canvasPanOffset.width + translation.width,
                                         height: canvasPanOffset.height - translation.height
@@ -1259,6 +1427,125 @@ struct GenerateWorkbenchView: View {
         }
     }
 
+    private func enterCropMode() {
+        // Reset zoom so coordinate math is at 1×
+        canvasZoomScale = 1.0; canvasBaseZoom = 1.0
+        canvasPanOffset = .zero; canvasLastPan = .zero
+        cropHasSelection = false
+        canvasStageMode = .crop
+    }
+
+    /// Returns the rect within the canvas where the image is rendered (letterboxed, 1× zoom).
+    private func imageRenderRect(imageSize: CGSize, canvasSize: CGSize) -> CGRect {
+        guard imageSize.width > 0, imageSize.height > 0,
+              canvasSize.width > 0, canvasSize.height > 0 else { return .zero }
+        let imageAspect = imageSize.width / imageSize.height
+        let canvasAspect = canvasSize.width / canvasSize.height
+        if imageAspect > canvasAspect {
+            let scale = canvasSize.width / imageSize.width
+            let h = imageSize.height * scale
+            return CGRect(x: 0, y: (canvasSize.height - h) / 2, width: canvasSize.width, height: h)
+        } else {
+            let scale = canvasSize.height / imageSize.height
+            let w = imageSize.width * scale
+            return CGRect(x: (canvasSize.width - w) / 2, y: 0, width: w, height: canvasSize.height)
+        }
+    }
+
+    private func applyCropAsSource() {
+        guard let img = canvasActiveImage, cropHasSelection else { return }
+        let imgSize = CGSize(width: img.size.width, height: img.size.height)
+        let renderRect = imageRenderRect(imageSize: imgSize, canvasSize: canvasSize)
+        guard renderRect.width > 0, renderRect.height > 0 else { return }
+
+        // Map canvas drag points to image-normalized coordinates [0,1]
+        let normX1 = (cropStartPt.x - renderRect.minX) / renderRect.width
+        let normY1 = (cropStartPt.y - renderRect.minY) / renderRect.height
+        let normX2 = (cropCurrentPt.x - renderRect.minX) / renderRect.width
+        let normY2 = (cropCurrentPt.y - renderRect.minY) / renderRect.height
+
+        let x = max(0, min(normX1, normX2))
+        let y = max(0, min(normY1, normY2))
+        let w = max(0, min(abs(normX2 - normX1), 1.0 - x))
+        let h = max(0, min(abs(normY2 - normY1), 1.0 - y))
+        guard w > 0.01, h > 0.01 else { return }
+
+        // Crop the NSImage
+        let cropPx = CGRect(
+            x: x * img.size.width,
+            y: y * img.size.height,
+            width: w * img.size.width,
+            height: h * img.size.height
+        )
+        guard let cgSrc = img.cgImage(forProposedRect: nil, context: nil, hints: nil),
+              let cropped = cgSrc.cropping(to: cropPx) else { return }
+
+        let result = NSImage(cgImage: cropped, size: NSSize(width: cropPx.width, height: cropPx.height))
+        viewModel.loadInputImage(from: result, name: "Cropped Canvas")
+        canvasStageMode = .view
+        cropHasSelection = false
+    }
+
+    @ViewBuilder
+    private func canvasCropOverlay(geo: GeometryProxy, image: NSImage) -> some View {
+        let imgSize = CGSize(width: image.size.width, height: image.size.height)
+        let renderRect = imageRenderRect(imageSize: imgSize, canvasSize: geo.size)
+
+        // Clamp crop points to the rendered image rect
+        let clampedStart = CGPoint(
+            x: max(renderRect.minX, min(renderRect.maxX, cropStartPt.x)),
+            y: max(renderRect.minY, min(renderRect.maxY, cropStartPt.y))
+        )
+        let clampedCurrent = CGPoint(
+            x: max(renderRect.minX, min(renderRect.maxX, cropCurrentPt.x)),
+            y: max(renderRect.minY, min(renderRect.maxY, cropCurrentPt.y))
+        )
+
+        let selRect = CGRect(
+            x: min(clampedStart.x, clampedCurrent.x),
+            y: min(clampedStart.y, clampedCurrent.y),
+            width: abs(clampedCurrent.x - clampedStart.x),
+            height: abs(clampedCurrent.y - clampedStart.y)
+        )
+
+        if cropHasSelection {
+            // Four dim rects surrounding the selection
+            let size = geo.size
+            // Top
+            Rectangle().fill(Color.black.opacity(0.5))
+                .frame(width: size.width, height: selRect.minY)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            // Bottom
+            Rectangle().fill(Color.black.opacity(0.5))
+                .frame(width: size.width, height: max(0, size.height - selRect.maxY))
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
+            // Left
+            Rectangle().fill(Color.black.opacity(0.5))
+                .frame(width: max(0, selRect.minX), height: selRect.height)
+                .offset(x: 0, y: selRect.minY)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            // Right
+            Rectangle().fill(Color.black.opacity(0.5))
+                .frame(width: max(0, size.width - selRect.maxX), height: selRect.height)
+                .offset(x: selRect.maxX, y: selRect.minY)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            // Selection border
+            Rectangle()
+                .stroke(Color.white.opacity(0.9), lineWidth: 1.5)
+                .frame(width: selRect.width, height: selRect.height)
+                .offset(x: selRect.minX, y: selRect.minY)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        } else {
+            // No selection yet: full dim + crosshair hint
+            Color.black.opacity(0.35)
+            Text("Drag to select crop area")
+                .font(.caption)
+                .foregroundColor(.white.opacity(0.7))
+                .padding(.horizontal, 10).padding(.vertical, 5)
+                .background(Color.black.opacity(0.5), in: RoundedRectangle(cornerRadius: 6))
+        }
+    }
+
     // MARK: - Left Panel
 
     private var workbenchLeftPanel: some View {
@@ -1295,10 +1582,31 @@ struct GenerateWorkbenchView: View {
 
     private var leftPanelHeader: some View {
         VStack(spacing: 8) {
+            // Prompt header with inline Enhance button
+            HStack(spacing: 4) {
+                Text("Prompt").font(.caption).foregroundColor(.neuTextSecondary)
+                Spacer()
+                if viewModel.isEnhancing {
+                    ProgressView().scaleEffect(0.6).frame(width: 24)
+                } else {
+                    Button {
+                        showEnhanceStylePicker = true
+                    } label: {
+                        Label("Enhance", systemImage: "sparkles").font(.caption)
+                    }
+                    .buttonStyle(NeumorphicButtonStyle())
+                    .disabled(viewModel.prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .help("Enhance prompt with AI")
+                    .popover(isPresented: $showEnhanceStylePicker) {
+                        leftPanelEnhanceStylePicker
+                    }
+                }
+            }
+
             // Prompt
             TextEditor(text: $viewModel.prompt)
-                .font(.caption)
-                .frame(minHeight: 64, maxHeight: 120)
+                .font(.body)
+                .frame(minHeight: 80, maxHeight: 140)
                 .padding(6)
                 .scrollContentBackground(.hidden)
                 .background(
@@ -1311,7 +1619,7 @@ struct GenerateWorkbenchView: View {
                 )
                 .accessibilityIdentifier("workbench_promptField")
 
-            // Generate + Enhance
+            // Generate
             if viewModel.isGenerating || currentExecutingStep != nil {
                 VStack(spacing: 4) {
                     if let step = currentExecutingStep {
@@ -1336,49 +1644,29 @@ struct GenerateWorkbenchView: View {
                 .buttonStyle(NeumorphicButtonStyle())
                 .controlSize(.small)
             } else {
-                HStack(spacing: 6) {
-                    Button(action: {
-                        if pipelineSteps.isEmpty {
-                            viewModel.generateOrRunPipeline()
-                        } else {
-                            completedStepIndices = []
-                            currentExecutingStep = nil
-                            pipelineTask = Task { await executePipeline() }
-                        }
-                    }) {
-                        HStack(spacing: 4) {
-                            Image(systemName: pipelineSteps.isEmpty
-                                  ? (viewModel.inputImage != nil ? "photo.on.rectangle.angled" : "wand.and.stars")
-                                  : "arrow.triangle.2.circlepath.circle")
-                            Text(pipelineSteps.isEmpty ? "Generate" : "Run Pipeline (\(pipelineSteps.count))")
-                        }
-                        .frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(NeumorphicButtonStyle(isProminent: true))
-                    .controlSize(.regular)
-                    .disabled(viewModel.prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
-                              viewModel.config.model.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                    .keyboardShortcut(.return, modifiers: .command)
-                    .accessibilityIdentifier("workbench_generateButton")
-
-                    if viewModel.isEnhancing {
-                        ProgressView().scaleEffect(0.7).frame(width: 36)
+                Button(action: {
+                    if pipelineSteps.isEmpty {
+                        viewModel.generateOrRunPipeline()
                     } else {
-                        Button {
-                            showEnhanceStylePicker = true
-                        } label: {
-                            Label("Enhance", systemImage: "sparkles")
-                                .labelStyle(.iconOnly)
-                                .frame(width: 28, height: 28)
-                        }
-                        .buttonStyle(NeumorphicButtonStyle())
-                        .disabled(viewModel.prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                        .help("Enhance prompt with AI")
-                        .popover(isPresented: $showEnhanceStylePicker) {
-                            leftPanelEnhanceStylePicker
-                        }
+                        completedStepIndices = []
+                        currentExecutingStep = nil
+                        pipelineTask = Task { await executePipeline() }
                     }
+                }) {
+                    HStack(spacing: 4) {
+                        Image(systemName: pipelineSteps.isEmpty
+                              ? (viewModel.inputImage != nil ? "photo.on.rectangle.angled" : "wand.and.stars")
+                              : "arrow.triangle.2.circlepath.circle")
+                        Text(pipelineSteps.isEmpty ? "Generate" : "Run Pipeline (\(pipelineSteps.count))")
+                    }
+                    .frame(maxWidth: .infinity)
                 }
+                .buttonStyle(NeumorphicButtonStyle(isProminent: true))
+                .controlSize(.regular)
+                .disabled(viewModel.prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
+                          viewModel.config.model.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .keyboardShortcut(.return, modifiers: .command)
+                .accessibilityIdentifier("workbench_generateButton")
             }
 
             if let error = enhanceError {
@@ -1473,11 +1761,15 @@ struct GenerateWorkbenchView: View {
                 .font(.caption2).foregroundColor(.neuTextSecondary).frame(width: 30, alignment: .trailing)
         }
 
-        // Dimensions
+        // Dimensions + Renders
         HStack(spacing: 8) {
             wbConfigField("W", value: $viewModel.config.width)
             wbConfigField("H", value: $viewModel.config.height)
+            wbConfigField("Renders", value: $viewModel.config.batchCount)
         }
+
+        // Aspect ratio presets
+        workbenchAspectRatioPresets
 
         // Frames (video models only)
         if viewModel.config.isVideoModel {
@@ -1501,7 +1793,20 @@ struct GenerateWorkbenchView: View {
                     .textFieldStyle(NeumorphicTextFieldStyle())
             }
             VStack(alignment: .leading, spacing: 4) {
-                Text("Mode").font(.caption).foregroundColor(.neuTextSecondary)
+                HStack(spacing: 3) {
+                    Text("Mode").font(.caption).foregroundColor(.neuTextSecondary)
+                    Button {
+                        showSeedModeInfo.toggle()
+                    } label: {
+                        Image(systemName: "info.circle")
+                            .font(.system(size: 9))
+                            .foregroundColor(.neuTextSecondary)
+                    }
+                    .buttonStyle(.plain)
+                    .popover(isPresented: $showSeedModeInfo, arrowEdge: .trailing) {
+                        seedModeInfoPopover
+                    }
+                }
                 Picker("", selection: $viewModel.config.seedMode) {
                     Text("Legacy").tag("Legacy")
                     Text("Torch CPU").tag("Torch CPU Compatible")
@@ -1549,7 +1854,16 @@ struct GenerateWorkbenchView: View {
         Divider()
         LoRAConfigurationView(
             availableLoRAs: assetManager.loras,
-            selectedLoRAs: $viewModel.config.loras
+            selectedLoRAs: $viewModel.config.loras,
+            onLoRAAdded: { lora in
+                guard !lora.prefix.isEmpty else { return }
+                // Prepend trigger word if not already in prompt
+                if !viewModel.prompt.localizedCaseInsensitiveContains(lora.prefix.trimmingCharacters(in: .whitespaces)) {
+                    viewModel.prompt = lora.prefix + viewModel.prompt
+                }
+            },
+            hasCustomMetadata: assetManager.hasCustomLoRAMetadata,
+            onImportMetadata: { assetManager.importCustomLoRAMetadata() }
         )
         .fixedSize(horizontal: false, vertical: true)
     }
@@ -2089,5 +2403,145 @@ struct GenerateWorkbenchView: View {
         case .failure(let error):
             importMessage = "Import failed: \(error.localizedDescription)"
         }
+    }
+
+    // MARK: - Aspect Ratio Presets
+
+    private static let ratioPresets: [(label: String, w: Int, h: Int)] = [
+        ("1:2", 576, 1152), ("2:3", 768, 1152), ("3:4", 768, 1024),
+        ("4:5", 832, 1024), ("1:1", 1024, 1024), ("5:4", 1024, 832),
+        ("4:3", 1024, 768), ("3:2", 1152, 768), ("2:1", 1152, 576),
+        ("16:9", 1024, 576), ("9:16", 576, 1024)
+    ]
+
+    private static let sizeTargets: [(label: String, area: Int)] = [
+        ("Small", 512 * 512),
+        ("Normal", 1024 * 1024),
+        ("Large", 1536 * 1536)
+    ]
+
+    private func applyAspectRatioSize(area: Int) {
+        let w = viewModel.config.width
+        let h = viewModel.config.height
+        guard w > 0, h > 0 else { return }
+        let ratio = Double(w) / Double(h)
+        let a = Double(area)
+        let newW = Int((sqrt(a * ratio) / 64).rounded() * 64)
+        let newH = Int((sqrt(a / ratio) / 64).rounded() * 64)
+        viewModel.config.width = max(64, newW)
+        viewModel.config.height = max(64, newH)
+    }
+
+    private var seedModeInfoPopover: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Seed Mode")
+                .font(.system(size: 12, weight: .semibold))
+            VStack(alignment: .leading, spacing: 6) {
+                seedModeRow("Legacy", "Original behavior. Seeds are device-specific and may not reproduce across hardware.")
+                seedModeRow("Torch CPU", "Cross-platform seeds. Same seed produces the same image on any device.")
+                seedModeRow("Scale Alike", "Seeds scale with resolution — the same seed at different sizes produces a similar composition.")
+                seedModeRow("Nvidia GPU", "Optimized for Nvidia hardware. May differ from CPU results for the same seed.")
+            }
+            Text("All modes produce valid images. The difference is reproducibility, not image quality.")
+                .font(.system(size: 10))
+                .foregroundColor(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(14)
+        .frame(width: 260)
+    }
+
+    private func seedModeRow(_ name: String, _ description: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(name).font(.system(size: 11, weight: .medium))
+            Text(description).font(.system(size: 10)).foregroundColor(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private var workbenchAspectRatioPresets: some View {
+        let currentRatio = Double(viewModel.config.width) / Double(viewModel.config.height)
+        let currentArea = viewModel.config.width * viewModel.config.height
+        return HStack(alignment: .top, spacing: 10) {
+            // Size column
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Size").font(.caption).foregroundColor(.neuTextSecondary)
+                VStack(spacing: 3) {
+                    ForEach(Self.sizeTargets, id: \.label) { size in
+                        let isActive = abs(Double(currentArea) / Double(size.area) - 1.0) < 0.2
+                        Button(size.label) { applyAspectRatioSize(area: size.area) }
+                            .font(.caption)
+                            .buttonStyle(NeumorphicButtonStyle(isProminent: isActive))
+                            .frame(minWidth: 48)
+                    }
+                }
+            }
+            // Ratio tiles column
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Aspect Ratio").font(.caption).foregroundColor(.neuTextSecondary)
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 5) {
+                        ForEach(Self.ratioPresets, id: \.label) { preset in
+                            let presetRatio = Double(preset.w) / Double(preset.h)
+                            let isActive = abs(currentRatio - presetRatio) < 0.02
+                            WorkbenchAspectRatioTile(label: preset.label, ratio: presetRatio, isActive: isActive)
+                                .onTapGesture {
+                                    viewModel.config.width = preset.w
+                                    viewModel.config.height = preset.h
+                                }
+                        }
+                    }
+                    .padding(.horizontal, 2)
+                    .padding(.vertical, 2)
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Aspect Ratio Tile
+
+private struct WorkbenchAspectRatioTile: View {
+    let label: String
+    let ratio: Double  // width / height
+    let isActive: Bool
+
+    private let maxW: CGFloat = 28
+    private let maxH: CGFloat = 38
+
+    private var rectSize: CGSize {
+        if ratio >= Double(maxW / maxH) {
+            return CGSize(width: maxW, height: maxW / ratio)
+        } else {
+            return CGSize(width: maxH * ratio, height: maxH)
+        }
+    }
+
+    var body: some View {
+        VStack(spacing: 4) {
+            ZStack {
+                Color.clear.frame(width: maxW, height: maxH)
+                RoundedRectangle(cornerRadius: 2)
+                    .fill(isActive ? Color.neuAccent.opacity(0.18) : Color.neuSurface)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 2)
+                            .stroke(
+                                isActive ? Color.neuAccent : Color.neuShadowDark.opacity(0.5),
+                                lineWidth: isActive ? 1.5 : 1
+                            )
+                    )
+                    .frame(width: rectSize.width, height: rectSize.height)
+            }
+            Text(label)
+                .font(.system(size: 9))
+                .foregroundColor(isActive ? .neuAccent : .neuTextSecondary)
+        }
+        .padding(.vertical, 4)
+        .padding(.horizontal, 5)
+        .background(
+            RoundedRectangle(cornerRadius: 6)
+                .fill(isActive ? Color.neuAccent.opacity(0.08) : Color.clear)
+        )
+        .contentShape(Rectangle())
     }
 }

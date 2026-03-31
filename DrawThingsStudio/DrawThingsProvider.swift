@@ -510,13 +510,18 @@ struct DrawThingsSampler: Identifiable, Hashable {
 /// LoRA information from Draw Things
 struct DrawThingsLoRA: Identifiable, Hashable {
     let id: String
-    let name: String
+    var name: String
     let filename: String
+    /// Trigger word / prompt prefix from DT's custom_lora.json
+    var prefix: String = ""
+    /// Model family compatibility (e.g. "flux1", "z_image", "wan_v2.1_14b")
+    var version: String = ""
+    /// Default weight from DT's custom_lora.json (falls back to 0.6)
+    var defaultWeight: Double = 0.6
 
     init(filename: String) {
         self.id = filename
         self.filename = filename
-        // Extract display name from filename
         self.name = filename
             .replacingOccurrences(of: ".safetensors", with: "")
             .replacingOccurrences(of: ".ckpt", with: "")

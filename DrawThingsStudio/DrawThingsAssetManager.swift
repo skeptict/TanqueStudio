@@ -30,6 +30,8 @@ final class DrawThingsAssetManager: ObservableObject {
     @Published private(set) var isLoading = false
     @Published private(set) var lastError: String?
     @Published private(set) var lastFetchDate: Date?
+    /// True when custom_lora.json metadata has been imported
+    @Published private(set) var hasCustomLoRAMetadata = false
 
     /// Combined model list: local models first, then unique cloud models.
     /// Cached — recomputed only after a fetch, not on every view body evaluation.
@@ -51,9 +53,101 @@ final class DrawThingsAssetManager: ObservableObject {
         cloudCatalog.isLoading
     }
 
+    // MARK: - Custom LoRA Metadata (from DT's custom_lora.json)
+
+    private struct CustomLoRAEntry {
+        let name: String
+        let prefix: String
+        let version: String
+        let defaultWeight: Double
+    }
+
+    private var customLoRAMetadata: [String: CustomLoRAEntry] = [:]
+
+    private var customLoRAMetadataURL: URL? {
+        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first?
+            .appendingPathComponent("DrawThingsStudio/custom_lora_metadata.json")
+    }
+
+    private func parseCustomLoRAJSON(_ data: Data) -> [String: CustomLoRAEntry] {
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] else { return [:] }
+        var result: [String: CustomLoRAEntry] = [:]
+        for entry in json {
+            guard let file = entry["file"] as? String, !file.isEmpty else { continue }
+            let name = entry["name"] as? String ?? file
+            let prefix = entry["prefix"] as? String ?? ""
+            let version = entry["version"] as? String ?? ""
+            let defaultWeight: Double
+            if let weightDict = entry["weight"] as? [String: Any],
+               let val = weightDict["value"] as? Double {
+                defaultWeight = val
+            } else {
+                defaultWeight = 0.6
+            }
+            result[file] = CustomLoRAEntry(name: name, prefix: prefix, version: version, defaultWeight: defaultWeight)
+        }
+        return result
+    }
+
+    private func loadCustomLoRAMetadata() {
+        guard let url = customLoRAMetadataURL,
+              let data = try? Data(contentsOf: url) else { return }
+        let metadata = parseCustomLoRAJSON(data)
+        customLoRAMetadata = metadata
+        hasCustomLoRAMetadata = !metadata.isEmpty
+    }
+
+    private func enrichLoRAs() {
+        guard !customLoRAMetadata.isEmpty else { return }
+        loras = loras.map { lora in
+            guard let entry = customLoRAMetadata[lora.filename] else { return lora }
+            var enriched = lora
+            enriched.name = entry.name
+            enriched.prefix = entry.prefix
+            enriched.version = entry.version
+            enriched.defaultWeight = entry.defaultWeight
+            return enriched
+        }
+    }
+
+    /// Show an open panel and import a custom_lora.json file from Draw Things.
+    func importCustomLoRAMetadata() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = false
+        panel.allowedContentTypes = [.json]
+        panel.prompt = "Import"
+        panel.message = "Select Draw Things custom_lora.json"
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        do {
+            let data = try Data(contentsOf: url)
+            let metadata = parseCustomLoRAJSON(data)
+            guard !metadata.isEmpty else {
+                lastError = "No LoRA entries found in selected file"
+                return
+            }
+            customLoRAMetadata = metadata
+            hasCustomLoRAMetadata = true
+            if let dest = customLoRAMetadataURL {
+                try? FileManager.default.createDirectory(
+                    at: dest.deletingLastPathComponent(), withIntermediateDirectories: true)
+                try? data.write(to: dest)
+            }
+            enrichLoRAs()
+            let count = metadata.count
+            let withPrefix = metadata.values.filter { !$0.prefix.isEmpty }.count
+            lastError = "Imported \(count) LoRA entries (\(withPrefix) with trigger words)"
+        } catch {
+            lastError = "Import failed: \(error.localizedDescription)"
+        }
+    }
+
     // MARK: - Initialization
 
-    private init() {}
+    private init() {
+        loadCustomLoRAMetadata()
+    }
 
     // MARK: - Fetch Assets
 
@@ -92,6 +186,7 @@ final class DrawThingsAssetManager: ObservableObject {
             let fetchedLoRAs = try await client.fetchLoRAs()
             if !fetchedLoRAs.isEmpty {
                 loras = fetchedLoRAs
+                enrichLoRAs()
             }
             let modelCount = models.count
             let loraCount = fetchedLoRAs.count

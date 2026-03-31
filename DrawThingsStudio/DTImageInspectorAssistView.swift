@@ -48,6 +48,7 @@ private struct AssistMessage: Identifiable {
 struct DTImageInspectorAssistView: View {
     let entry: InspectedImage?
     @ObservedObject var viewModel: ImageInspectorViewModel
+    var showContextHeader: Bool = true
 
     @Environment(\.colorScheme) private var colorScheme
     @FocusState private var isInputFocused: Bool
@@ -75,19 +76,19 @@ struct DTImageInspectorAssistView: View {
     var body: some View {
         if let entry {
             VStack(spacing: 0) {
-                contextHeader(entry)
-                Divider()
+                if showContextHeader {
+                    contextHeader(entry)
+                    Divider()
+                }
                 chipScrollView
                 Divider()
 
-                Group {
-                    if messages.isEmpty && !isLoading {
-                        emptyConversationState
-                    } else {
-                        conversationScrollView
-                    }
+                if messages.isEmpty && !isLoading {
+                    emptyConversationState
+                } else {
+                    conversationScrollView
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
 
                 Divider()
                 modelSelectorRow
@@ -144,6 +145,7 @@ struct DTImageInspectorAssistView: View {
                 RoundedRectangle(cornerRadius: 16, style: .continuous)
                     .fill(hasPrompt ? Color(hex: "#E6F1FB") : Color(NSColor.tertiarySystemFill))
             )
+            .fixedSize()
     }
 
     private func contextInfoString(_ entry: InspectedImage) -> String {
@@ -165,21 +167,18 @@ struct DTImageInspectorAssistView: View {
     // MARK: - Suggestion Chips
 
     private var chipScrollView: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
-                ForEach(visionChips, id: \.self) { label in
-                    chipButton(label, colors: visionChipColors)
-                }
-                if hasPrompt {
-                    ForEach(enhanceChips, id: \.self) { label in
-                        chipButton(label, colors: enhanceChipColors)
-                    }
+        ChipFlowLayout(spacing: 8) {
+            ForEach(visionChips, id: \.self) { label in
+                chipButton(label, colors: visionChipColors)
+            }
+            if hasPrompt {
+                ForEach(enhanceChips, id: \.self) { label in
+                    chipButton(label, colors: enhanceChipColors)
                 }
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 10)
         }
-        .frame(height: 44)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
     }
 
     private func chipButton(_ label: String, colors: ChipColors) -> some View {
@@ -247,6 +246,7 @@ struct DTImageInspectorAssistView: View {
                 }
                 .padding(12)
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
             .onChange(of: messages.count) { _, _ in
                 withAnimation { proxy.scrollTo("assistBottom", anchor: .bottom) }
             }
@@ -592,6 +592,57 @@ struct DTImageInspectorAssistView: View {
             return nil
         }
         return jpeg
+    }
+}
+
+// MARK: - Flow Layout for Chips
+
+private struct ChipFlowLayout: Layout {
+    var spacing: CGFloat = 8
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let rows = computeRows(maxWidth: proposal.width ?? .infinity, subviews: subviews)
+        let height = rows.map(\.maxHeight).reduce(0, +) + CGFloat(max(rows.count - 1, 0)) * spacing
+        return CGSize(width: proposal.width ?? 0, height: height)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        let rows = computeRows(maxWidth: bounds.width, subviews: subviews)
+        var y = bounds.minY
+        for row in rows {
+            var x = bounds.minX
+            for subview in row.subviews {
+                let size = subview.sizeThatFits(.unspecified)
+                subview.place(at: CGPoint(x: x, y: y), proposal: ProposedViewSize(size))
+                x += size.width + spacing
+            }
+            y += row.maxHeight + spacing
+        }
+    }
+
+    private struct Row {
+        var subviews: [LayoutSubview] = []
+        var maxHeight: CGFloat = 0
+    }
+
+    private func computeRows(maxWidth: CGFloat, subviews: Subviews) -> [Row] {
+        var rows: [Row] = []
+        var current = Row()
+        var currentWidth: CGFloat = 0
+        for subview in subviews {
+            let size = subview.sizeThatFits(.unspecified)
+            let needed = currentWidth > 0 ? currentWidth + spacing + size.width : size.width
+            if currentWidth > 0 && needed > maxWidth {
+                rows.append(current)
+                current = Row()
+                currentWidth = 0
+            }
+            current.subviews.append(subview)
+            current.maxHeight = max(current.maxHeight, size.height)
+            currentWidth = currentWidth > 0 ? currentWidth + spacing + size.width : size.width
+        }
+        if !current.subviews.isEmpty { rows.append(current) }
+        return rows
     }
 }
 
