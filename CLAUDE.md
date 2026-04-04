@@ -117,10 +117,10 @@ Dropdowns triggered near the bottom of a scroll view will open below the visible
 
 ```bash
 # Debug build
-xcodebuild -project DrawThingsStudio.xcodeproj -scheme TanqueStudio -configuration Debug build
+xcodebuild -project TanqueStudio.xcodeproj -scheme TanqueStudio -configuration Debug build
 
 # Release build
-xcodebuild -project DrawThingsStudio.xcodeproj -scheme TanqueStudio -configuration Release build
+xcodebuild -project TanqueStudio.xcodeproj -scheme TanqueStudio -configuration Release build
 ```
 
 ---
