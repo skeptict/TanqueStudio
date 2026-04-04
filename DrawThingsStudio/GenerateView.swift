@@ -1,10 +1,12 @@
 import SwiftUI
 import AppKit
+import SwiftData
 
 // MARK: - Root View
 
 struct GenerateView: View {
     @State private var vm = GenerateViewModel()
+    @Environment(\.modelContext) private var modelContext
 
     var body: some View {
         ZStack {
@@ -37,6 +39,10 @@ struct GenerateView: View {
             }
         }
         .onAppear { vm.loadAssets() }
+        .onChange(of: vm.lastGenerationID) { _, id in
+            guard id != nil, AppSettings.shared.autoSaveGenerated else { return }
+            vm.saveCurrentImage(in: modelContext, source: .generated)
+        }
     }
 }
 

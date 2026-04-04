@@ -67,6 +67,14 @@ struct SettingsView: View {
                 }
             }
 
+            // MARK: Generation
+            Section("Generation") {
+                Toggle("Auto-save generated images", isOn: $settings.autoSaveGenerated)
+                Text("Images are saved automatically after each generation. Turn off to save manually from the Actions tab.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
             // MARK: Appearance
             Section("Appearance") {
                 Text("More options coming")

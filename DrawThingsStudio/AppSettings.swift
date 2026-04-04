@@ -26,6 +26,12 @@ final class AppSettings {
         didSet { UserDefaults.standard.set(defaultImageFolder, forKey: "tanqueStudio.defaultImageFolder") }
     }
 
+    // MARK: - Generation Behaviour
+
+    var autoSaveGenerated: Bool {
+        didSet { UserDefaults.standard.set(autoSaveGenerated, forKey: "tanqueStudio.autoSaveGenerated") }
+    }
+
     // MARK: - Layout
 
     var leftPanelWidth: CGFloat {
@@ -47,6 +53,7 @@ final class AppSettings {
 
     private init() {
         let d = UserDefaults.standard
+        autoSaveGenerated  = d.object(forKey: "tanqueStudio.autoSaveGenerated") as? Bool ?? true
         dtHost             = d.string(forKey: "tanqueStudio.dtHost")          ?? "127.0.0.1"
         dtPort             = d.integer(forKey: "tanqueStudio.dtPort").nonZero ?? 7859
         dtTransport        = d.string(forKey: "tanqueStudio.dtTransport")     ?? "grpc"
@@ -55,6 +62,23 @@ final class AppSettings {
         leftPanelWidth     = d.cgFloat(forKey: "tanqueStudio.leftPanelWidth")  ?? 260
         rightPanelWidth    = d.cgFloat(forKey: "tanqueStudio.rightPanelWidth") ?? 300
         selectedCollection = d.string(forKey: "tanqueStudio.selectedCollection")
+    }
+}
+
+// MARK: - Computed Paths
+
+extension AppSettings {
+    /// Resolves the active GeneratedImages folder (custom override or App Support default).
+    /// Does NOT create the directory — use ImageStorageManager.generatedImagesDirectory() for that.
+    var generatedImagesFolderURL: URL {
+        if !defaultImageFolder.isEmpty {
+            return URL(fileURLWithPath: defaultImageFolder, isDirectory: true)
+        }
+        let appSupport = FileManager.default
+            .urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+        return appSupport
+            .appendingPathComponent("TanqueStudio", isDirectory: true)
+            .appendingPathComponent("GeneratedImages", isDirectory: true)
     }
 }
 

@@ -1,10 +1,12 @@
 import SwiftUI
 import AppKit
+import SwiftData
 
 // MARK: - Right Inspect Panel
 
 struct GenerateRightPanel: View {
     @Bindable var vm: GenerateViewModel
+    @Environment(\.modelContext) private var modelContext
 
     var body: some View {
         VStack(spacing: 0) {
@@ -196,8 +198,23 @@ struct GenerateRightPanel: View {
 
     private var actionsTab: some View {
         VStack(alignment: .leading, spacing: 6) {
-            ActionButton(icon: "square.and.arrow.down", title: "Save Image", enabled: vm.generatedImage != nil) {
-                // TODO: save to default image folder
+            // Save — disabled when auto-save is on (image already saved) or no image
+            let autoSave = AppSettings.shared.autoSaveGenerated
+            ActionButton(
+                icon: autoSave ? "checkmark.circle" : "square.and.arrow.down",
+                title: autoSave ? "Auto-saved" : "Save Image",
+                enabled: vm.generatedImage != nil && !autoSave
+            ) {
+                vm.saveCurrentImage(in: modelContext, source: .generated)
+            }
+
+            // Confirmation toast
+            if let msg = vm.savedMessage {
+                Text(msg)
+                    .font(.caption)
+                    .foregroundStyle(.green)
+                    .padding(.leading, 4)
+                    .transition(.opacity)
             }
 
             ActionButton(icon: "doc.on.doc", title: "Copy Image", enabled: vm.generatedImage != nil) {
@@ -222,6 +239,7 @@ struct GenerateRightPanel: View {
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
+        .animation(.easeInOut(duration: 0.2), value: vm.savedMessage)
     }
 }
 

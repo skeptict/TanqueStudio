@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import SwiftData
 
 // MARK: - ViewModel
 
@@ -43,6 +44,13 @@ final class GenerateViewModel {
 
     // MARK: — LoRA picker
     var showLoRAPicker: Bool = false
+
+    // MARK: — Persistence state
+    /// Changed after each successful generation so GenerateView can trigger auto-save.
+    var lastGenerationID: UUID?
+    /// Brief confirmation message shown after a successful save ("Saved ✓").
+    var savedMessage: String?
+    private var savedMessageTask: Task<Void, Never>?
 
     // MARK: — Panel widths (persisted via AppSettings)
     var leftPanelWidth: CGFloat {
@@ -88,6 +96,7 @@ final class GenerateViewModel {
                 self.isGenerating = false
                 self.progress = .complete
                 self.selectedRightTab = .metadata
+                self.lastGenerationID = UUID()  // triggers auto-save observer in GenerateView
             } catch is CancellationError {
                 self.isGenerating = false
                 self.progress = .complete
@@ -103,6 +112,34 @@ final class GenerateViewModel {
         generationTask?.cancel()
         isGenerating = false
         progress = .complete
+    }
+
+    // MARK: — Save to SwiftData
+
+    func saveCurrentImage(in context: ModelContext, source: ImageSource = .generated) {
+        guard let image = generatedImage else { return }
+        do {
+            try ImageStorageManager.createAndInsert(
+                image: image,
+                source: source,
+                config: config,
+                prompt: prompt,
+                in: context
+            )
+            try context.save()
+            showSavedConfirmation()
+        } catch {
+            errorMessage = "Save failed: \(error.localizedDescription)"
+        }
+    }
+
+    private func showSavedConfirmation() {
+        savedMessage = "Saved ✓"
+        savedMessageTask?.cancel()
+        savedMessageTask = Task {
+            try? await Task.sleep(for: .seconds(1.5))
+            self.savedMessage = nil
+        }
     }
 
     // MARK: — Asset loading
