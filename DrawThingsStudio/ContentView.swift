@@ -61,6 +61,8 @@ struct ContentView: View {
     @ViewBuilder
     private func detailView(for item: SidebarItem?) -> some View {
         switch item {
+        case .generate:
+            GenerateView()
         case .settings:
             SettingsView()
         default:

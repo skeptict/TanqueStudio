@@ -100,6 +100,10 @@ These files were carried forward from v0.9.x and should compile cleanly but are 
 | `AppSettings.swift` | `@Observable` settings singleton, UserDefaults persistence |
 | `SettingsView.swift` | Settings panel (connection, folder, appearance) |
 | `DataModels.swift` | SwiftData schema (`TSImage`, `ImageSource`) |
+| `GenerateViewModel.swift` | `@MainActor @Observable` ViewModel for Generate view; drives generation, assets, LoRA, aspect ratio |
+| `GenerateView.swift` | Three-panel root layout + center canvas + `PanelDragHandle` + immersive overlay |
+| `GenerateLeftPanel.swift` | Config panel: prompt, params, aspect tiles, LoRA list, Generate button |
+| `GenerateRightPanel.swift` | Right panel: image preview, Metadata/Enhance/Actions tabs |
 
 ---
 
