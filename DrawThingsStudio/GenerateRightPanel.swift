@@ -262,7 +262,10 @@ struct GenerateRightPanel: View {
 
     @ViewBuilder
     private var galleryTab: some View {
-        if savedImages.isEmpty {
+        let visibleImages = savedImages.filter {
+            FileManager.default.fileExists(atPath: $0.filePath)
+        }
+        if visibleImages.isEmpty {
             VStack(spacing: 10) {
                 Image(systemName: "photo.on.rectangle.angled")
                     .font(.system(size: 32))
@@ -278,7 +281,7 @@ struct GenerateRightPanel: View {
                     columns: [GridItem(.flexible()), GridItem(.flexible())],
                     spacing: 6
                 ) {
-                    ForEach(savedImages) { tsImage in
+                    ForEach(visibleImages) { tsImage in
                         GalleryCell(
                             tsImage: tsImage,
                             isSelected: tsImage.id == selectedImageID
@@ -312,8 +315,15 @@ struct GenerateRightPanel: View {
     private func selectGalleryImage(_ tsImage: TSImage) {
         selectedImageID = tsImage.id
         let url = URL(fileURLWithPath: tsImage.filePath)
+        guard FileManager.default.fileExists(atPath: tsImage.filePath) else {
+            vm.errorMessage = "Image file not found: \(url.lastPathComponent)"
+            return
+        }
         guard let data = try? Data(contentsOf: url),
-              let image = NSImage(data: data) else { return }
+              let image = NSImage(data: data) else {
+            vm.errorMessage = "Could not load image: \(url.lastPathComponent)"
+            return
+        }
         vm.generatedImage = image
         vm.currentImageSource = .generated  // already saved; Actions shows "Auto-saved"
         vm.currentMetadata = PNGMetadataParser.parse(url: url)

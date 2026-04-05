@@ -81,8 +81,32 @@ enum ImageStorageManager {
         in context: ModelContext
     ) throws -> TSImage {
         let id = UUID()
-        let directory = try generatedImagesDirectory()
-        let fileURL   = try writePNG(image, to: directory, id: id)
+
+        // Resolve the write directory.
+        // If a security-scoped bookmark exists for a custom folder, resolve and
+        // activate it for the duration of the write; otherwise use the default path.
+        var securityScopedURL: URL?
+        let directory: URL
+        if let bookmarkData = AppSettings.shared.defaultImageFolderBookmark {
+            var isStale = false
+            let resolvedURL = try URL(
+                resolvingBookmarkData: bookmarkData,
+                options: .withSecurityScope,
+                relativeTo: nil,
+                bookmarkDataIsStale: &isStale
+            )
+            guard resolvedURL.startAccessingSecurityScopedResource() else {
+                throw StorageError.cannotAccessDirectory
+            }
+            securityScopedURL = resolvedURL
+            try FileManager.default.createDirectory(at: resolvedURL, withIntermediateDirectories: true)
+            directory = resolvedURL
+        } else {
+            directory = try generatedImagesDirectory()
+        }
+        defer { securityScopedURL?.stopAccessingSecurityScopedResource() }
+
+        let fileURL = try writePNG(image, to: directory, id: id)
 
         let configJSON: String?
         if let cfg = config {
@@ -136,11 +160,13 @@ enum ImageStorageManager {
 
     enum StorageError: LocalizedError {
         case cannotResolveDirectory
+        case cannotAccessDirectory
         case encodingFailed
 
         var errorDescription: String? {
             switch self {
             case .cannotResolveDirectory: return "Cannot resolve image storage directory."
+            case .cannotAccessDirectory:  return "Cannot access the custom image folder. Please reselect it in Settings."
             case .encodingFailed:         return "Failed to encode image as PNG."
             }
         }

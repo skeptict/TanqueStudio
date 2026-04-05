@@ -25,6 +25,9 @@ final class AppSettings {
     var defaultImageFolder: String {
         didSet { UserDefaults.standard.set(defaultImageFolder, forKey: "tanqueStudio.defaultImageFolder") }
     }
+    var defaultImageFolderBookmark: Data? {
+        didSet { UserDefaults.standard.set(defaultImageFolderBookmark, forKey: "tanqueStudio.defaultImageFolderBookmark") }
+    }
 
     // MARK: - Generation Behaviour
 
@@ -58,7 +61,8 @@ final class AppSettings {
         dtPort             = d.integer(forKey: "tanqueStudio.dtPort").nonZero ?? 7859
         dtTransport        = d.string(forKey: "tanqueStudio.dtTransport")     ?? "grpc"
         dtSharedSecret     = d.string(forKey: "tanqueStudio.dtSharedSecret")  ?? ""
-        defaultImageFolder = d.string(forKey: "tanqueStudio.defaultImageFolder") ?? ""
+        defaultImageFolder         = d.string(forKey: "tanqueStudio.defaultImageFolder") ?? ""
+        defaultImageFolderBookmark = d.data(forKey: "tanqueStudio.defaultImageFolderBookmark")
         leftPanelWidth     = d.cgFloat(forKey: "tanqueStudio.leftPanelWidth")  ?? 260
         rightPanelWidth    = d.cgFloat(forKey: "tanqueStudio.rightPanelWidth") ?? 300
         selectedCollection = d.string(forKey: "tanqueStudio.selectedCollection")

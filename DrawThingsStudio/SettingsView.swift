@@ -117,6 +117,7 @@ struct SettingsView: View {
         panel.prompt = "Select Folder"
         if panel.runModal() == .OK, let url = panel.url {
             settings.defaultImageFolder = url.path
+            settings.defaultImageFolderBookmark = try? url.bookmarkData(options: .withSecurityScope)
         }
     }
 }
