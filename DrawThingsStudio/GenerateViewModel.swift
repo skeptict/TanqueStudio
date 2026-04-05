@@ -40,9 +40,11 @@ final class GenerateViewModel {
         case metadata = "Metadata"
         case enhance  = "Enhance"
         case actions  = "Actions"
-        case gallery  = "Gallery"
     }
     var selectedRightTab: RightTab = .metadata
+
+    // MARK: — Gallery selection
+    var selectedGalleryID: UUID?
 
     // MARK: — LoRA picker
     var showLoRAPicker: Bool = false
@@ -62,6 +64,10 @@ final class GenerateViewModel {
     var rightPanelWidth: CGFloat {
         get { AppSettings.shared.rightPanelWidth }
         set { AppSettings.shared.rightPanelWidth = newValue }
+    }
+    var galleryStripWidth: CGFloat {
+        get { AppSettings.shared.galleryStripWidth }
+        set { AppSettings.shared.galleryStripWidth = newValue }
     }
 
     // MARK: — Private

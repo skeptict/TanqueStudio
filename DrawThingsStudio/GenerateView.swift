@@ -24,6 +24,15 @@ struct GenerateView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
 
                 PanelDragHandle(
+                    width: Binding(get: { vm.galleryStripWidth }, set: { vm.galleryStripWidth = $0 }),
+                    minWidth: 80, maxWidth: 200,
+                    isLeadingPanel: false
+                )
+
+                GalleryStripView(vm: vm)
+                    .frame(width: vm.galleryStripWidth)
+
+                PanelDragHandle(
                     width: Binding(get: { vm.rightPanelWidth }, set: { vm.rightPanelWidth = $0 }),
                     minWidth: 240, maxWidth: 440,
                     isLeadingPanel: false

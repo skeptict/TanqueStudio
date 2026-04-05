@@ -97,13 +97,14 @@ These files were carried forward from v0.9.x and should compile cleanly but are 
 |------|---------|
 | `TanqueStudioApp.swift` | App entry point, ModelContainer, migration functions |
 | `ContentView.swift` | NavigationSplitView shell, sidebar items; owns `@State generateVM: GenerateViewModel` (must stay here — survives navigation) |
-| `AppSettings.swift` | `@Observable` settings singleton, UserDefaults persistence; `defaultImageFolderBookmark: Data?` stores security-scoped bookmark for custom save dir |
+| `AppSettings.swift` | `@Observable` settings singleton, UserDefaults persistence; `defaultImageFolderBookmark: Data?` stores security-scoped bookmark for custom save dir; `galleryStripWidth: CGFloat` (default 120, key `tanqueStudio.galleryStripWidth`) |
 | `SettingsView.swift` | Settings panel (connection, folder, appearance) |
 | `DataModels.swift` | SwiftData schema (`TSImage`, `ImageSource`) |
-| `GenerateViewModel.swift` | `@MainActor @Observable` ViewModel; owned by `ContentView`; drives generation, assets, LoRA, aspect ratio; `currentImageSource: ImageSource` tracks .generated/.imported for Save button logic; `RightTab` enum (Metadata/Enhance/Actions/Gallery) |
-| `GenerateView.swift` | Three-panel root layout + center canvas + `PanelDragHandle` + immersive overlay; receives `let vm: GenerateViewModel` (does not own it) |
+| `GenerateViewModel.swift` | `@MainActor @Observable` ViewModel; owned by `ContentView`; drives generation, assets, LoRA, aspect ratio; `currentImageSource: ImageSource` tracks .generated/.imported for Save button logic; `RightTab` enum (Metadata/Enhance/Actions — no Gallery); `selectedGalleryID: UUID?` for gallery strip selection; `galleryStripWidth: CGFloat` proxy to AppSettings |
+| `GenerateView.swift` | Four-panel root layout: Left \| Canvas \| GalleryStrip \| Right + `PanelDragHandle` between each + immersive overlay; receives `let vm: GenerateViewModel` (does not own it) |
 | `GenerateLeftPanel.swift` | Config panel: prompt, params, aspect tiles, LoRA list, Generate button |
-| `GenerateRightPanel.swift` | Right panel: image preview, Metadata/Enhance/Actions/Gallery tabs; `@Query` savedImages grid, context menu, delete; `metadata(from:)` decodes `configJSON` → `PNGMetadata` for gallery taps |
+| `GalleryStripView.swift` | Resizable gallery column (default 120px, min 80, max 200); green-tinted `LazyVStack`; source-based border (green=generated, gray=imported); selection highlight; relative timestamp; context menu (Reveal/Copy/Delete); tap loads image+metadata into `vm` via `selectImage()` + `metadata(from:)` helper; falls back to `PNGMetadataParser` for imported images |
+| `GenerateRightPanel.swift` | Right panel: image preview (shows `vm.generatedImage`), Metadata/Enhance/Actions tabs only — Gallery tab removed |
 | `ImageStorageManager.swift` | Writes PNG to disk, generates thumbnail, constructs TSImage; uses security-scoped bookmark from AppSettings for custom directories |
 
 ---
@@ -162,7 +163,7 @@ gRPC config is passed as a FlatBuffer blob. See `DrawThingsProvider.swift` for `
 - **Moving `GenerateViewModel` back into `GenerateView`** — it must stay in `ContentView` (`@State private var generateVM`) so canvas state survives NavigationSplitView transitions
 - **Storing user-selected folder paths as plain strings** — always use `url.bookmarkData(options: .withSecurityScope)` + `AppSettings.defaultImageFolderBookmark`; `URL(fileURLWithPath:)` from a stored string loses sandbox access on relaunch
 - **Activating security-scoped bookmark when no custom folder is set** — always gate on BOTH `bookmark != nil` AND `!defaultImageFolder.isEmpty`; a stale bookmark in UserDefaults will cause `startAccessingSecurityScopedResource()` to fail for the default App Support path
-- **Parsing metadata from TanqueStudio-written PNGs** — these PNGs have NO embedded metadata chunks; metadata lives only in `TSImage.configJSON`. Use `metadata(from:)` in `GenerateRightPanel`, not `PNGMetadataParser`, for generated images
+- **Parsing metadata from TanqueStudio-written PNGs** — these PNGs have NO embedded metadata chunks; metadata lives only in `TSImage.configJSON`. Use `metadata(from:)` in `GalleryStripView`, not `PNGMetadataParser`, for generated images. Only call `PNGMetadataParser` for `.imported` source images. Use `(value as? NSNumber)?.intValue` / `.doubleValue` for numeric fields — bare `as? Int` / `as? Double` on `NSNumber` can silently return nil
 
 ---
 
