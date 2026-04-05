@@ -104,6 +104,7 @@ These files were carried forward from v0.9.x and should compile cleanly but are 
 | `GenerateView.swift` | Three-panel root layout + center canvas + `PanelDragHandle` + immersive overlay |
 | `GenerateLeftPanel.swift` | Config panel: prompt, params, aspect tiles, LoRA list, Generate button |
 | `GenerateRightPanel.swift` | Right panel: image preview, Metadata/Enhance/Actions tabs |
+| `ImageStorageManager.swift` | Writes PNG to disk, generates thumbnail, constructs TSImage; called by ViewModel save |
 
 ---
 

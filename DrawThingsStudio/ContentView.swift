@@ -51,6 +51,7 @@ struct ContentView: View {
                 } icon: {
                     Image(systemName: item.icon)
                 }
+                .tag(item)
             }
             .navigationSplitViewColumnWidth(min: 160, ideal: 200)
         } detail: {

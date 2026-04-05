@@ -82,17 +82,13 @@ private struct GenerateCenterPanel: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .onDrop(of: ["public.file-url", "public.image"], isTargeted: $isDropTargeted) { providers in
-            guard let provider = providers.first,
-                  provider.canLoadObject(ofClass: NSURL.self) else { return false }
-            _ = provider.loadObject(ofClass: NSURL.self) { reading, _ in
-                guard let url = reading as? URL else { return }
-                let ext = url.pathExtension.lowercased()
-                guard ext == "png" || ext == "jpg" || ext == "jpeg" else { return }
-                Task { @MainActor in vm.handleDroppedImageURL(url) }
-            }
+        .dropDestination(for: URL.self) { urls, _ in
+            guard let url = urls.first else { return false }
+            let ext = url.pathExtension.lowercased()
+            guard ext == "png" || ext == "jpg" || ext == "jpeg" else { return false }
+            vm.handleDroppedImageURL(url)
             return true
-        }
+        } isTargeted: { isDropTargeted = $0 }
     }
 
     private var emptyState: some View {
