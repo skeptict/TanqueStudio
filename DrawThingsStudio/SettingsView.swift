@@ -58,11 +58,20 @@ struct SettingsView: View {
             // MARK: Image Folder
             Section("Image Folder") {
                 HStack {
-                    Text(settings.defaultImageFolder.isEmpty ? "Default (app container)" : settings.defaultImageFolder)
+                    Text(settings.defaultImageFolder.isEmpty
+                         ? "Default (App Support/TanqueStudio/GeneratedImages)"
+                         : settings.defaultImageFolder)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                         .truncationMode(.middle)
                     Spacer()
+                    if !settings.defaultImageFolder.isEmpty {
+                        Button("Reset to Default") {
+                            settings.defaultImageFolder = ""
+                            settings.defaultImageFolderBookmark = nil
+                        }
+                        .foregroundStyle(.secondary)
+                    }
                     Button("Browse…") { browseForFolder() }
                 }
             }

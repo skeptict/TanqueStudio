@@ -96,15 +96,15 @@ These files were carried forward from v0.9.x and should compile cleanly but are 
 | File | Purpose |
 |------|---------|
 | `TanqueStudioApp.swift` | App entry point, ModelContainer, migration functions |
-| `ContentView.swift` | NavigationSplitView shell, sidebar items |
-| `AppSettings.swift` | `@Observable` settings singleton, UserDefaults persistence |
+| `ContentView.swift` | NavigationSplitView shell, sidebar items; owns `@State generateVM: GenerateViewModel` (must stay here — survives navigation) |
+| `AppSettings.swift` | `@Observable` settings singleton, UserDefaults persistence; `defaultImageFolderBookmark: Data?` stores security-scoped bookmark for custom save dir |
 | `SettingsView.swift` | Settings panel (connection, folder, appearance) |
 | `DataModels.swift` | SwiftData schema (`TSImage`, `ImageSource`) |
-| `GenerateViewModel.swift` | `@MainActor @Observable` ViewModel for Generate view; drives generation, assets, LoRA, aspect ratio |
-| `GenerateView.swift` | Three-panel root layout + center canvas + `PanelDragHandle` + immersive overlay |
+| `GenerateViewModel.swift` | `@MainActor @Observable` ViewModel; owned by `ContentView`; drives generation, assets, LoRA, aspect ratio; `currentImageSource: ImageSource` tracks .generated/.imported for Save button logic; `RightTab` enum (Metadata/Enhance/Actions/Gallery) |
+| `GenerateView.swift` | Three-panel root layout + center canvas + `PanelDragHandle` + immersive overlay; receives `let vm: GenerateViewModel` (does not own it) |
 | `GenerateLeftPanel.swift` | Config panel: prompt, params, aspect tiles, LoRA list, Generate button |
-| `GenerateRightPanel.swift` | Right panel: image preview, Metadata/Enhance/Actions tabs |
-| `ImageStorageManager.swift` | Writes PNG to disk, generates thumbnail, constructs TSImage; called by ViewModel save |
+| `GenerateRightPanel.swift` | Right panel: image preview, Metadata/Enhance/Actions/Gallery tabs; `@Query` savedImages grid, context menu, delete |
+| `ImageStorageManager.swift` | Writes PNG to disk, generates thumbnail, constructs TSImage; uses security-scoped bookmark from AppSettings for custom directories |
 
 ---
 
@@ -159,6 +159,9 @@ gRPC config is passed as a FlatBuffer blob. See `DrawThingsProvider.swift` for `
 - **Changing SwiftData model schema** (`@Model` types — migration risk)
 - **Modifying any ported file** (see Ported Files above)
 - **Adding `@Published` or `@State` properties to `AppSettings`** — use `@Observable` pattern consistently
+- **Moving `GenerateViewModel` back into `GenerateView`** — it must stay in `ContentView` (`@State private var generateVM`) so canvas state survives NavigationSplitView transitions
+- **Storing user-selected folder paths as plain strings** — always use `url.bookmarkData(options: .withSecurityScope)` + `AppSettings.defaultImageFolderBookmark`; `URL(fileURLWithPath:)` from a stored string loses sandbox access on relaunch
+- **Activating security-scoped bookmark when no custom folder is set** — always gate on BOTH `bookmark != nil` AND `!defaultImageFolder.isEmpty`; a stale bookmark in UserDefaults will cause `startAccessingSecurityScopedResource()` to fail for the default App Support path
 
 ---
 

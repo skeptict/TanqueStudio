@@ -326,8 +326,43 @@ struct GenerateRightPanel: View {
         }
         vm.generatedImage = image
         vm.currentImageSource = .generated  // already saved; Actions shows "Auto-saved"
-        vm.currentMetadata = PNGMetadataParser.parse(url: url)
+        if let json = tsImage.configJSON, let meta = metadata(from: json) {
+            vm.currentMetadata = meta
+        } else {
+            vm.currentMetadata = PNGMetadataParser.parse(url: url)
+        }
         vm.selectedRightTab = .metadata
+    }
+
+    /// Decodes a configJSON string (written by ImageStorageManager.encodeConfig) into PNGMetadata.
+    /// Returns nil if the JSON is malformed; caller falls back to PNGMetadataParser.
+    private func metadata(from json: String) -> PNGMetadata? {
+        guard let data = json.data(using: .utf8),
+              let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return nil
+        }
+        var m = PNGMetadata()
+        m.prompt         = dict["prompt"]         as? String
+        m.negativePrompt = dict["negativePrompt"] as? String
+        m.model          = dict["model"]          as? String
+        m.sampler        = dict["sampler"]        as? String
+        m.steps          = dict["steps"]          as? Int
+        m.guidanceScale  = dict["guidanceScale"]  as? Double
+        m.seed           = dict["seed"]           as? Int
+        m.seedMode       = dict["seedMode"]       as? String
+        m.width          = dict["width"]          as? Int
+        m.height         = dict["height"]         as? Int
+        m.shift          = dict["shift"]          as? Double
+        m.strength       = dict["strength"]       as? Double
+        if let loras = dict["loras"] as? [[String: Any]] {
+            m.loras = loras.compactMap { d in
+                guard let file   = d["file"]   as? String,
+                      let weight = d["weight"] as? Double else { return nil }
+                return PNGMetadataLoRA(file: file, weight: weight)
+            }
+        }
+        m.format = .drawThings
+        return m
     }
 
     private func copyToClipboard(_ tsImage: TSImage) {
