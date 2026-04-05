@@ -5,7 +5,7 @@ import SwiftData
 // MARK: - Root View
 
 struct GenerateView: View {
-    @State private var vm = GenerateViewModel()
+    let vm: GenerateViewModel
     @Environment(\.modelContext) private var modelContext
 
     var body: some View {

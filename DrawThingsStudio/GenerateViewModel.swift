@@ -19,6 +19,7 @@ final class GenerateViewModel {
     // MARK: — Current image & metadata
     var generatedImage: NSImage?
     var currentMetadata: PNGMetadata?
+    var currentImageSource: ImageSource = .generated
     var showImmersive: Bool = false
 
     // MARK: — Generation state
@@ -39,6 +40,7 @@ final class GenerateViewModel {
         case metadata = "Metadata"
         case enhance  = "Enhance"
         case actions  = "Actions"
+        case gallery  = "Gallery"
     }
     var selectedRightTab: RightTab = .metadata
 
@@ -93,6 +95,7 @@ final class GenerateViewModel {
                 )
                 self.generatedImage = images.first
                 self.currentMetadata = cfg.asPNGMetadata(prompt: capturedPrompt)
+                self.currentImageSource = .generated
                 self.isGenerating = false
                 self.progress = .complete
                 self.selectedRightTab = .metadata
@@ -163,6 +166,7 @@ final class GenerateViewModel {
         guard let data = try? Data(contentsOf: url),
               let image = NSImage(data: data) else { return }
         generatedImage = image
+        currentImageSource = .imported
         currentMetadata = PNGMetadataParser.parse(url: url)
         if let meta = currentMetadata {
             if let p = meta.prompt, !p.isEmpty { prompt = p }

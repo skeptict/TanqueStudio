@@ -31,6 +31,7 @@ enum SidebarItem: String, CaseIterable, Identifiable {
 
 struct ContentView: View {
     @State private var selectedItem: SidebarItem? = .generate
+    @State private var generateVM = GenerateViewModel()
 
     var body: some View {
         NavigationSplitView {
@@ -63,7 +64,7 @@ struct ContentView: View {
     private func detailView(for item: SidebarItem?) -> some View {
         switch item {
         case .generate:
-            GenerateView()
+            GenerateView(vm: generateVM)
         case .settings:
             SettingsView()
         default:

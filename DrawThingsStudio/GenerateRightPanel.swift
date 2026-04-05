@@ -7,6 +7,10 @@ import SwiftData
 struct GenerateRightPanel: View {
     @Bindable var vm: GenerateViewModel
     @Environment(\.modelContext) private var modelContext
+    @Query(sort: \TSImage.createdAt, order: .reverse) private var savedImages: [TSImage]
+
+    @State private var selectedImageID: UUID?
+    @State private var imageToDelete: TSImage?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -17,6 +21,22 @@ struct GenerateRightPanel: View {
             tabContent
         }
         .background(Color(NSColor.controlBackgroundColor))
+        .onChange(of: savedImages.first?.id) { _, newID in
+            selectedImageID = newID
+        }
+        .confirmationDialog(
+            "Delete Image",
+            isPresented: Binding(get: { imageToDelete != nil }, set: { if !$0 { imageToDelete = nil } }),
+            titleVisibility: .visible
+        ) {
+            Button("Delete", role: .destructive) {
+                if let img = imageToDelete { deleteImage(img) }
+                imageToDelete = nil
+            }
+            Button("Cancel", role: .cancel) { imageToDelete = nil }
+        } message: {
+            Text("This image will be removed from the gallery and deleted from disk.")
+        }
     }
 
     // MARK: — Image preview
@@ -73,6 +93,7 @@ struct GenerateRightPanel: View {
         case .metadata: metadataTab
         case .enhance:  enhanceTab
         case .actions:  actionsTab
+        case .gallery:  galleryTab
         }
     }
 
@@ -176,14 +197,10 @@ struct GenerateRightPanel: View {
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                             }
-                            .onDrop(of: ["public.file-url", "public.image"], isTargeted: nil) { providers in
-                                guard let provider = providers.first,
-                                      provider.canLoadObject(ofClass: NSURL.self) else { return false }
-                                _ = provider.loadObject(ofClass: NSURL.self) { reading, _ in
-                                    guard let url = reading as? URL,
-                                          let img = NSImage(contentsOf: url) else { return }
-                                    Task { @MainActor in vm.sourceImage = img }
-                                }
+                            .dropDestination(for: URL.self) { urls, _ in
+                                guard let url = urls.first,
+                                      let img = NSImage(contentsOf: url) else { return false }
+                                vm.sourceImage = img
                                 return true
                             }
                     }
@@ -198,17 +215,16 @@ struct GenerateRightPanel: View {
 
     private var actionsTab: some View {
         VStack(alignment: .leading, spacing: 6) {
-            // Save — disabled when auto-save is on (image already saved) or no image
             let autoSave = AppSettings.shared.autoSaveGenerated
+            let isImported = vm.currentImageSource == .imported
             ActionButton(
-                icon: autoSave ? "checkmark.circle" : "square.and.arrow.down",
-                title: autoSave ? "Auto-saved" : "Save Image",
-                enabled: vm.generatedImage != nil && !autoSave
+                icon: (autoSave && !isImported) ? "checkmark.circle" : "square.and.arrow.down",
+                title: (autoSave && !isImported) ? "Auto-saved" : "Save Image",
+                enabled: vm.generatedImage != nil && (!autoSave || isImported)
             ) {
-                vm.saveCurrentImage(in: modelContext, source: .generated)
+                vm.saveCurrentImage(in: modelContext, source: vm.currentImageSource)
             }
 
-            // Confirmation toast
             if let msg = vm.savedMessage {
                 Text(msg)
                     .font(.caption)
@@ -240,6 +256,144 @@ struct GenerateRightPanel: View {
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
         .animation(.easeInOut(duration: 0.2), value: vm.savedMessage)
+    }
+
+    // MARK: — Gallery tab
+
+    @ViewBuilder
+    private var galleryTab: some View {
+        if savedImages.isEmpty {
+            VStack(spacing: 10) {
+                Image(systemName: "photo.on.rectangle.angled")
+                    .font(.system(size: 32))
+                    .foregroundStyle(.quaternary)
+                Text("No saved images yet")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else {
+            ScrollView {
+                LazyVGrid(
+                    columns: [GridItem(.flexible()), GridItem(.flexible())],
+                    spacing: 6
+                ) {
+                    ForEach(savedImages) { tsImage in
+                        GalleryCell(
+                            tsImage: tsImage,
+                            isSelected: tsImage.id == selectedImageID
+                        ) {
+                            selectGalleryImage(tsImage)
+                        }
+                        .contextMenu {
+                            Button("Reveal in Finder") {
+                                NSWorkspace.shared.selectFile(
+                                    tsImage.filePath,
+                                    inFileViewerRootedAtPath: ""
+                                )
+                            }
+                            Button("Copy to Clipboard") {
+                                copyToClipboard(tsImage)
+                            }
+                            Divider()
+                            Button("Delete", role: .destructive) {
+                                imageToDelete = tsImage
+                            }
+                        }
+                    }
+                }
+                .padding(6)
+            }
+        }
+    }
+
+    // MARK: — Gallery helpers
+
+    private func selectGalleryImage(_ tsImage: TSImage) {
+        selectedImageID = tsImage.id
+        let url = URL(fileURLWithPath: tsImage.filePath)
+        guard let data = try? Data(contentsOf: url),
+              let image = NSImage(data: data) else { return }
+        vm.generatedImage = image
+        vm.currentImageSource = .generated  // already saved; Actions shows "Auto-saved"
+        vm.currentMetadata = PNGMetadataParser.parse(url: url)
+        vm.selectedRightTab = .metadata
+    }
+
+    private func copyToClipboard(_ tsImage: TSImage) {
+        let url = URL(fileURLWithPath: tsImage.filePath)
+        guard let data = try? Data(contentsOf: url),
+              let image = NSImage(data: data),
+              let tiff = image.tiffRepresentation else { return }
+        let pb = NSPasteboard.general
+        pb.clearContents()
+        pb.setData(tiff, forType: .tiff)
+    }
+
+    private func deleteImage(_ tsImage: TSImage) {
+        if tsImage.id == selectedImageID { selectedImageID = nil }
+        try? FileManager.default.removeItem(atPath: tsImage.filePath)
+        modelContext.delete(tsImage)
+        try? modelContext.save()
+    }
+}
+
+// MARK: - Gallery Cell
+
+private struct GalleryCell: View {
+    let tsImage: TSImage
+    let isSelected: Bool
+    let onTap: () -> Void
+
+    var body: some View {
+        Button(action: onTap) {
+            VStack(spacing: 3) {
+                thumbnailView
+                    .frame(height: 80)
+                    .clipShape(RoundedRectangle(cornerRadius: 5))
+                    .overlay {
+                        if isSelected {
+                            RoundedRectangle(cornerRadius: 5)
+                                .strokeBorder(Color.accentColor, lineWidth: 2)
+                        }
+                    }
+
+                Text(relativeTime(from: tsImage.createdAt))
+                    .font(.system(size: 9))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+        }
+        .buttonStyle(.plain)
+    }
+
+    @ViewBuilder
+    private var thumbnailView: some View {
+        if let data = tsImage.thumbnailData, let thumb = NSImage(data: data) {
+            Image(nsImage: thumb)
+                .resizable()
+                .aspectRatio(contentMode: .fill)
+        } else {
+            Color.secondary.opacity(0.15)
+                .overlay {
+                    Image(systemName: "photo")
+                        .foregroundStyle(.tertiary)
+                }
+        }
+    }
+
+    private func relativeTime(from date: Date) -> String {
+        let diff = Date().timeIntervalSince(date)
+        switch diff {
+        case ..<60:     return "Just now"
+        case ..<3600:   return "\(Int(diff / 60))m ago"
+        case ..<86400:  return "\(Int(diff / 3600))h ago"
+        case ..<172800: return "Yesterday"
+        default:
+            let f = DateFormatter()
+            f.dateFormat = "MMM d"
+            return f.string(from: date)
+        }
     }
 }
 
