@@ -61,8 +61,18 @@ final class AppSettings {
         dtPort             = d.integer(forKey: "tanqueStudio.dtPort").nonZero ?? 7859
         dtTransport        = d.string(forKey: "tanqueStudio.dtTransport")     ?? "grpc"
         dtSharedSecret     = d.string(forKey: "tanqueStudio.dtSharedSecret")  ?? ""
-        defaultImageFolder         = d.string(forKey: "tanqueStudio.defaultImageFolder") ?? ""
-        defaultImageFolderBookmark = d.data(forKey: "tanqueStudio.defaultImageFolderBookmark")
+        let folderPath = d.string(forKey: "tanqueStudio.defaultImageFolder") ?? ""
+        var folderBookmark = d.data(forKey: "tanqueStudio.defaultImageFolderBookmark")
+
+        // Migration: clear a stale bookmark that exists without a corresponding folder path.
+        // Can happen if the user previously selected a custom folder then the path was lost.
+        if folderPath.isEmpty, folderBookmark != nil {
+            d.removeObject(forKey: "tanqueStudio.defaultImageFolderBookmark")
+            folderBookmark = nil
+        }
+
+        defaultImageFolder         = folderPath
+        defaultImageFolderBookmark = folderBookmark
         leftPanelWidth     = d.cgFloat(forKey: "tanqueStudio.leftPanelWidth")  ?? 260
         rightPanelWidth    = d.cgFloat(forKey: "tanqueStudio.rightPanelWidth") ?? 300
         selectedCollection = d.string(forKey: "tanqueStudio.selectedCollection")

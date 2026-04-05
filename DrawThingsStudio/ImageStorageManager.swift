@@ -87,7 +87,8 @@ enum ImageStorageManager {
         // activate it for the duration of the write; otherwise use the default path.
         var securityScopedURL: URL?
         let directory: URL
-        if let bookmarkData = AppSettings.shared.defaultImageFolderBookmark {
+        if let bookmarkData = AppSettings.shared.defaultImageFolderBookmark,
+           !AppSettings.shared.defaultImageFolder.isEmpty {
             var isStale = false
             let resolvedURL = try URL(
                 resolvingBookmarkData: bookmarkData,

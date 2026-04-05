@@ -316,12 +316,12 @@ struct GenerateRightPanel: View {
         selectedImageID = tsImage.id
         let url = URL(fileURLWithPath: tsImage.filePath)
         guard FileManager.default.fileExists(atPath: tsImage.filePath) else {
-            vm.errorMessage = "Image file not found: \(url.lastPathComponent)"
+            vm.errorMessage = "Image file not found at: \(tsImage.filePath)"
             return
         }
         guard let data = try? Data(contentsOf: url),
               let image = NSImage(data: data) else {
-            vm.errorMessage = "Could not load image: \(url.lastPathComponent)"
+            vm.errorMessage = "Could not load image at: \(tsImage.filePath)"
             return
         }
         vm.generatedImage = image
