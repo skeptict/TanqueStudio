@@ -103,7 +103,7 @@ These files were carried forward from v0.9.x and should compile cleanly but are 
 | `GenerateViewModel.swift` | `@MainActor @Observable` ViewModel; owned by `ContentView`; drives generation, assets, LoRA, aspect ratio; `currentImageSource: ImageSource` tracks .generated/.imported for Save button logic; `RightTab` enum (Metadata/Enhance/Actions/Gallery) |
 | `GenerateView.swift` | Three-panel root layout + center canvas + `PanelDragHandle` + immersive overlay; receives `let vm: GenerateViewModel` (does not own it) |
 | `GenerateLeftPanel.swift` | Config panel: prompt, params, aspect tiles, LoRA list, Generate button |
-| `GenerateRightPanel.swift` | Right panel: image preview, Metadata/Enhance/Actions/Gallery tabs; `@Query` savedImages grid, context menu, delete |
+| `GenerateRightPanel.swift` | Right panel: image preview, Metadata/Enhance/Actions/Gallery tabs; `@Query` savedImages grid, context menu, delete; `metadata(from:)` decodes `configJSON` → `PNGMetadata` for gallery taps |
 | `ImageStorageManager.swift` | Writes PNG to disk, generates thumbnail, constructs TSImage; uses security-scoped bookmark from AppSettings for custom directories |
 
 ---
@@ -162,6 +162,7 @@ gRPC config is passed as a FlatBuffer blob. See `DrawThingsProvider.swift` for `
 - **Moving `GenerateViewModel` back into `GenerateView`** — it must stay in `ContentView` (`@State private var generateVM`) so canvas state survives NavigationSplitView transitions
 - **Storing user-selected folder paths as plain strings** — always use `url.bookmarkData(options: .withSecurityScope)` + `AppSettings.defaultImageFolderBookmark`; `URL(fileURLWithPath:)` from a stored string loses sandbox access on relaunch
 - **Activating security-scoped bookmark when no custom folder is set** — always gate on BOTH `bookmark != nil` AND `!defaultImageFolder.isEmpty`; a stale bookmark in UserDefaults will cause `startAccessingSecurityScopedResource()` to fail for the default App Support path
+- **Parsing metadata from TanqueStudio-written PNGs** — these PNGs have NO embedded metadata chunks; metadata lives only in `TSImage.configJSON`. Use `metadata(from:)` in `GenerateRightPanel`, not `PNGMetadataParser`, for generated images
 
 ---
 
