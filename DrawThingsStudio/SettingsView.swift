@@ -30,11 +30,6 @@ struct SettingsView: View {
                         .multilineTextAlignment(.trailing)
                 }
 
-                Picker("Transport", selection: $settings.dtTransport) {
-                    Text("gRPC").tag("grpc")
-                    Text("HTTP").tag("http")
-                }
-
                 SecureField("Shared Secret", text: $settings.dtSharedSecret)
                     .textFieldStyle(.roundedBorder)
 
@@ -75,9 +70,6 @@ struct SettingsView: View {
                 )
                 .textFieldStyle(.roundedBorder)
                 .help("Leave blank to use the provider default URL")
-
-                TextField("Model name (e.g. llama3, mistral)", text: $settings.llmModelName)
-                    .textFieldStyle(.roundedBorder)
 
                 HStack {
                     Button(action: testLLMConnection) {
@@ -149,31 +141,19 @@ struct SettingsView: View {
         connectionStatus = .testing
         let host = settings.dtHost
         let port = settings.dtPort
-        let transport = settings.dtTransport
-        Task {
-            do {
-                if transport == "grpc" {
-                    let client = DrawThingsGRPCClient(host: host, port: port)
-                    let reachable = await client.checkConnection()
-                    connectionStatus = reachable ? .success : .failure
-                } else {
-                    let url = URL(string: "http://\(host):7860/sdapi/v1/options")!
-                    let (_, response) = try await URLSession.shared.data(from: url)
-                    let code = (response as? HTTPURLResponse)?.statusCode ?? 0
-                    connectionStatus = (200..<300).contains(code) ? .success : .failure
-                }
-            } catch {
-                connectionStatus = .failure
-            }
+        Task { @MainActor in
+            let client = DrawThingsGRPCClient(host: host, port: port)
+            let reachable = await client.checkConnection()
+            connectionStatus = reachable ? .success : .failure
         }
     }
 
     private func testLLMConnection() {
         llmStatus = .testing
         let baseURL = settings.llmEffectiveBaseURL
-        Task {
+        Task { @MainActor in
             do {
-                let models = try await LLMService.fetchModels(baseURL: baseURL)
+                let models = try await LLMService.fetchModels(baseURL: baseURL, provider: settings.llmProvider)
                 llmStatus = .success(models.count)
             } catch {
                 llmStatus = .failure(error.localizedDescription)

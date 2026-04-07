@@ -13,9 +13,6 @@ final class AppSettings {
     var dtPort: Int {
         didSet { UserDefaults.standard.set(dtPort, forKey: "tanqueStudio.dtPort") }
     }
-    var dtTransport: String {
-        didSet { UserDefaults.standard.set(dtTransport, forKey: "tanqueStudio.dtTransport") }
-    }
     var dtSharedSecret: String {
         didSet { UserDefaults.standard.set(dtSharedSecret, forKey: "tanqueStudio.dtSharedSecret") }
     }
@@ -27,6 +24,9 @@ final class AppSettings {
     }
     var defaultImageFolderBookmark: Data? {
         didSet { UserDefaults.standard.set(defaultImageFolderBookmark, forKey: "tanqueStudio.defaultImageFolderBookmark") }
+    }
+    var dtConfigsBookmark: Data? {
+        didSet { UserDefaults.standard.set(dtConfigsBookmark, forKey: "tanqueStudio.dtConfigsBookmark") }
     }
 
     // MARK: - Generation Behaviour
@@ -77,7 +77,6 @@ final class AppSettings {
         autoSaveGenerated  = d.object(forKey: "tanqueStudio.autoSaveGenerated") as? Bool ?? true
         dtHost             = d.string(forKey: "tanqueStudio.dtHost")          ?? "127.0.0.1"
         dtPort             = d.integer(forKey: "tanqueStudio.dtPort").nonZero ?? 7859
-        dtTransport        = d.string(forKey: "tanqueStudio.dtTransport")     ?? "grpc"
         dtSharedSecret     = d.string(forKey: "tanqueStudio.dtSharedSecret")  ?? ""
         let folderPath = d.string(forKey: "tanqueStudio.defaultImageFolder") ?? ""
         var folderBookmark = d.data(forKey: "tanqueStudio.defaultImageFolderBookmark")
@@ -99,6 +98,7 @@ final class AppSettings {
         llmBaseURL   = d.string(forKey: "tanqueStudio.llmBaseURL")   ?? ""
         llmModelName = d.string(forKey: "tanqueStudio.llmModelName") ?? ""
         selectedCollection = d.string(forKey: "tanqueStudio.selectedCollection")
+        dtConfigsBookmark  = d.data(forKey: "tanqueStudio.dtConfigsBookmark")
     }
 }
 
@@ -132,16 +132,7 @@ extension AppSettings {
 
 extension AppSettings {
     func createDrawThingsClient() -> any DrawThingsProvider {
-        switch dtTransport {
-        case "http":
-            return DrawThingsHTTPClient(
-                host: dtHost,
-                port: dtPort == 7859 ? 7860 : dtPort,  // default HTTP port if gRPC port is set
-                sharedSecret: dtSharedSecret
-            )
-        default:
-            return DrawThingsGRPCClient(host: dtHost, port: dtPort)
-        }
+        return DrawThingsGRPCClient(host: dtHost, port: dtPort)
     }
 }
 

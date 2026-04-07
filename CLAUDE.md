@@ -182,3 +182,25 @@ After every implementation task, before declaring done:
 3. **Build status** — run a build, confirm `BUILD SUCCEEDED`
 4. **Regression check** — sidebar loads with all 6 items; no layout errors
 5. **Risks or follow-ups** — flag anything out of scope or to revisit
+
+---
+
+## Concurrency — SwiftUI @State writes from async tasks
+
+**Rule:** All `@State` / `@Observable` property writes from async `Task` closures MUST be on `@MainActor`. Bare `Task { }` closures in SwiftUI views will silently drop state updates in Swift 5.10 / Xcode 26 — no error, no warning, just a permanently frozen UI.
+
+**Always use:**
+```swift
+Task { @MainActor in
+    // safe to write @State / @Observable here
+}
+```
+
+**Never use:**
+```swift
+Task {
+    // @State writes here are silently dropped
+}
+```
+
+This applies to every async button action, connection test, LLM call, or any other Task launched from a SwiftUI view body or view method.

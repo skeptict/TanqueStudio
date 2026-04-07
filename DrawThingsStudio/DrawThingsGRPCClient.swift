@@ -33,11 +33,13 @@ final class DrawThingsGRPCClient: DrawThingsProvider {
     func checkConnection() async -> Bool {
         do {
             let address = "\(host):\(port)"
+            service = try DrawThingsService(address: address, useTLS: true)
+            _ = try await service!.echo()
             client = try DrawThingsClient(address: address, useTLS: true)
             await client?.connect()
-            return client?.isConnected ?? false
+            return true
         } catch {
-            logger.error("Connection error: \(error.localizedDescription)")
+            logger.error("Connection check failed: \(error.localizedDescription)")
             return false
         }
     }

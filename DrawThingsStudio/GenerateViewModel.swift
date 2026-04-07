@@ -38,29 +38,27 @@ final class GenerateViewModel {
     // MARK: — Right panel tab
     enum RightTab: String, CaseIterable {
         case metadata = "Metadata"
-        case enhance  = "Enhance"
         case assist   = "Assist"
         case actions  = "Actions"
     }
     var selectedRightTab: RightTab = .metadata
 
     // MARK: — LLM Assist
-    enum LLMAssistMode { case enhance, generate }
-    var llmAssistMode: LLMAssistMode = .enhance
-    /// Set to true by the ✨ button to auto-trigger enhance when the Assist tab appears.
-    var pendingLLMEnhance: Bool = false
+    /// Set by the ✨ button — auto-triggers the default operation when the Assist tab appears.
+    var pendingLLMTrigger: Bool = false
 
-    func requestLLMEnhance() {
+    func requestLLMTrigger() {
         selectedRightTab = .assist
-        llmAssistMode = .enhance
-        pendingLLMEnhance = true
+        pendingLLMTrigger = true
     }
 
     // MARK: — Gallery selection
     var selectedGalleryID: UUID?
 
-    // MARK: — LoRA picker
+    // MARK: — Pickers
     var showLoRAPicker: Bool = false
+    var showModelPicker: Bool = false
+    var showConfigPicker: Bool = false
 
     // MARK: — Persistence state
     /// Changed after each successful generation so GenerateView can trigger auto-save.
@@ -177,6 +175,41 @@ final class GenerateViewModel {
     }
 
     // MARK: — Asset loading
+
+    /// Applies a DTCustomConfig to the current generation config.
+    /// width/height are intentionally excluded — set those via aspect ratio controls.
+    func applyDTConfig(_ dtConfig: DTCustomConfig) {
+        if let v = dtConfig.model,                  !v.isEmpty  { config.model                   = v }
+        if let v = dtConfig.steps                               { config.steps                   = v }
+        if let v = dtConfig.guidanceScale                       { config.guidanceScale           = v }
+        if let v = dtConfig.seed                                { config.seed                    = v }
+        if let v = dtConfig.seedMode,               !v.isEmpty  { config.seedMode                = v }
+        if let v = dtConfig.sampler,                !v.isEmpty  { config.sampler                 = v }
+        if let v = dtConfig.shift                               { config.shift                   = v }
+        if let v = dtConfig.strength                            { config.strength                = v }
+        if let v = dtConfig.stochasticSamplingGamma             { config.stochasticSamplingGamma = v }
+        if let v = dtConfig.batchCount                          { config.batchCount              = v }
+        if let v = dtConfig.refinerModel,           !v.isEmpty  { config.refinerModel            = v }
+        if let v = dtConfig.refinerStart                        { config.refinerStart            = v }
+        if let v = dtConfig.resolutionDependentShift            { config.resolutionDependentShift = v }
+        if let v = dtConfig.cfgZeroStar                         { config.cfgZeroStar             = v }
+        if !dtConfig.loras.isEmpty                              { config.loras                   = dtConfig.loras }
+    }
+
+    /// Applies all non-nil fields from a PNGMetadata snapshot to the current config.
+    /// Used by the Assist tab "Send Config" action.
+    func applyMetadataToConfig(_ meta: PNGMetadata) {
+        if let model   = meta.model,    !model.isEmpty   { config.model   = model }
+        if let sampler = meta.sampler,  !sampler.isEmpty { config.sampler = sampler }
+        if let steps   = meta.steps                      { config.steps   = steps }
+        if let cfg     = meta.guidanceScale              { config.guidanceScale = cfg }
+        if let seed    = meta.seed                       { config.seed    = seed }
+        if let mode    = meta.seedMode, !mode.isEmpty    { config.seedMode = mode }
+        if let w       = meta.width                      { config.width   = w }
+        if let h       = meta.height                     { config.height  = h }
+        if let shift   = meta.shift                      { config.shift   = shift }
+        if let str     = meta.strength                   { config.strength = str }
+    }
 
     func loadAssets() {
         guard !isLoadingAssets else { return }

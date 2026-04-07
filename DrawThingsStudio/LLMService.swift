@@ -46,21 +46,41 @@ enum LLMError: LocalizedError {
 
 struct LLMService {
 
-    /// Expand and improve an existing Stable Diffusion prompt.
-    static func enhance(prompt: String, model: String, baseURL: String) async throws -> String {
-        let system = "You are an expert Stable Diffusion prompt engineer. Expand and improve the given prompt for better image generation results. Return only the improved prompt text, no explanation."
-        return try await chat(system: system, user: prompt, model: model, baseURL: baseURL)
-    }
-
-    /// Generate a full SD prompt from a short concept description.
-    static func generate(concept: String, model: String, baseURL: String) async throws -> String {
-        let system = "You are an expert Stable Diffusion prompt engineer. Generate a detailed image generation prompt based on the concept provided. Return only the prompt text, no explanation."
-        return try await chat(system: system, user: concept, model: model, baseURL: baseURL)
+    /// Run an arbitrary LLM operation defined by a system prompt.
+    /// Used by AssistTabView with the selected LLMOperation's systemPrompt.
+    static func runOperation(
+        systemPrompt: String,
+        input: String,
+        model: String,
+        baseURL: String,
+        provider: LLMProvider
+    ) async throws -> String {
+        return try await chat(
+            system: systemPrompt,
+            user: input,
+            model: model,
+            baseURL: baseURL,
+            provider: provider
+        )
     }
 
     /// Fetch available model IDs from the /v1/models endpoint.
-    static func fetchModels(baseURL: String) async throws -> [String] {
-        let urlString = normalizedURL(baseURL, path: "v1/models")
+    /// For Jan: the /v1/models endpoint requires an API key and returns HTTP 403.
+    /// We test reachability via GET on the base URL root instead and return [] —
+    /// an empty model list is acceptable; the user enters the model name manually.
+    static func fetchModels(baseURL: String, provider: LLMProvider) async throws -> [String] {
+        if provider == .jan {
+            // Jan requires an API key for /v1/models (returns 403). Test reachability
+            // via the root URL instead — any HTTP response means the server is up.
+            let rootString = normalizedURL(baseURL, path: "", provider: provider)
+                .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+            guard let url = URL(string: rootString) else { throw LLMError.invalidURL }
+            _ = try await URLSession.shared.data(from: url)
+            // Any response (200, 403, etc.) means Jan is reachable; return empty list.
+            return []
+        }
+
+        let urlString = normalizedURL(baseURL, path: "v1/models", provider: provider)
         guard let url = URL(string: urlString) else { throw LLMError.invalidURL }
         let (data, response) = try await URLSession.shared.data(from: url)
         let code = (response as? HTTPURLResponse)?.statusCode ?? 0
@@ -73,8 +93,8 @@ struct LLMService {
 
     // MARK: - Private
 
-    private static func chat(system: String, user: String, model: String, baseURL: String) async throws -> String {
-        let urlString = normalizedURL(baseURL, path: "v1/chat/completions")
+    private static func chat(system: String, user: String, model: String, baseURL: String, provider: LLMProvider) async throws -> String {
+        let urlString = normalizedURL(baseURL, path: "v1/chat/completions", provider: provider)
         guard let url = URL(string: urlString) else { throw LLMError.invalidURL }
 
         let body: [String: Any] = [
@@ -104,8 +124,22 @@ struct LLMService {
         return content.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    private static func normalizedURL(_ base: String, path: String) -> String {
-        let trimmed = base.hasSuffix("/") ? String(base.dropLast()) : base
+    private static func normalizedURL(_ base: String, path: String, provider: LLMProvider) -> String {
+        var trimmed = base.trimmingCharacters(in: .whitespacesAndNewlines)
+        trimmed = trimmed.hasSuffix("/") ? String(trimmed.dropLast()) : trimmed
+
+        // Prepend scheme if missing
+        if !trimmed.contains("://") {
+            trimmed = "http://\(trimmed)"
+        }
+
+        // Append default port if no port is present after the host
+        // Parse the URL to check — if no port, append provider default
+        if let url = URL(string: trimmed), url.port == nil {
+            let defaultPort = URL(string: provider.defaultBaseURL)?.port ?? 11434
+            trimmed = "\(trimmed):\(defaultPort)"
+        }
+
         return "\(trimmed)/\(path)"
     }
 }

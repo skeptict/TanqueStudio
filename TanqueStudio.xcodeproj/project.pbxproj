@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		FD02A0062F900001003E0C4C /* LLMOperations in Resources */ = {isa = PBXBuildFile; fileRef = FD02B0062F900001003E0C4C /* LLMOperations */; };
 		FDAE38B52F280DF30010FC04 /* DrawThingsClient in Frameworks */ = {isa = PBXBuildFile; productRef = FD31E3F02F1A0000003E0C4C /* DrawThingsClient */; };
 /* End PBXBuildFile section */
 
@@ -21,13 +22,31 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		FD02B0062F900001003E0C4C /* LLMOperations */ = {isa = PBXFileReference; lastKnownFileType = folder; path = LLMOperations; sourceTree = "<group>"; };
 		FD31E3D82F184A4D003E0C4C /* Tanque Studio.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Tanque Studio.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		FDA09D562F36EABE003D7DF0 /* TanqueStudioUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = TanqueStudioUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		9B836F329E3742158B8EECB5 /* Exceptions for "DrawThingsStudio" folder in "TanqueStudio" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				"Resources/LLMOperations/01-enhance-details-flair.md",
+				"Resources/LLMOperations/02-make-photorealistic.md",
+				"Resources/LLMOperations/03-cinematic-style.md",
+				"Resources/LLMOperations/04-simplify-focus.md",
+				"Resources/LLMOperations/05-generate-from-concept.md",
+			);
+			target = FD31E3D72F184A4D003E0C4C /* TanqueStudio */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		FD31E3DA2F184A4D003E0C4C /* DrawThingsStudio */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				9B836F329E3742158B8EECB5 /* Exceptions for "DrawThingsStudio" folder in "TanqueStudio" target */,
+			);
 			path = DrawThingsStudio;
 			sourceTree = "<group>";
 		};
@@ -57,12 +76,22 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		FD02C0012F900001003E0C4C /* LLMOperations */ = {
+			isa = PBXGroup;
+			children = (
+				FD02B0062F900001003E0C4C /* LLMOperations */,
+			);
+			name = LLMOperations;
+			path = DrawThingsStudio/Resources;
+			sourceTree = "<group>";
+		};
 		FD31E3CF2F184A4C003E0C4C = {
 			isa = PBXGroup;
 			children = (
 				FD31E3DA2F184A4D003E0C4C /* DrawThingsStudio */,
 				FDA09D572F36EABE003D7DF0 /* DrawThingsStudioUITests */,
 				FD31E3D92F184A4D003E0C4C /* Products */,
+				FD02C0012F900001003E0C4C /* LLMOperations */,
 			);
 			sourceTree = "<group>";
 		};
@@ -171,6 +200,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				FD02A0062F900001003E0C4C /* LLMOperations in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -341,7 +371,7 @@
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "-";
 				CODE_SIGN_STYLE = Manual;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				DEVELOPMENT_TEAM = "";
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -354,7 +384,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 0.9.4.1;
+				MARKETING_VERSION = 0.9.6;
 				PRODUCT_BUNDLE_IDENTIFIER = tanque.org.TanqueStudio;
 				PRODUCT_NAME = "Tanque Studio";
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -382,7 +412,7 @@
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "-";
 				CODE_SIGN_STYLE = Manual;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				DEVELOPMENT_TEAM = "";
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -395,7 +425,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 0.9.4.1;
+				MARKETING_VERSION = 0.9.6;
 				PRODUCT_BUNDLE_IDENTIFIER = tanque.org.TanqueStudio;
 				PRODUCT_NAME = "Tanque Studio";
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -414,10 +444,10 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_STYLE = Manual;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				DEVELOPMENT_TEAM = "";
 				GENERATE_INFOPLIST_FILE = YES;
-				MARKETING_VERSION = 0.9.4.1;
+				MARKETING_VERSION = 0.9.6;
 				PRODUCT_BUNDLE_IDENTIFIER = tanque.org.TanqueStudioUITests;
 				PRODUCT_NAME = TanqueStudioUITests;
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -434,10 +464,10 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_STYLE = Manual;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				DEVELOPMENT_TEAM = "";
 				GENERATE_INFOPLIST_FILE = YES;
-				MARKETING_VERSION = 0.9.4.1;
+				MARKETING_VERSION = 0.9.6;
 				PRODUCT_BUNDLE_IDENTIFIER = tanque.org.TanqueStudioUITests;
 				PRODUCT_NAME = TanqueStudioUITests;
 				PROVISIONING_PROFILE_SPECIFIER = "";

@@ -13,9 +13,13 @@ struct GenerateLeftPanel: View {
                     Divider()
                     configSection
                     Divider()
+                    savedConfigsSection
+                    Divider()
                     aspectRatioSection
                     Divider()
                     loraSection
+                    Divider()
+                    img2imgSection
                 }
                 .padding(12)
             }
@@ -28,6 +32,12 @@ struct GenerateLeftPanel: View {
         .background(Color(NSColor.controlBackgroundColor))
         .sheet(isPresented: $vm.showLoRAPicker) {
             LoRAPickerSheet(vm: vm)
+        }
+        .sheet(isPresented: $vm.showModelPicker) {
+            ModelPickerSheet(vm: vm)
+        }
+        .sheet(isPresented: $vm.showConfigPicker) {
+            ConfigPickerSheet(vm: vm)
         }
     }
 
@@ -49,7 +59,7 @@ struct GenerateLeftPanel: View {
                         .strokeBorder(Color.secondary.opacity(0.2), lineWidth: 1)
                 )
                 .overlay(alignment: .bottomTrailing) {
-                    Button { vm.requestLLMEnhance() } label: {
+                    Button { vm.requestLLMTrigger() } label: {
                         Image(systemName: "sparkles")
                             .font(.system(size: 10, weight: .semibold))
                             .padding(5)
@@ -89,18 +99,15 @@ struct GenerateLeftPanel: View {
                     TextField("model.safetensors", text: $vm.config.model)
                         .font(.caption)
                         .truncationMode(.middle)
-                    if !vm.models.isEmpty {
-                        Menu {
-                            ForEach(vm.models) { model in
-                                Button(model.name) { vm.config.model = model.filename }
-                            }
-                        } label: {
-                            Image(systemName: "chevron.down")
-                                .font(.caption)
-                        }
-                        .menuStyle(.borderlessButton)
-                        .frame(width: 20)
+                    Button {
+                        vm.showModelPicker = true
+                    } label: {
+                        Image(systemName: "chevron.down")
+                            .font(.caption)
                     }
+                    .buttonStyle(.borderless)
+                    .frame(width: 20)
+                    .disabled(vm.models.isEmpty)
                 }
             }
 
@@ -222,6 +229,47 @@ struct GenerateLeftPanel: View {
         }
     }
 
+    // MARK: — Saved Configs
+
+    private var savedConfigsSection: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text("Saved Configs")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Button {
+                    vm.showConfigPicker = true
+                } label: {
+                    Image(systemName: "square.and.arrow.down")
+                        .font(.caption)
+                }
+                .buttonStyle(.plain)
+                .help("Import from DT custom_configs.json")
+            }
+
+            if AppSettings.shared.dtConfigsBookmark == nil {
+                Text("No config file selected")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+                    .padding(.vertical, 2)
+            } else {
+                Button {
+                    vm.showConfigPicker = true
+                } label: {
+                    Label("Choose Config…", systemImage: "list.bullet")
+                        .font(.caption)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.vertical, 4)
+                        .padding(.horizontal, 8)
+                        .background(Color.secondary.opacity(0.08))
+                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
     // MARK: — Aspect Ratio Grid
 
     private var aspectRatioSection: some View {
@@ -278,6 +326,72 @@ struct GenerateLeftPanel: View {
                         ),
                         onRemove: { vm.removeLoRA(at: IndexSet([idx])) }
                     )
+                }
+            }
+        }
+    }
+
+    // MARK: — img2img
+
+    private var img2imgSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("img2img")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            // Strength slider
+            ConfigRow("Strength") {
+                HStack(spacing: 4) {
+                    Slider(value: $vm.config.strength, in: 0...1, step: 0.01)
+                    Text(String(format: "%.2f", vm.config.strength))
+                        .font(.caption.monospacedDigit())
+                        .frame(width: 32, alignment: .trailing)
+                }
+            }
+
+            // Source image drop zone
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Source")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .frame(width: 50, alignment: .trailing)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.leading, 56)   // aligns with ConfigRow content column
+
+                if let src = vm.sourceImage {
+                    ZStack(alignment: .topTrailing) {
+                        Image(nsImage: src)
+                            .resizable()
+                            .aspectRatio(contentMode: .fit)
+                            .frame(maxHeight: 100)
+                            .clipShape(RoundedRectangle(cornerRadius: 6))
+
+                        Button {
+                            vm.sourceImage = nil
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.system(size: 14))
+                                .foregroundStyle(.white.opacity(0.85))
+                                .background(Color.black.opacity(0.4), in: Circle())
+                        }
+                        .buttonStyle(.plain)
+                        .padding(4)
+                    }
+                } else {
+                    RoundedRectangle(cornerRadius: 8)
+                        .strokeBorder(Color.secondary.opacity(0.35), lineWidth: 1)
+                        .frame(height: 64)
+                        .overlay {
+                            Label("Drop source image", systemImage: "photo.badge.plus")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        .dropDestination(for: URL.self) { urls, _ in
+                            guard let url = urls.first,
+                                  let img = NSImage(contentsOf: url) else { return false }
+                            vm.sourceImage = img
+                            return true
+                        }
                 }
             }
         }
@@ -491,5 +605,233 @@ private struct LoRAPickerSheet: View {
             }
         }
         .frame(minWidth: 400, minHeight: 320)
+    }
+}
+
+// MARK: - Model Picker Sheet
+
+private struct ModelPickerSheet: View {
+    @Bindable var vm: GenerateViewModel
+    @Environment(\.dismiss) private var dismiss
+    @State private var searchText = ""
+    @State private var manualEntry = ""
+    // Snapshot from @Bindable vm into plain @State to avoid Xcode 26 ForEach binding inference
+    @State private var allModels: [DrawThingsModel] = []
+
+    private var filteredModels: [DrawThingsModel] {
+        if searchText.isEmpty { return allModels }
+        return allModels.filter {
+            $0.name.localizedCaseInsensitiveContains(searchText) ||
+            $0.filename.localizedCaseInsensitiveContains(searchText)
+        }
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Text("Select Model")
+                    .font(.headline)
+                Spacer()
+                Button("Done") { dismiss() }
+            }
+            .padding()
+
+            Divider()
+
+            HStack {
+                TextField("Manual filename…", text: $manualEntry)
+                Button("Use") {
+                    guard !manualEntry.isEmpty else { return }
+                    vm.config.model = manualEntry
+                    dismiss()
+                }
+                .disabled(manualEntry.isEmpty)
+            }
+            .padding()
+
+            if !allModels.isEmpty {
+                Divider()
+
+                HStack {
+                    Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+                    TextField("Search models", text: $searchText)
+                }
+                .padding(.horizontal)
+                .padding(.vertical, 8)
+
+                Divider()
+
+                let names = Dictionary(
+                    uniqueKeysWithValues: filteredModels.map { ($0.filename, $0.name) }
+                )
+                ModelRowList(
+                    filenames: filteredModels.map { $0.filename },
+                    nameForFilename: names,
+                    selectedFilename: vm.config.model,
+                    onSelect: { filename in
+                        vm.config.model = filename
+                        dismiss()
+                    }
+                )
+            } else {
+                ContentUnavailableView(
+                    "No Models Found",
+                    systemImage: "cpu",
+                    description: Text("Connect to Draw Things to browse available models.")
+                )
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+        }
+        .frame(minWidth: 400, minHeight: 360)
+        .onAppear { allModels = vm.models }
+    }
+}
+
+// Uses [String] (not Identifiable) to avoid Xcode 26 Binding<C> overload selection on List.
+private struct ModelRowList: View {
+    let filenames: [String]
+    let nameForFilename: [String: String]
+    let selectedFilename: String
+    let onSelect: (String) -> Void
+
+    var body: some View {
+        List(filenames, id: \.self) { (filename: String) in
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(nameForFilename[filename] ?? filename).font(.callout)
+                    Text(filename).font(.caption2).foregroundStyle(.secondary)
+                }
+                Spacer()
+                if selectedFilename == filename {
+                    Image(systemName: "checkmark").foregroundStyle(Color.accentColor)
+                }
+                Button("Select") { onSelect(filename) }
+                    .font(.callout)
+            }
+        }
+    }
+}
+
+// MARK: - Config Picker Sheet
+
+private struct ConfigPickerSheet: View {
+    @Bindable var vm: GenerateViewModel
+    @Environment(\.dismiss) private var dismiss
+    @State private var configs: [DTCustomConfig] = []
+    @State private var searchText = ""
+    @State private var isLoading = false
+    @State private var errorMessage: String? = nil
+
+    private var filteredConfigs: [DTCustomConfig] {
+        if searchText.isEmpty { return configs }
+        return configs.filter { $0.name.localizedCaseInsensitiveContains(searchText) }
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Text("Saved Configs")
+                    .font(.headline)
+                Spacer()
+                Button("Select File…") { pickFile() }
+                    .font(.callout)
+                Button("Done") { dismiss() }
+                    .padding(.leading, 8)
+            }
+            .padding()
+
+            Divider()
+
+            if let error = errorMessage {
+                Text(error)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+                    .padding()
+            }
+
+            if configs.isEmpty && !isLoading {
+                ContentUnavailableView(
+                    "No Configs Loaded",
+                    systemImage: "doc.badge.plus",
+                    description: Text("Tap \"Select File…\" to load your Draw Things custom_configs.json.")
+                )
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                HStack {
+                    Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+                    TextField("Search configs", text: $searchText)
+                }
+                .padding(.horizontal)
+                .padding(.vertical, 8)
+
+                Divider()
+
+                List(filteredConfigs) { config in
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(config.name).font(.callout)
+                            let summary = [
+                                config.model.map { $0.components(separatedBy: ".").first ?? $0 },
+                                config.sampler,
+                                config.steps.map { "\($0) steps" }
+                            ].compactMap { $0 }.joined(separator: " · ")
+                            if !summary.isEmpty {
+                                Text(summary).font(.caption2).foregroundStyle(.secondary)
+                            }
+                        }
+                        Spacer()
+                        Button("Apply") {
+                            vm.applyDTConfig(config)
+                            dismiss()
+                        }
+                        .font(.callout)
+                    }
+                }
+            }
+        }
+        .frame(minWidth: 420, minHeight: 400)
+        .onAppear { loadConfigsFromBookmark() }
+    }
+
+    // MARK: — File picking
+
+    private func pickFile() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.json]
+        panel.allowsMultipleSelection = false
+        panel.message = "Select your Draw Things custom_configs.json"
+        panel.prompt = "Select"
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        AppSettings.shared.dtConfigsBookmark = try? url.bookmarkData(
+            options: .withSecurityScope,
+            includingResourceValuesForKeys: nil,
+            relativeTo: nil
+        )
+        loadConfigs(from: url)
+    }
+
+    private func loadConfigsFromBookmark() {
+        guard let bookmark = AppSettings.shared.dtConfigsBookmark else { return }
+        var isStale = false
+        guard let url = try? URL(
+            resolvingBookmarkData: bookmark,
+            options: .withSecurityScope,
+            relativeTo: nil,
+            bookmarkDataIsStale: &isStale
+        ) else { return }
+        let accessed = url.startAccessingSecurityScopedResource()
+        defer { if accessed { url.stopAccessingSecurityScopedResource() } }
+        loadConfigs(from: url)
+    }
+
+    private func loadConfigs(from url: URL) {
+        isLoading = true
+        errorMessage = nil
+        let loaded = DTConfigImporter.load(from: url)
+        if loaded.isEmpty {
+            errorMessage = "No configs found — check the file is a valid custom_configs.json."
+        }
+        configs = loaded
+        isLoading = false
     }
 }
