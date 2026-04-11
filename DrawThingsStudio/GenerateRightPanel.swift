@@ -7,6 +7,7 @@ import SwiftData
 struct GenerateRightPanel: View {
     @Bindable var vm: GenerateViewModel
     @Environment(\.modelContext) private var modelContext
+    let onToast: (String) -> Void
 
     var body: some View {
         VStack(spacing: 0) {
@@ -165,6 +166,11 @@ struct GenerateRightPanel: View {
             Divider()
                 .padding(.vertical, 2)
 
+            sendToGenerateSection
+
+            Divider()
+                .padding(.vertical, 2)
+
             ActionButton(icon: "film.stack", title: "Send to StoryFlow", enabled: false) {}
 
             Text("StoryFlow coming soon")
@@ -177,6 +183,72 @@ struct GenerateRightPanel: View {
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
         .animation(.easeInOut(duration: 0.2), value: vm.savedMessage)
+    }
+
+    // MARK: — Send to Generate section
+
+    private var sendToGenerateSection: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("SEND TO GENERATE")
+                .font(.system(size: 9, weight: .semibold))
+                .foregroundStyle(.secondary)
+                .padding(.bottom, 2)
+
+            let hasMeta  = vm.currentMetadata != nil
+            let hasImage = vm.generatedImage  != nil
+
+            ActionButton(icon: "arrow.right.circle.fill", title: "Send All",
+                         enabled: hasMeta) { performSendAll() }
+            ActionButton(icon: "text.bubble",             title: "Send Prompt",
+                         enabled: hasMeta) { performSendPrompt() }
+            ActionButton(icon: "slider.horizontal.3",     title: "Send Config",
+                         enabled: hasMeta) { performSendConfig() }
+            ActionButton(icon: "photo.on.rectangle.angled", title: "Send to img2img",
+                         enabled: hasImage) {
+                vm.sourceImage = vm.generatedImage
+            }
+        }
+    }
+
+    // MARK: — Send helpers
+
+    /// Applies all config fields (via vm.applyMetadataToConfig) plus LoRAs.
+    /// Returns names of high-value fields that were absent in the metadata.
+    @discardableResult
+    private func applyConfigFields(from meta: PNGMetadata) -> [String] {
+        vm.applyMetadataToConfig(meta)
+        if !meta.loras.isEmpty {
+            vm.config.loras = meta.loras.map {
+                DrawThingsGenerationConfig.LoRAConfig(file: $0.file, weight: $0.weight, mode: $0.mode)
+            }
+        }
+        var missing: [String] = []
+        if meta.model == nil || (meta.model ?? "").isEmpty { missing.append("model") }
+        return missing
+    }
+
+    private func performSendAll() {
+        guard let meta = vm.currentMetadata else { onToast("No metadata"); return }
+        var missing: [String] = []
+        if let p = meta.prompt, !p.isEmpty { vm.prompt = p } else { missing.append("prompt") }
+        if let n = meta.negativePrompt, !n.isEmpty { vm.negativePrompt = n }
+        missing += applyConfigFields(from: meta)
+        if let img = vm.generatedImage { vm.sourceImage = img }
+        if !missing.isEmpty { onToast("Sent (missing: \(missing.joined(separator: ", ")))") }
+    }
+
+    private func performSendPrompt() {
+        guard let meta = vm.currentMetadata else { onToast("No metadata"); return }
+        guard let p = meta.prompt, !p.isEmpty else { onToast("No prompt in metadata"); return }
+        vm.prompt = p
+        if let n = meta.negativePrompt, !n.isEmpty { vm.negativePrompt = n }
+    }
+
+    private func performSendConfig() {
+        guard let meta = vm.currentMetadata else { onToast("No metadata"); return }
+        let missing = applyConfigFields(from: meta)
+        if let img = vm.generatedImage { vm.sourceImage = img }
+        if !missing.isEmpty { onToast("Config sent (missing: \(missing.joined(separator: ", ")))") }
     }
 }
 

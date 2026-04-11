@@ -10,6 +10,18 @@ struct GenerateView: View {
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \TSImage.createdAt, order: .reverse) private var savedImages: [TSImage]
 
+    @State private var toastMessage: String? = nil
+    @State private var toastTask: Task<Void, Never>? = nil
+
+    private func showToast(_ message: String) {
+        toastTask?.cancel()
+        toastMessage = message
+        toastTask = Task { @MainActor in
+            try? await Task.sleep(for: .seconds(2.5))
+            withAnimation { toastMessage = nil }
+        }
+    }
+
     var body: some View {
         ZStack {
             HStack(spacing: 0) {
@@ -68,10 +80,26 @@ struct GenerateView: View {
                     isLeadingPanel: false
                 )
 
-                GenerateRightPanel(vm: vm)
+                GenerateRightPanel(vm: vm, onToast: showToast)
                     .frame(width: vm.rightPanelWidth)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+            if let msg = toastMessage {
+                VStack {
+                    Spacer()
+                    Text(msg)
+                        .font(.callout)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 10)
+                        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 10))
+                        .shadow(radius: 4)
+                        .padding(.bottom, 24)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
+                .allowsHitTesting(false)
+                .animation(.spring(duration: 0.3), value: toastMessage)
+            }
 
             if vm.showImmersive {
                 ImmersiveOverlay(vm: vm, savedImages: savedImages, onDismiss: { vm.showImmersive = false })
