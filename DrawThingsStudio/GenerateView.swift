@@ -119,6 +119,59 @@ private struct GenerateCenterPanel: View {
     @Bindable var vm: GenerateViewModel
     @State private var isDropTargeted = false
 
+    @State private var canvasScale: CGFloat = 1.0
+    @State private var canvasOffset: CGSize  = .zero
+    @State private var lastScale: CGFloat    = 1.0
+    @State private var lastOffset: CGSize    = .zero
+
+    private var magnificationGesture: some Gesture {
+        MagnificationGesture()
+            .onChanged { value in
+                canvasScale = min(6.0, max(0.5, lastScale * value))
+            }
+            .onEnded { _ in
+                if abs(canvasScale - 1.0) < 0.05 {
+                    withAnimation(.spring(response: 0.3)) {
+                        canvasScale  = 1.0
+                        canvasOffset = .zero
+                        lastOffset   = .zero
+                    }
+                }
+                lastScale = canvasScale
+            }
+    }
+
+    private var dragGesture: some Gesture {
+        DragGesture()
+            .onChanged { value in
+                guard canvasScale > 1.05 else { return }
+                canvasOffset = CGSize(
+                    width:  lastOffset.width  + value.translation.width,
+                    height: lastOffset.height + value.translation.height
+                )
+            }
+            .onEnded { _ in lastOffset = canvasOffset }
+    }
+
+    private var doubleTapGesture: some Gesture {
+        TapGesture(count: 2)
+            .onEnded {
+                withAnimation(.spring(response: 0.3)) {
+                    canvasScale  = 1.0
+                    canvasOffset = .zero
+                    lastScale    = 1.0
+                    lastOffset   = .zero
+                }
+            }
+    }
+
+    private func resetZoom() {
+        canvasScale  = 1.0
+        canvasOffset = .zero
+        lastScale    = 1.0
+        lastOffset   = .zero
+    }
+
     var body: some View {
         ZStack {
             Color.black
@@ -128,7 +181,12 @@ private struct GenerateCenterPanel: View {
                     .resizable()
                     .aspectRatio(contentMode: .fit)
                     .padding(16)
+                    .scaleEffect(canvasScale)
+                    .offset(canvasOffset)
                     .onTapGesture { vm.showImmersive = true }
+                    .simultaneousGesture(magnificationGesture)
+                    .simultaneousGesture(dragGesture)
+                    .simultaneousGesture(doubleTapGesture)
             } else {
                 emptyState
             }
@@ -147,6 +205,20 @@ private struct GenerateCenterPanel: View {
                     .padding(8)
                     .allowsHitTesting(false)
             }
+
+            // Zoom indicator
+            VStack {
+                Spacer()
+                Text("\(Int(canvasScale * 100))%")
+                    .font(.caption)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 6))
+                    .padding(.bottom, 10)
+                    .opacity(abs(canvasScale - 1.0) < 0.01 ? 0 : 1)
+                    .animation(.easeInOut(duration: 0.2), value: canvasScale)
+            }
+            .allowsHitTesting(false)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .dropDestination(for: URL.self) { urls, _ in
@@ -156,6 +228,7 @@ private struct GenerateCenterPanel: View {
             vm.handleDroppedImageURL(url)
             return true
         } isTargeted: { isDropTargeted = $0 }
+        .onChange(of: vm.generatedImage) { _, _ in resetZoom() }
     }
 
     private var emptyState: some View {
