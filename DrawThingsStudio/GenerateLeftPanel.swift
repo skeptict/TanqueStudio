@@ -15,6 +15,8 @@ struct GenerateLeftPanel: View {
                     Divider()
                     savedConfigsSection
                     Divider()
+                    sizeTierSection
+                    Divider()
                     aspectRatioSection
                     Divider()
                     loraSection
@@ -270,6 +272,59 @@ struct GenerateLeftPanel: View {
         }
     }
 
+    // MARK: — Size Tiers
+
+    private var currentSizeTier: String? {
+        let area = vm.config.width * vm.config.height
+        for tier in Self.sizeTiers {
+            if abs(Double(area) / tier.area - 1.0) < 0.2 { return tier.label }
+        }
+        return nil
+    }
+
+    private func applySize(targetArea: Double) {
+        let ratio = Double(vm.config.width) / Double(vm.config.height)
+        let newW = max(64.0, (sqrt(targetArea * ratio) / 64.0).rounded() * 64.0)
+        let newH = max(64.0, (sqrt(targetArea / ratio) / 64.0).rounded() * 64.0)
+        vm.config.width  = Int(newW)
+        vm.config.height = Int(newH)
+    }
+
+    private var sizeTierSection: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Canvas Size")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            HStack(spacing: 6) {
+                ForEach(Self.sizeTiers, id: \.label) { tier in
+                    Button { applySize(targetArea: tier.area) } label: {
+                        VStack(spacing: 2) {
+                            Text(tier.label)
+                                .font(.caption.weight(.semibold))
+                            Text(tier.hint)
+                                .font(.system(size: 8))
+                        }
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 38)
+                        .background(
+                            currentSizeTier == tier.label
+                                ? Color.accentColor.opacity(0.12)
+                                : Color.secondary.opacity(0.08)
+                        )
+                        .foregroundStyle(
+                            currentSizeTier == tier.label
+                                ? Color.accentColor
+                                : Color.secondary
+                        )
+                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+    }
+
     // MARK: — Aspect Ratio Grid
 
     private var aspectRatioSection: some View {
@@ -423,6 +478,13 @@ struct GenerateLeftPanel: View {
     }
 
     // MARK: — Constants
+
+    struct SizeTier { let label: String; let area: Double; let hint: String }
+    static let sizeTiers: [SizeTier] = [
+        SizeTier(label: "S", area: 262_144, hint: "512"),
+        SizeTier(label: "M", area: 589_824, hint: "768"),
+        SizeTier(label: "L", area: 1_048_576, hint: "1024"),
+    ]
 
     static let seedModes = [
         "Legacy",
