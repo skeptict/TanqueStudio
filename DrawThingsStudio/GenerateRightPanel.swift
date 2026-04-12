@@ -345,6 +345,9 @@ private struct AssistTabView: View {
             }
             refreshInput()
             checkPendingTrigger()
+            if availableModels.isEmpty {
+                fetchAvailableModels()
+            }
         }
         .onChange(of: vm.pendingLLMTrigger) { _, pending in
             if pending { checkPendingTrigger() }
@@ -353,10 +356,6 @@ private struct AssistTabView: View {
             refreshInput()
             resultText = nil
             errorText = nil
-        }
-        .onAppear {
-            guard availableModels.isEmpty else { return }
-            fetchAvailableModels()
         }
     }
 
@@ -601,17 +600,9 @@ private struct AssistTabView: View {
                     .font(.system(size: 9, weight: .semibold))
                     .foregroundStyle(.secondary)
                 Spacer()
-                Button { fetchAvailableModels() } label: {
-                    Image(systemName: "arrow.clockwise")
-                        .font(.system(size: 9))
-                        .rotationEffect(isFetchingModels ? .degrees(360) : .degrees(0))
-                        .animation(isFetchingModels
-                            ? .linear(duration: 1).repeatForever(autoreverses: false)
-                            : .default, value: isFetchingModels)
+                RefreshButton(isFetching: isFetchingModels) {
+                    fetchAvailableModels()
                 }
-                .buttonStyle(.plain)
-                .foregroundStyle(.tertiary)
-                .disabled(isFetchingModels)
             }
             if availableModels.isEmpty {
                 TextField("llama3, mistral…", text: $localModelName)
@@ -714,6 +705,37 @@ private struct AssistTabView: View {
                 errorText = error.localizedDescription
             }
             isProcessing = false
+        }
+    }
+}
+
+// MARK: - Refresh Button
+
+/// Spinning refresh button with stable animation state — extracted into its own struct so the
+/// repeatForever animation survives parent view re-renders without resetting to 0°.
+private struct RefreshButton: View {
+    let isFetching: Bool
+    let action: () -> Void
+
+    @State private var rotation: Double = 0
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: "arrow.clockwise")
+                .font(.system(size: 9))
+                .rotationEffect(.degrees(rotation))
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(.tertiary)
+        .disabled(isFetching)
+        .onChange(of: isFetching) { _, fetching in
+            if fetching {
+                withAnimation(.linear(duration: 1).repeatForever(autoreverses: false)) {
+                    rotation = 360
+                }
+            } else {
+                withAnimation(.default) { rotation = 0 }
+            }
         }
     }
 }
