@@ -800,7 +800,7 @@ fileprivate func croppedCanvasImage(image: NSImage?,
     let visibleH = canvasH / canvasScale
     let centerX = canvasW / 2
     let centerY = canvasH / 2
-    let visibleOriginX = centerX - visibleW / 2 + canvasOffset.width  / canvasScale
+    let visibleOriginX = centerX - visibleW / 2 - canvasOffset.width  / canvasScale
     let visibleOriginY = centerY - visibleH / 2 + canvasOffset.height / canvasScale
 
     let clipX    = max(visibleOriginX, fittedOriginX)
