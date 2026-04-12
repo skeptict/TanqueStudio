@@ -354,12 +354,10 @@ private struct AssistTabView: View {
             resultText = nil
             errorText = nil
         }
-        .onChange(of: vm.prompt) { _, newPrompt in
-            guard currentOp?.usesCurrentPrompt != false,
-                  resultText == nil else { return }
-            inputText = newPrompt
+        .onAppear {
+            guard availableModels.isEmpty else { return }
+            fetchAvailableModels()
         }
-        .task { fetchAvailableModels() }
     }
 
     // MARK: — Operation picker
