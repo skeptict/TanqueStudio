@@ -771,7 +771,9 @@ fileprivate func croppedCanvasImage(image: NSImage?,
     guard let image else { return nil }
     guard canvasScale > 1.05 else { return image }
 
-    let imageSize = image.size
+    guard let cgImage = image.cgImage(forProposedRect: nil,
+                                       context: nil, hints: nil) else { return image }
+    let imageSize = CGSize(width: cgImage.width, height: cgImage.height)
     let canvasW = canvasSize.width
     let canvasH = canvasSize.height
     guard canvasW > 0, canvasH > 0 else { return image }
@@ -818,10 +820,10 @@ fileprivate func croppedCanvasImage(image: NSImage?,
     let flippedCropY = imageSize.height - cropY - cropH
     let cropRect = CGRect(x: cropX, y: flippedCropY, width: cropW, height: cropH)
 
-    guard let cgImage = image.cgImage(forProposedRect: nil, context: nil, hints: nil),
-          let cropped = cgImage.cropping(to: cropRect) else { return image }
-
-    return NSImage(cgImage: cropped, size: CGSize(width: cropW, height: cropH))
+    guard let cropped = cgImage.cropping(to: cropRect) else { return image }
+    let scale = image.size.width > 0 ? CGFloat(cgImage.width) / image.size.width : 1.0
+    return NSImage(cgImage: cropped,
+                   size: CGSize(width: cropW / scale, height: cropH / scale))
 }
 
 // MARK: - Action Button
