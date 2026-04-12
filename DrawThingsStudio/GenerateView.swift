@@ -159,6 +159,8 @@ private struct GenerateCenterPanel: View {
                     .padding(16)
                     .scaleEffect(canvasScale)
                     .offset(canvasOffset)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .contentShape(Rectangle())
                     .onTapGesture(count: 2) {
                         withAnimation(.spring(response: 0.3)) {
                             canvasScale  = 1.0
@@ -216,6 +218,7 @@ private struct GenerateCenterPanel: View {
             .allowsHitTesting(false)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .contentShape(Rectangle())
         .clipped()
         .dropDestination(for: URL.self) { urls, _ in
             guard let url = urls.first else { return false }
