@@ -8,6 +8,9 @@ struct GenerateRightPanel: View {
     @Bindable var vm: GenerateViewModel
     @Environment(\.modelContext) private var modelContext
     let onToast: (String) -> Void
+    let canvasScale: CGFloat
+    let canvasOffset: CGSize
+    let canvasSize: CGSize
 
     var body: some View {
         VStack(spacing: 0) {
@@ -72,7 +75,10 @@ struct GenerateRightPanel: View {
     private var tabContent: some View {
         switch vm.selectedRightTab {
         case .metadata: metadataTab
-        case .assist:   AssistTabView(vm: vm)
+        case .assist:   AssistTabView(vm: vm,
+                                     canvasScale: canvasScale,
+                                     canvasOffset: canvasOffset,
+                                     canvasSize: canvasSize)
         case .actions:  actionsTab
         }
     }
@@ -210,7 +216,7 @@ struct GenerateRightPanel: View {
                          enabled: hasMeta) { performSendConfig() }
             ActionButton(icon: "photo.on.rectangle.angled", title: "Send to img2img",
                          enabled: hasImage) {
-                vm.sourceImage = vm.generatedImage
+                vm.sourceImage = croppedCanvasImage(image: vm.generatedImage, canvasScale: canvasScale, canvasOffset: canvasOffset, canvasSize: canvasSize)
             }
         }
     }
@@ -238,7 +244,7 @@ struct GenerateRightPanel: View {
         if let p = meta.prompt, !p.isEmpty { vm.prompt = p } else { missing.append("prompt") }
         if let n = meta.negativePrompt, !n.isEmpty { vm.negativePrompt = n }
         missing += applyConfigFields(from: meta)
-        if let img = vm.generatedImage { vm.sourceImage = img }
+        vm.sourceImage = croppedCanvasImage(image: vm.generatedImage, canvasScale: canvasScale, canvasOffset: canvasOffset, canvasSize: canvasSize)
         if !missing.isEmpty { onToast("Sent (missing: \(missing.joined(separator: ", ")))") }
     }
 
@@ -252,7 +258,7 @@ struct GenerateRightPanel: View {
     private func performSendConfig() {
         guard let meta = vm.currentMetadata else { onToast("No metadata"); return }
         let missing = applyConfigFields(from: meta)
-        if let img = vm.generatedImage { vm.sourceImage = img }
+        vm.sourceImage = croppedCanvasImage(image: vm.generatedImage, canvasScale: canvasScale, canvasOffset: canvasOffset, canvasSize: canvasSize)
         if !missing.isEmpty { onToast("Config sent (missing: \(missing.joined(separator: ", ")))") }
     }
 }
@@ -280,6 +286,9 @@ private struct MetadataRow: View {
 
 private struct AssistTabView: View {
     @Bindable var vm: GenerateViewModel
+    let canvasScale: CGFloat
+    let canvasOffset: CGSize
+    let canvasSize: CGSize
 
     @State private var operations: [LLMOperation] = []
     @State private var selectedOperation: LLMOperation? = nil
@@ -561,7 +570,7 @@ private struct AssistTabView: View {
             }
 
             Button {
-                vm.sourceImage = vm.generatedImage
+                vm.sourceImage = croppedCanvasImage(image: vm.generatedImage, canvasScale: canvasScale, canvasOffset: canvasOffset, canvasSize: canvasSize)
             } label: {
                 Label("Use as img2img Source", systemImage: "photo.on.rectangle.angled")
                     .font(.caption.weight(.medium))
@@ -747,6 +756,72 @@ private struct RefreshButton: View {
             }
         }
     }
+}
+
+// MARK: - Action Button
+
+// MARK: - Crop helper
+
+/// Returns the visible crop of `image` based on the current canvas zoom state,
+/// or the full image when at 1× scale. Returns nil if image is nil.
+fileprivate func croppedCanvasImage(image: NSImage?,
+                                    canvasScale: CGFloat,
+                                    canvasOffset: CGSize,
+                                    canvasSize: CGSize) -> NSImage? {
+    guard let image else { return nil }
+    guard canvasScale > 1.05 else { return image }
+
+    let imageSize = image.size
+    let canvasW = canvasSize.width
+    let canvasH = canvasSize.height
+    guard canvasW > 0, canvasH > 0 else { return image }
+
+    let paddedW = canvasW - 32
+    let paddedH = canvasH - 32
+    let imageAspect = imageSize.width / imageSize.height
+    let canvasAspect = paddedW / paddedH
+
+    let fittedW: CGFloat
+    let fittedH: CGFloat
+    if imageAspect > canvasAspect {
+        fittedW = paddedW
+        fittedH = paddedW / imageAspect
+    } else {
+        fittedH = paddedH
+        fittedW = paddedH * imageAspect
+    }
+
+    let fittedOriginX = (canvasW - fittedW) / 2
+    let fittedOriginY = (canvasH - fittedH) / 2
+
+    let visibleW = canvasW / canvasScale
+    let visibleH = canvasH / canvasScale
+    let centerX = canvasW / 2
+    let centerY = canvasH / 2
+    let visibleOriginX = centerX - visibleW / 2 - canvasOffset.width  / canvasScale
+    let visibleOriginY = centerY - visibleH / 2 - canvasOffset.height / canvasScale
+
+    let clipX    = max(visibleOriginX, fittedOriginX)
+    let clipY    = max(visibleOriginY, fittedOriginY)
+    let clipMaxX = min(visibleOriginX + visibleW, fittedOriginX + fittedW)
+    let clipMaxY = min(visibleOriginY + visibleH, fittedOriginY + fittedH)
+    guard clipMaxX > clipX, clipMaxY > clipY else { return image }
+
+    let scaleX = imageSize.width  / fittedW
+    let scaleY = imageSize.height / fittedH
+    let cropX  = (clipX - fittedOriginX) * scaleX
+    let cropY  = (clipY - fittedOriginY) * scaleY
+    let cropW  = (clipMaxX - clipX) * scaleX
+    let cropH  = (clipMaxY - clipY) * scaleY
+
+    // Flip Y: AppKit origin is bottom-left, SwiftUI is top-left
+    let flippedCropY = imageSize.height - cropY - cropH
+    let cropRect = CGRect(x: cropX, y: flippedCropY, width: cropW, height: cropH)
+
+    guard let cgImage = image.cgImage(forProposedRect: nil, context: nil, hints: nil),
+          let cropped = cgImage.cropping(to: cropRect) else { return image }
+
+    return NSImage(cgImage: cropped, size: CGSize(width: cropW, height: cropH))
 }
 
 // MARK: - Action Button

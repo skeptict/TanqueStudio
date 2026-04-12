@@ -13,6 +13,10 @@ struct GenerateView: View {
     @State private var toastMessage: String? = nil
     @State private var toastTask: Task<Void, Never>? = nil
 
+    @State private var canvasScale: CGFloat  = 1.0
+    @State private var canvasOffset: CGSize  = .zero
+    @State private var canvasSize: CGSize    = .zero
+
     private func showToast(_ message: String) {
         toastTask?.cancel()
         toastMessage = message
@@ -45,7 +49,10 @@ struct GenerateView: View {
                 .frame(width: vm.leftPanelCollapsed ? 0 : 260)
                 .clipped()
 
-                GenerateCenterPanel(vm: vm)
+                GenerateCenterPanel(vm: vm,
+                                   canvasScale: $canvasScale,
+                                   canvasOffset: $canvasOffset,
+                                   canvasSize: $canvasSize)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .overlay(alignment: .topLeading) {
                         if vm.leftPanelCollapsed {
@@ -80,7 +87,11 @@ struct GenerateView: View {
                     isLeadingPanel: false
                 )
 
-                GenerateRightPanel(vm: vm, onToast: showToast)
+                GenerateRightPanel(vm: vm,
+                                  onToast: showToast,
+                                  canvasScale: canvasScale,
+                                  canvasOffset: canvasOffset,
+                                  canvasSize: canvasSize)
                     .frame(width: vm.rightPanelWidth)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -117,12 +128,13 @@ struct GenerateView: View {
 
 private struct GenerateCenterPanel: View {
     @Bindable var vm: GenerateViewModel
-    @State private var isDropTargeted = false
+    @Binding var canvasScale: CGFloat
+    @Binding var canvasOffset: CGSize
+    @Binding var canvasSize: CGSize
 
-    @State private var canvasScale: CGFloat = 1.0
-    @State private var canvasOffset: CGSize  = .zero
-    @State private var lastScale: CGFloat    = 1.0
-    @State private var lastOffset: CGSize    = .zero
+    @State private var isDropTargeted = false
+    @State private var lastScale: CGFloat = 1.0
+    @State private var lastOffset: CGSize = .zero
 
     private var magnificationGesture: some Gesture {
         MagnificationGesture()
@@ -228,6 +240,13 @@ private struct GenerateCenterPanel: View {
             return true
         } isTargeted: { isDropTargeted = $0 }
         .onChange(of: vm.generatedImage) { _, _ in resetZoom() }
+        .background(
+            GeometryReader { geo in
+                Color.clear
+                    .onAppear { canvasSize = geo.size }
+                    .onChange(of: geo.size) { _, newSize in canvasSize = newSize }
+            }
+        )
     }
 
     private var emptyState: some View {
