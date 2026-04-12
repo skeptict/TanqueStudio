@@ -127,30 +127,27 @@ struct GenerateLeftPanel: View {
             }
 
             // Steps
-            ConfigRow("Steps") {
-                HStack(spacing: 4) {
-                    Slider(
-                        value: Binding(
-                            get: { Double(vm.config.steps) },
-                            set: { vm.config.steps = Int($0) }
-                        ),
-                        in: 1...150, step: 1
-                    )
-                    Text("\(vm.config.steps)")
-                        .font(.caption.monospacedDigit())
-                        .frame(width: 28, alignment: .trailing)
-                }
-            }
+            SliderConfigRow(
+                label: "Steps",
+                range: 1...150,
+                step: 1,
+                increment: 1,
+                displayFormat: "%.0f",
+                value: Binding(
+                    get: { Double(vm.config.steps) },
+                    set: { vm.config.steps = Int($0) }
+                )
+            )
 
             // CFG Scale
-            ConfigRow("CFG") {
-                HStack(spacing: 4) {
-                    Slider(value: $vm.config.guidanceScale, in: 0.5...20, step: 0.5)
-                    Text(String(format: "%.1f", vm.config.guidanceScale))
-                        .font(.caption.monospacedDigit())
-                        .frame(width: 28, alignment: .trailing)
-                }
-            }
+            SliderConfigRow(
+                label: "CFG",
+                range: 0.5...20,
+                step: 0.5,
+                increment: 0.5,
+                displayFormat: "%.1f",
+                value: $vm.config.guidanceScale
+            )
 
             // Width × Height
             ConfigRow("Size") {
@@ -170,14 +167,14 @@ struct GenerateLeftPanel: View {
             }
 
             // Shift
-            ConfigRow("Shift") {
-                HStack(spacing: 4) {
-                    Slider(value: $vm.config.shift, in: 0...10, step: 0.1)
-                    Text(String(format: "%.1f", vm.config.shift))
-                        .font(.caption.monospacedDigit())
-                        .frame(width: 28, alignment: .trailing)
-                }
-            }
+            SliderConfigRow(
+                label: "Shift",
+                range: 0...10,
+                step: 0.1,
+                increment: 0.1,
+                displayFormat: "%.1f",
+                value: $vm.config.shift
+            )
 
             // Seed
             ConfigRow("Seed") {
@@ -198,20 +195,17 @@ struct GenerateLeftPanel: View {
             // Advanced (SSS, batch count)
             DisclosureGroup {
                 VStack(alignment: .leading, spacing: 8) {
-                    ConfigRow("SSS") {
-                        HStack(spacing: 4) {
-                            Slider(
-                                value: Binding(
-                                    get: { vm.config.stochasticSamplingGamma },
-                                    set: { vm.config.stochasticSamplingGamma = $0 }
-                                ),
-                                in: 0...1, step: 0.01
-                            )
-                            Text(String(format: "%.2f", vm.config.stochasticSamplingGamma))
-                                .font(.caption.monospacedDigit())
-                                .frame(width: 32, alignment: .trailing)
-                        }
-                    }
+                    SliderConfigRow(
+                        label: "SSS",
+                        range: 0...1,
+                        step: 0.01,
+                        increment: 0.01,
+                        displayFormat: "%.2f",
+                        value: Binding(
+                            get: { vm.config.stochasticSamplingGamma },
+                            set: { vm.config.stochasticSamplingGamma = $0 }
+                        )
+                    )
 
                     ConfigRow("Renders") {
                         Stepper(
@@ -397,14 +391,14 @@ struct GenerateLeftPanel: View {
                 .foregroundStyle(.secondary)
 
             // Strength slider
-            ConfigRow("Strength") {
-                HStack(spacing: 4) {
-                    Slider(value: $vm.config.strength, in: 0...1, step: 0.01)
-                    Text(String(format: "%.2f", vm.config.strength))
-                        .font(.caption.monospacedDigit())
-                        .frame(width: 32, alignment: .trailing)
-                }
-            }
+            SliderConfigRow(
+                label: "Strength",
+                range: 0...1,
+                step: 0.01,
+                increment: 0.01,
+                displayFormat: "%.2f",
+                value: $vm.config.strength
+            )
 
             // Source image drop zone
             VStack(alignment: .leading, spacing: 4) {
@@ -587,6 +581,47 @@ struct GenerateLeftPanel: View {
         (5, 4), (4, 3), (3, 2),
         (16, 9), (2, 1), (9, 16),
     ]
+}
+
+// MARK: - Slider Config Row
+
+private struct SliderConfigRow: View {
+    let label: String
+    let range: ClosedRange<Double>
+    let step: Double
+    let increment: Double
+    let displayFormat: String
+    @Binding var value: Double
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(label)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            HStack(spacing: 4) {
+                Slider(value: $value, in: range, step: step)
+                Button {
+                    value = max(range.lowerBound, value - increment)
+                } label: {
+                    Image(systemName: "minus")
+                        .font(.system(size: 9, weight: .semibold))
+                }
+                .buttonStyle(.borderless)
+                .frame(width: 16)
+                Text(String(format: displayFormat, value))
+                    .font(.caption.monospacedDigit())
+                    .frame(width: 36, alignment: .center)
+                Button {
+                    value = min(range.upperBound, value + increment)
+                } label: {
+                    Image(systemName: "plus")
+                        .font(.system(size: 9, weight: .semibold))
+                }
+                .buttonStyle(.borderless)
+                .frame(width: 16)
+            }
+        }
+    }
 }
 
 // MARK: - Config Row
