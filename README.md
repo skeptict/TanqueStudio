@@ -41,7 +41,7 @@ Generate images directly from Draw Things Studio via HTTP or gRPC:
 - **Image Management**: Copy to clipboard, reveal in Finder, delete
 - **Auto-Save**: Generated images saved with JSON metadata sidecars
 
-### StoryFlow Workflow Builder
+### StoryFlow Workflow Builder (work in progress)
 
 Build complex Draw Things automation workflows with a visual drag-and-drop interface:
 
@@ -51,7 +51,7 @@ Build complex Draw Things automation workflows with a visual drag-and-drop inter
 - **Library**: Save and organize workflows with favorites and categories
 - **Templates**: Built-in workflow templates for common use cases
 
-#### Direct Workflow Execution
+#### Direct Workflow Execution (work in progress)
 
 Execute workflows directly from the app without exporting to Draw Things:
 
@@ -61,7 +61,7 @@ Execute workflows directly from the app without exporting to Draw Things:
 - **Missing Trigger Warning**: Alerts when workflow has no generation instruction
 - **Cancel Support**: Stop execution at any time
 
-### Story Studio
+### Story Studio (work in progress)
 
 Visual narrative system for creating stories with consistent characters across scenes:
 
