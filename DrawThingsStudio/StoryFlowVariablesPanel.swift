@@ -155,6 +155,11 @@ private struct VariableRow: View {
     @Binding var variable: WorkflowVariable
     @State private var isExpanded = false
     @State private var showDeleteConfirm = false
+    /// Local text state for the wildcard TextEditor.
+    /// Must NOT be a two-way Binding derived from the model — doing so causes
+    /// every keystroke to trigger onSave → vm.variables update → re-render →
+    /// TextEditor text reset → cursor jumps to end of line.
+    @State private var wildcardText: String = ""
     let onSave: () -> Void
     let onDelete: () -> Void
 
@@ -173,7 +178,14 @@ private struct VariableRow: View {
             }
         }
         .contentShape(Rectangle())
-        .onTapGesture { isExpanded.toggle() }
+        .onTapGesture {
+            // Seed wildcardText from model before expanding so the TextEditor
+            // has the correct initial value without going through a Binding.
+            if !isExpanded && variable.type == .wildcard {
+                wildcardText = (variable.wildcardOptions ?? []).joined(separator: "\n")
+            }
+            isExpanded.toggle()
+        }
     }
 
     private var rowHeader: some View {
@@ -276,8 +288,12 @@ private struct VariableRow: View {
                         .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.secondary.opacity(0.3)))
                         .onChange(of: variable.configJSON) { _, _ in onSave() }
                         if let json = variable.configJSON, !json.isEmpty {
-                            let isValid = (try? JSONDecoder().decode(DrawThingsGenerationConfig.self,
-                                           from: Data(json.utf8))) != nil
+                            let data = Data(json.utf8)
+                            let camelDecoder = JSONDecoder()
+                            let snakeDecoder = JSONDecoder()
+                            snakeDecoder.keyDecodingStrategy = .convertFromSnakeCase
+                            let isValid = (try? camelDecoder.decode(DrawThingsGenerationConfig.self, from: data)) != nil
+                                       || (try? snakeDecoder.decode(DrawThingsGenerationConfig.self, from: data)) != nil
                             Label(isValid ? "Valid config" : "Invalid JSON",
                                   systemImage: isValid ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
                                 .font(.system(size: 10))
@@ -332,20 +348,16 @@ private struct VariableRow: View {
                         .foregroundStyle(.secondary)
                         .frame(width: 60, alignment: .trailing)
                         .padding(.top, 3)
-                    TextEditor(text: Binding(
-                        get: { (variable.wildcardOptions ?? []).joined(separator: "\n") },
-                        set: { text in
-                            // Split only on newlines — do NOT trim whitespace mid-edit
-                            // or spaces within options will be eaten on every keystroke
-                            let lines = text.components(separatedBy: "\n")
+                    TextEditor(text: $wildcardText)
+                        .font(.caption)
+                        .frame(minHeight: 80)
+                        .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.secondary.opacity(0.3)))
+                        .onChange(of: wildcardText) { _, newValue in
+                            let lines = newValue.components(separatedBy: "\n")
                                 .filter { !$0.isEmpty }
                             variable.wildcardOptions = lines.isEmpty ? nil : lines
+                            onSave()
                         }
-                    ))
-                    .font(.caption)
-                    .frame(minHeight: 80)
-                    .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.secondary.opacity(0.3)))
-                    .onChange(of: variable.wildcardOptions) { _, _ in onSave() }
                 }
             }
 

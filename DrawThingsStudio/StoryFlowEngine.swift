@@ -115,8 +115,13 @@ final class StoryFlowEngine {
         guard let v = variables.first(where: { $0.name == varName && $0.type == .config }),
               let json = v.configJSON,
               let data = json.data(using: .utf8) else { return nil }
-        let decoder = JSONDecoder()
-        return try? decoder.decode(DrawThingsGenerationConfig.self, from: data)
+        // Try camelCase first (TanqueStudio-stored JSON), then snake_case
+        // (JSON copied from DT's HTTP API or external tools).
+        let camel = JSONDecoder()
+        if let cfg = try? camel.decode(DrawThingsGenerationConfig.self, from: data) { return cfg }
+        let snake = JSONDecoder()
+        snake.keyDecodingStrategy = .convertFromSnakeCase
+        return try? snake.decode(DrawThingsGenerationConfig.self, from: data)
     }
 
     private func resolvePrompt(varName: String, variables: [WorkflowVariable]) -> String? {
