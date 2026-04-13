@@ -206,7 +206,11 @@ final class StoryFlowEngine {
     }
 
     private func executeGenerate(step: WorkflowStep, variables: [WorkflowVariable]) async throws {
-        let client = AppSettings.shared.createDrawThingsClient()
+        // StoryFlow requires gRPC — moodboard hints and other features are gRPC-only.
+        let grpcClient = DrawThingsGRPCClient(
+            host: AppSettings.shared.dtHost,
+            port: AppSettings.shared.dtPort
+        )
 
         // Config
         var cfg: DrawThingsGenerationConfig
@@ -246,14 +250,14 @@ final class StoryFlowEngine {
         // Apply RDS shift
         cfg.applyRDSShiftIfNeeded()
 
-        // Moodboard — inject if gRPC client
-        if !activeMoodboard.isEmpty, let grpcClient = client as? DrawThingsGRPCClient {
+        // Moodboard
+        if !activeMoodboard.isEmpty {
             grpcClient.setMoodboard(activeMoodboard)
         }
 
         // Generate
         stepProgress = .starting
-        let images = try await client.generateImage(
+        let images = try await grpcClient.generateImage(
             prompt: prompt,
             sourceImage: sourceImage,
             mask: nil,
