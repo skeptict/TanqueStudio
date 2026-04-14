@@ -288,12 +288,7 @@ private struct VariableRow: View {
                         .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.secondary.opacity(0.3)))
                         .onChange(of: variable.configJSON) { _, _ in onSave() }
                         if let json = variable.configJSON, !json.isEmpty {
-                            let data = Data(json.utf8)
-                            let camelDecoder = JSONDecoder()
-                            let snakeDecoder = JSONDecoder()
-                            snakeDecoder.keyDecodingStrategy = .convertFromSnakeCase
-                            let isValid = (try? camelDecoder.decode(DrawThingsGenerationConfig.self, from: data)) != nil
-                                       || (try? snakeDecoder.decode(DrawThingsGenerationConfig.self, from: data)) != nil
+                            let isValid = isValidConfigJSON(json)
                             Label(isValid ? "Valid config" : "Invalid JSON",
                                   systemImage: isValid ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
                                 .font(.system(size: 10))
@@ -378,6 +373,15 @@ private struct VariableRow: View {
             }
         }
         .padding(.top, 4)
+    }
+
+    private func isValidConfigJSON(_ json: String) -> Bool {
+        let data = Data(json.utf8)
+        let camel = JSONDecoder()
+        if (try? camel.decode(DrawThingsGenerationConfig.self, from: data)) != nil { return true }
+        let snake = JSONDecoder()
+        snake.keyDecodingStrategy = .convertFromSnakeCase
+        return (try? snake.decode(DrawThingsGenerationConfig.self, from: data)) != nil
     }
 
     private var deleteConfirmBar: some View {
