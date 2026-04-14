@@ -121,6 +121,9 @@ final class StoryFlowEngine {
                 .split(separator: ",")
                 .map { $0.trimmingCharacters(in: .whitespaces) }
                 .filter { !$0.isEmpty }
+            if varNames.isEmpty {
+                log("  ⚠ Config step has no configVars set — skipping")
+            }
             for name in varNames {
                 applyConfigVar(name, variables: variables)
             }
@@ -255,8 +258,10 @@ final class StoryFlowEngine {
     // MARK: — Config accumulation
 
     /// Parse the config variable's JSON and merge each field into `currentConfig`.
+    /// Strips a leading `#` from `varName` so users can type either `ZIT` or `#ZIT`.
     private func applyConfigVar(_ varName: String, variables: [WorkflowVariable]) {
-        guard let v = variables.first(where: { $0.name == varName && $0.type == .config }),
+        let cleanName = varName.hasPrefix("#") ? String(varName.dropFirst()) : varName
+        guard let v = variables.first(where: { $0.name == cleanName && $0.type == .config }),
               let json = v.configJSON, !json.isEmpty,
               let data = json.data(using: .utf8),
               let dict = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else {

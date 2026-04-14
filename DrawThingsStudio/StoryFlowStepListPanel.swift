@@ -25,7 +25,6 @@ struct StoryFlowStepListPanel: View {
     private var toolbar: some View {
         VStack(spacing: 0) {
             HStack(spacing: 8) {
-                // Workflow name
                 if vm.selectedWorkflow != nil {
                     TextField("Workflow name", text: Binding(
                         get: { vm.selectedWorkflow?.name ?? "" },
@@ -42,7 +41,6 @@ struct StoryFlowStepListPanel: View {
 
                 Spacer()
 
-                // Text view toggle
                 Button {
                     if vm.showTextView { vm.applyWorkflowJSON() }
                     else { vm.updateWorkflowJSON() }
@@ -53,20 +51,15 @@ struct StoryFlowStepListPanel: View {
                 .buttonStyle(.plain)
                 .help(vm.showTextView ? "Show step cards" : "View as JSON")
 
-                // Run / Cancel
                 if vm.isRunning {
-                    Button {
-                        vm.cancel()
-                    } label: {
+                    Button { vm.cancel() } label: {
                         Label("Cancel", systemImage: "stop.fill")
                             .font(.caption.weight(.semibold))
                     }
                     .buttonStyle(.borderedProminent)
                     .tint(.red)
                 } else {
-                    Button {
-                        vm.run()
-                    } label: {
+                    Button { vm.run() } label: {
                         Label("Run", systemImage: "play.fill")
                             .font(.caption.weight(.semibold))
                     }
@@ -77,7 +70,6 @@ struct StoryFlowStepListPanel: View {
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
 
-            // Secondary row: New / Open / Delete
             HStack(spacing: 6) {
                 Button("New") { vm.newWorkflow() }
                     .buttonStyle(.borderless)
@@ -126,6 +118,7 @@ struct StoryFlowStepListPanel: View {
                         .buttonStyle(.borderedProminent)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+
             } else if vm.selectedWorkflow!.steps.isEmpty {
                 VStack(spacing: 8) {
                     Image(systemName: "list.bullet.clipboard")
@@ -140,20 +133,19 @@ struct StoryFlowStepListPanel: View {
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .overlay(alignment: .bottom) { addStepButton }
+
             } else {
                 List {
                     ForEach(Binding(
                         get: { vm.selectedWorkflow?.steps ?? [] },
                         set: { vm.selectedWorkflow?.steps = $0 }
                     )) { $step in
-                        StoryFlowStepCard(step: $step, onDelete: {
-                            vm.deleteStep(id: step.id)
-                        }, onChange: {
-                            vm.updateStep(step)
-                        })
-                        .listRowInsets(EdgeInsets(top: 4, leading: 8, bottom: 4, trailing: 8))
-                        .listRowBackground(Color.clear)
-                        .listRowSeparator(.hidden)
+                        StoryFlowStepCard(step: $step,
+                                          onDelete: { vm.deleteStep(id: step.id) },
+                                          onChange: { vm.updateStep(step) })
+                            .listRowInsets(EdgeInsets(top: 3, leading: 8, bottom: 3, trailing: 8))
+                            .listRowBackground(Color.clear)
+                            .listRowSeparator(.hidden)
                     }
                     .onMove { vm.moveSteps(from: $0, to: $1) }
                 }
@@ -163,53 +155,28 @@ struct StoryFlowStepListPanel: View {
         }
     }
 
+    // MARK: — Add step menu
+
     private var addStepButton: some View {
         Menu {
-            // Accumulator instructions
             Section("Accumulator") {
-                ForEach([WorkflowStepType.configInstruction,
-                         .promptInstruction], id: \.self) { type in
-                    Button {
-                        vm.addStep(type: type)
-                    } label: {
-                        Label(type.displayName, systemImage: type.iconName)
-                    }
-                }
+                menuItem(.configInstruction)
+                menuItem(.promptInstruction)
             }
-            // Execution
             Section("Execution") {
-                Button { vm.addStep(type: .generate) } label: {
-                    Label("Generate", systemImage: WorkflowStepType.generate.iconName)
-                }
+                menuItem(.generate)
             }
-            // Canvas
             Section("Canvas") {
-                ForEach([WorkflowStepType.loadCanvas,
-                         .saveCanvas], id: \.self) { type in
-                    Button {
-                        vm.addStep(type: type)
-                    } label: {
-                        Label(type.displayName, systemImage: type.iconName)
-                    }
-                }
+                menuItem(.loadCanvas)
+                menuItem(.saveCanvas)
             }
-            // Moodboard
             Section("Moodboard") {
-                ForEach([WorkflowStepType.addToMoodboard,
-                         .canvasToMoodboard,
-                         .clearMoodboard], id: \.self) { type in
-                    Button {
-                        vm.addStep(type: type)
-                    } label: {
-                        Label(type.displayName, systemImage: type.iconName)
-                    }
-                }
+                menuItem(.addToMoodboard)
+                menuItem(.canvasToMoodboard)
+                menuItem(.clearMoodboard)
             }
-            // Utility
             Section("Utility") {
-                Button { vm.addStep(type: .note) } label: {
-                    Label("Note", systemImage: WorkflowStepType.note.iconName)
-                }
+                menuItem(.note)
             }
         } label: {
             Image(systemName: "plus.circle.fill")
@@ -222,18 +189,24 @@ struct StoryFlowStepListPanel: View {
         .padding(12)
     }
 
-    // MARK: — Text view
+    private func menuItem(_ type: WorkflowStepType) -> some View {
+        Button { vm.addStep(type: type) } label: {
+            Label(type.displayName, systemImage: type.iconName)
+        }
+    }
+
+    // MARK: — JSON text view
 
     private var textView: some View {
         TextEditor(text: $vm.workflowJSON)
             .font(.system(size: 11, design: .monospaced))
-            .onChange(of: vm.workflowJSON) { _, _ in
-                // live-parse on change so cards stay in sync when user edits JSON
-            }
     }
 }
 
 // MARK: - Step Card
+//
+// Flat single-row layout:  [drag handle] [type label] [primary field] [delete button]
+// No expand/collapse — all cards are always visible in one row (or two for multi-field types).
 
 private struct StoryFlowStepCard: View {
     @Binding var step: WorkflowStep
@@ -256,201 +229,119 @@ private struct StoryFlowStepCard: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            // Colored left border + drag handle
-            VStack(spacing: 2) {
+            // Colored left strip with drag handle
+            VStack {
                 Image(systemName: "line.3.horizontal")
                     .font(.system(size: 10))
                     .foregroundStyle(.tertiary)
             }
             .frame(width: 20)
             .frame(maxHeight: .infinity)
-            .background(accentColor.opacity(0.18))
+            .background(accentColor.opacity(0.15))
             .overlay(alignment: .leading) {
-                Rectangle()
-                    .fill(accentColor)
-                    .frame(width: 3)
+                Rectangle().fill(accentColor).frame(width: 3)
             }
 
-            VStack(alignment: .leading, spacing: 6) {
-                cardHeader
-                if step.isExpanded {
-                    cardBody
-                }
+            // Label + field(s)
+            HStack(spacing: 8) {
+                // Fixed-width type label
+                Text(step.type.displayName)
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(accentColor)
+                    .frame(width: 108, alignment: .leading)
+                    .lineLimit(1)
+
+                // Primary field, fills remaining space
+                primaryField
             }
             .padding(.horizontal, 10)
-            .padding(.vertical, 8)
+            .padding(.vertical, 7)
+
+            // Delete button
+            Button(action: onDelete) {
+                Image(systemName: "xmark")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(.white)
+                    .frame(width: 28, height: 28)
+                    .background(Color.red)
+                    .clipShape(RoundedRectangle(cornerRadius: 5))
+            }
+            .buttonStyle(.plain)
+            .padding(.trailing, 8)
         }
         .background(Color(NSColor.controlBackgroundColor))
         .clipShape(RoundedRectangle(cornerRadius: 6))
-        .overlay(RoundedRectangle(cornerRadius: 6).stroke(accentColor.opacity(0.25), lineWidth: 1))
+        .overlay(RoundedRectangle(cornerRadius: 6).stroke(accentColor.opacity(0.2), lineWidth: 1))
     }
 
-    private var cardHeader: some View {
-        HStack(spacing: 6) {
-            Image(systemName: step.type.iconName)
-                .font(.system(size: 10))
-                .foregroundStyle(accentColor)
-                .frame(width: 14)
-
-            TextField("label", text: $step.label)
-                .font(.caption.weight(.semibold))
-                .textFieldStyle(.plain)
-                .onSubmit { onChange() }
-
-            Spacer()
-
-            if !step.isExpanded {
-                Text(step.parameterSummary)
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
-                    .lineLimit(1)
-            }
-
-            Button {
-                withAnimation(.easeInOut(duration: 0.12)) {
-                    step.isExpanded.toggle()
-                }
-                onChange()
-            } label: {
-                Image(systemName: step.isExpanded ? "chevron.up" : "chevron.down")
-                    .font(.system(size: 9))
-                    .foregroundStyle(.secondary)
-            }
-            .buttonStyle(.plain)
-
-            Button(action: onDelete) {
-                Image(systemName: "xmark.circle.fill")
-                    .font(.system(size: 12))
-                    .foregroundStyle(.secondary)
-            }
-            .buttonStyle(.plain)
-        }
-    }
+    // MARK: — Primary field per step type
 
     @ViewBuilder
-    private var cardBody: some View {
-        VStack(alignment: .leading, spacing: 5) {
-            switch step.type {
+    private var primaryField: some View {
+        switch step.type {
 
-            // ── Config instruction ───────────────────────────────────────────
-            case .configInstruction:
-                HStack(alignment: .top) {
-                    Text("Configs")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                        .frame(width: 70, alignment: .trailing)
-                        .padding(.top, 3)
-                    VStack(alignment: .leading, spacing: 3) {
-                        TextField("model-base, sampler-fast", text: Binding(
-                            get: { step.parameters["configVars"] ?? "" },
-                            set: { step.parameters["configVars"] = $0.isEmpty ? nil : $0 }
-                        ))
-                        .textFieldStyle(.roundedBorder)
-                        .font(.system(size: 11, design: .monospaced))
-                        .onSubmit { onChange() }
-                        Text("Comma-separated #config variable names")
-                            .font(.system(size: 9))
-                            .foregroundStyle(.tertiary)
-                    }
-                }
+        case .configInstruction:
+            // Comma-separated list of config var names (with or without # prefix)
+            TextField("#model, #sampler", text: Binding(
+                get: { step.parameters["configVars"] ?? "" },
+                set: { step.parameters["configVars"] = $0.isEmpty ? nil : $0 }
+            ))
+            .textFieldStyle(.roundedBorder)
+            .font(.system(size: 11, design: .monospaced))
+            .onSubmit { onChange() }
 
-            // ── Prompt instruction ───────────────────────────────────────────
-            case .promptInstruction:
-                HStack(alignment: .top) {
-                    Text("Prompt")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                        .frame(width: 70, alignment: .trailing)
-                        .padding(.top, 3)
-                    VStack(alignment: .leading, spacing: 3) {
-                        TextEditor(text: Binding(
-                            get: { step.parameters["text"] ?? "" },
-                            set: { step.parameters["text"] = $0 }
-                        ))
-                        .font(.caption)
-                        .frame(minHeight: 56)
-                        .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.secondary.opacity(0.3)))
-                        .onChange(of: step.parameters["text"]) { _, _ in onChange() }
-                        Text("Use @promptVar and $wildcardVar tokens")
-                            .font(.system(size: 9))
-                            .foregroundStyle(.tertiary)
-                    }
-                }
+        case .promptInstruction:
+            // Prompt text with inline @var and $wildcard tokens
+            TextField("@character in $scene doing something", text: Binding(
+                get: { step.parameters["text"] ?? "" },
+                set: { step.parameters["text"] = $0 }
+            ))
+            .textFieldStyle(.roundedBorder)
+            .font(.caption)
+            .onSubmit { onChange() }
 
-            // ── Generate ─────────────────────────────────────────────────────
-            case .generate:
-                paramField("Output name", key: "outputName", placeholder: "result-1 (optional)",
-                           prefix: "@")
-                Text("Fires with the accumulated config + prompt state.")
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
+        case .generate:
+            // Optional name to store the result for later loadCanvas
+            TextField("output name (optional)", text: Binding(
+                get: { step.parameters["outputName"] ?? "" },
+                set: { step.parameters["outputName"] = $0.isEmpty ? nil : $0 }
+            ))
+            .textFieldStyle(.roundedBorder)
+            .font(.caption)
+            .onSubmit { onChange() }
 
-            // ── Load canvas ──────────────────────────────────────────────────
-            case .loadCanvas:
-                paramField("Canvas name", key: "name", placeholder: "result-1", prefix: "@")
-                Text("Sets the named canvas as the img2img source.")
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
+        case .loadCanvas, .saveCanvas:
+            TextField("canvas name", text: Binding(
+                get: { step.parameters["name"] ?? "" },
+                set: { step.parameters["name"] = $0.isEmpty ? nil : $0 }
+            ))
+            .textFieldStyle(.roundedBorder)
+            .font(.caption)
+            .onSubmit { onChange() }
 
-            // ── Save canvas ──────────────────────────────────────────────────
-            case .saveCanvas:
-                paramField("Canvas name", key: "name", placeholder: "my-canvas", prefix: "@")
-                Text("Saves the last generated image under this name.")
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
+        case .addToMoodboard:
+            TextField("image var", text: Binding(
+                get: { step.parameters["imageVar"] ?? "" },
+                set: { step.parameters["imageVar"] = $0.isEmpty ? nil : $0 }
+            ))
+            .textFieldStyle(.roundedBorder)
+            .font(.caption)
+            .frame(maxWidth: 140)
+            .onSubmit { onChange() }
+            weightSlider
 
-            // ── Add to moodboard ─────────────────────────────────────────────
-            case .addToMoodboard:
-                paramField("Image", key: "imageVar", placeholder: "my-image", prefix: "@")
-                weightRow
+        case .canvasToMoodboard:
+            weightSlider
 
-            // ── Canvas → moodboard ───────────────────────────────────────────
-            case .canvasToMoodboard:
-                Text("Adds the current canvas image to the moodboard.")
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
-                weightRow
-
-            // ── Clear moodboard ───────────────────────────────────────────────
-            case .clearMoodboard:
-                Text("Clears all moodboard entries for subsequent steps.")
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
-
-            // ── Note ──────────────────────────────────────────────────────────
-            case .note:
-                HStack(alignment: .top) {
-                    Text("Note")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                        .frame(width: 70, alignment: .trailing)
-                        .padding(.top, 2)
-                    TextEditor(text: Binding(
-                        get: { step.parameters["text"] ?? "" },
-                        set: { step.parameters["text"] = $0 }
-                    ))
-                    .font(.caption)
-                    .frame(minHeight: 48)
-                    .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.secondary.opacity(0.3)))
-                    .onChange(of: step.parameters["text"]) { _, _ in onChange() }
-                }
-            }
-        }
-    }
-
-    private func paramField(_ label: String, key: String,
-                             placeholder: String, prefix: String) -> some View {
-        HStack(spacing: 4) {
-            Text(label)
+        case .clearMoodboard:
+            Text("clears all moodboard entries")
                 .font(.caption2)
-                .foregroundStyle(.secondary)
-                .frame(width: 70, alignment: .trailing)
-            Text(prefix)
-                .font(.system(size: 10, weight: .semibold, design: .monospaced))
-                .foregroundStyle(Color.accentColor)
-            TextField(placeholder, text: Binding(
-                get: { step.parameters[key] ?? "" },
-                set: { step.parameters[key] = $0.isEmpty ? nil : $0 }
+                .foregroundStyle(.tertiary)
+
+        case .note:
+            TextField("annotation…", text: Binding(
+                get: { step.parameters["text"] ?? "" },
+                set: { step.parameters["text"] = $0 }
             ))
             .textFieldStyle(.roundedBorder)
             .font(.caption)
@@ -458,19 +349,15 @@ private struct StoryFlowStepCard: View {
         }
     }
 
-    private var weightRow: some View {
+    private var weightSlider: some View {
         HStack(spacing: 4) {
-            Text("Weight")
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-                .frame(width: 70, alignment: .trailing)
             Slider(value: Binding(
                 get: { Double(step.parameters["weight"] ?? "1.0") ?? 1.0 },
                 set: { step.parameters["weight"] = String(format: "%.2f", $0); onChange() }
             ), in: 0...1, step: 0.05)
             Text(step.parameters["weight"] ?? "1.00")
                 .font(.caption2.monospacedDigit())
-                .frame(width: 32)
+                .frame(width: 30)
         }
     }
 }
