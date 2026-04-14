@@ -38,6 +38,11 @@ final class StoryFlowEngine {
 
     private var runTask: Task<Void, Never>?
 
+    /// Called on the main actor after each successful generate step.
+    /// Receives (image, config-used, prompt-used, saved-file-url).
+    /// Set by StoryFlowViewModel to insert the image into the SwiftData gallery.
+    var onImageGenerated: ((NSImage, DrawThingsGenerationConfig, String, URL?) -> Void)?
+
     // MARK: — Accumulator state (reset at each run)
 
     /// Current accumulated generation config. Starts from defaults; each Config instruction
@@ -60,7 +65,10 @@ final class StoryFlowEngine {
     // MARK: — Run
 
     func run(workflow: Workflow, variables: [WorkflowVariable]) {
-        guard case .idle = runState else { return }
+        // Block only if a run is actively in progress; allow re-run after
+        // completion, cancellation, or failure.
+        if case .running = runState { return }
+        runTask?.cancel()
         stepResults = [:]
         stepLog = []
         currentConfig = DrawThingsGenerationConfig()
@@ -246,13 +254,16 @@ final class StoryFlowEngine {
             log("  ✓ Generated image")
         }
 
-        // Save to output folder
+        // Save to output folder and fire gallery callback
+        var savedURL: URL?
         if let folder = outputFolder {
-            let url = try? StoryFlowStorage.shared.saveOutputImage(img,
+            savedURL = try? StoryFlowStorage.shared.saveOutputImage(img,
                                                                     stepLabel: step.displayLabel,
                                                                     to: folder)
-            if let url { log("  💾 Saved to \(url.lastPathComponent)") }
+            if let url = savedURL { log("  💾 Saved to \(url.lastPathComponent)") }
         }
+        // Notify gallery so the image appears with metadata
+        onImageGenerated?(img, cfg, prompt, savedURL)
     }
 
     // MARK: — Config accumulation

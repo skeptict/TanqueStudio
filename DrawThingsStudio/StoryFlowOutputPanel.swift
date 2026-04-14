@@ -74,8 +74,8 @@ struct StoryFlowOutputPanel: View {
                     // Log
                     logSection
 
-                    // Previous runs
-                    previousRunsSection
+                    // Output folder shortcut
+                    outputFolderButton
                 }
                 .padding(12)
             }
@@ -183,52 +183,31 @@ struct StoryFlowOutputPanel: View {
         }
     }
 
-    // MARK: — Previous runs
+    // MARK: — Output folder shortcut
 
-    private var previousRunsSection: some View {
-        DisclosureGroup("Previous Runs") {
-            previousRunsList
+    private var outputFolderButton: some View {
+        // Link to the workflow-level folder (parent of the per-run timestamp dirs)
+        let workflowFolder: URL = {
+            let name = vm.selectedWorkflow?.name ?? "output"
+            let safe = name
+                .replacingOccurrences(of: "/", with: "-")
+                .replacingOccurrences(of: ":", with: "-")
+            return StoryFlowStorage.shared.outputFolder
+                .appendingPathComponent(safe, isDirectory: true)
+        }()
+
+        return Button {
+            // Create folder if it doesn't exist yet, then reveal in Finder
+            try? FileManager.default.createDirectory(
+                at: workflowFolder, withIntermediateDirectories: true)
+            NSWorkspace.shared.open(workflowFolder)
+        } label: {
+            Label("Open Output Folder", systemImage: "folder")
+                .font(.caption)
         }
-        .font(.caption)
-    }
-
-    private var previousRunsList: some View {
-        let fm = FileManager.default
-        let baseFolder = StoryFlowStorage.shared.outputFolder
-        let workflowName = vm.selectedWorkflow?.name ?? ""
-        let workflowFolder = baseFolder.appendingPathComponent(
-            workflowName.replacingOccurrences(of: "/", with: "-")
-                        .replacingOccurrences(of: ":", with: "-"),
-            isDirectory: true
-        )
-        let runs: [URL] = (try? fm.contentsOfDirectory(at: workflowFolder,
-                                                         includingPropertiesForKeys: nil))
-            .map { $0.sorted { $0.lastPathComponent > $1.lastPathComponent } } ?? []
-
-        return VStack(alignment: .leading, spacing: 4) {
-            if runs.isEmpty {
-                Text("No previous runs.")
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
-            } else {
-                ForEach(runs.prefix(10), id: \.absoluteString) { runURL in
-                    Button {
-                        NSWorkspace.shared.open(runURL)
-                    } label: {
-                        HStack {
-                            Image(systemName: "folder")
-                                .font(.caption2)
-                            Text(runURL.lastPathComponent)
-                                .font(.caption2)
-                            Spacer()
-                        }
-                    }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(.secondary)
-                }
-            }
-        }
-        .padding(.top, 4)
+        .buttonStyle(.borderless)
+        .foregroundStyle(.secondary)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 

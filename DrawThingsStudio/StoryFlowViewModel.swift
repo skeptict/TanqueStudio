@@ -1,6 +1,7 @@
 import Foundation
 import AppKit
 import SwiftUI
+import SwiftData
 
 // MARK: - StoryFlowViewModel
 
@@ -17,6 +18,8 @@ final class StoryFlowViewModel {
     let engine = StoryFlowEngine()
 
     private let storage = StoryFlowStorage.shared
+    private var modelContext: ModelContext?
+
     private let encoder: JSONEncoder = {
         let e = JSONEncoder()
         e.outputFormatting = [.prettyPrinted, .sortedKeys]
@@ -28,6 +31,76 @@ final class StoryFlowViewModel {
         d.dateDecodingStrategy = .iso8601
         return d
     }()
+
+    // MARK: — Setup
+
+    /// Called from the view once the SwiftData ModelContext is available.
+    func configure(modelContext: ModelContext) {
+        self.modelContext = modelContext
+        engine.onImageGenerated = { [weak self] img, cfg, prompt, fileURL in
+            self?.insertGalleryRecord(img: img, cfg: cfg, prompt: prompt, fileURL: fileURL)
+        }
+    }
+
+    // MARK: — Gallery insertion
+
+    private func insertGalleryRecord(img: NSImage,
+                                     cfg: DrawThingsGenerationConfig,
+                                     prompt: String,
+                                     fileURL: URL?) {
+        guard let ctx = modelContext else { return }
+
+        // Build the same JSON format as ImageStorageManager.encodeConfig
+        let configJSON = makeConfigJSON(cfg: cfg, prompt: prompt)
+
+        // If the file was already saved to the StoryFlow output folder, point
+        // the record at that path so we don't duplicate the image on disk.
+        // If for some reason there's no file URL yet, write to GeneratedImages.
+        let filePath: String
+        if let url = fileURL {
+            filePath = url.path
+        } else {
+            // Fallback: write to main generated-images folder
+            let id = UUID()
+            let fallbackPath = (try? ImageStorageManager.writePNG(img,
+                to: (try? ImageStorageManager.generatedImagesDirectory()) ?? URL(fileURLWithPath: NSTemporaryDirectory()),
+                id: id))?.path ?? ""
+            filePath = fallbackPath
+        }
+
+        guard !filePath.isEmpty else { return }
+
+        let record = TSImage(
+            id: UUID(),
+            filePath: filePath,
+            source: .generated,
+            configJSON: configJSON
+        )
+        record.thumbnailData = ImageStorageManager.makeThumbnailData(from: img)
+        ctx.insert(record)
+    }
+
+    private func makeConfigJSON(cfg: DrawThingsGenerationConfig, prompt: String) -> String? {
+        var dict: [String: Any] = [:]
+        if !prompt.isEmpty { dict["prompt"] = prompt }
+        dict["model"]          = cfg.model
+        dict["sampler"]        = cfg.sampler
+        dict["steps"]          = cfg.steps
+        dict["guidanceScale"]  = cfg.guidanceScale
+        dict["seed"]           = cfg.seed
+        dict["seedMode"]       = cfg.seedMode
+        dict["width"]          = cfg.width
+        dict["height"]         = cfg.height
+        dict["shift"]          = cfg.shift
+        dict["strength"]       = cfg.strength
+        dict["negativePrompt"] = cfg.negativePrompt
+        if !cfg.loras.isEmpty {
+            dict["loras"] = cfg.loras.map { ["file": $0.file, "weight": $0.weight] }
+        }
+        guard let data = try? JSONSerialization.data(withJSONObject: dict, options: [.sortedKeys]),
+              let str = String(data: data, encoding: .utf8) else { return nil }
+        return str
+    }
 
     // MARK: — Load
 

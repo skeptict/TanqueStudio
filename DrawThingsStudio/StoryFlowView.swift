@@ -1,9 +1,11 @@
 import SwiftUI
+import SwiftData
 
 // MARK: - StoryFlow Root View
 
 struct StoryFlowView: View {
     @State private var vm = StoryFlowViewModel()
+    @Environment(\.modelContext) private var modelContext
 
     var body: some View {
         HSplitView {
@@ -16,6 +18,9 @@ struct StoryFlowView: View {
             StoryFlowOutputPanel(vm: vm)
                 .frame(minWidth: 260, maxWidth: 400)
         }
-        .onAppear { vm.loadAll() }
+        .onAppear {
+            vm.configure(modelContext: modelContext)
+            vm.loadAll()
+        }
     }
 }

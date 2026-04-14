@@ -103,21 +103,25 @@ struct StoryFlowVariablesPanel: View {
     private func sectionHeader(type: WorkflowVariableType, count: Int, isCollapsed: Bool) -> some View {
         HStack(spacing: 6) {
             Image(systemName: type.iconName)
-                .font(.system(size: 11))
-                .foregroundStyle(.secondary)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(Color(NSColor.secondaryLabelColor))
                 .frame(width: 16)
 
-            Text(type.displayName)
-                .font(.caption.weight(.medium))
+            Text(type.displayName.uppercased())
+                .font(.system(size: 10, weight: .bold))
+                .foregroundStyle(Color(NSColor.secondaryLabelColor))
+                .kerning(0.5)
 
             // Count badge
-            Text("\(count)")
-                .font(.system(size: 10, weight: .semibold))
-                .padding(.horizontal, 5)
-                .padding(.vertical, 2)
-                .background(Color.secondary.opacity(0.2))
-                .foregroundStyle(.secondary)
-                .clipShape(Capsule())
+            if count > 0 {
+                Text("\(count)")
+                    .font(.system(size: 9, weight: .bold))
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 1)
+                    .background(Color(NSColor.secondaryLabelColor).opacity(0.25))
+                    .foregroundStyle(Color(NSColor.secondaryLabelColor))
+                    .clipShape(Capsule())
+            }
 
             Spacer()
 
@@ -125,16 +129,18 @@ struct StoryFlowVariablesPanel: View {
                 vm.addVariable(type: type)
             } label: {
                 Image(systemName: "plus")
-                    .font(.system(size: 10))
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(Color(NSColor.secondaryLabelColor))
             }
             .buttonStyle(.plain)
 
             Image(systemName: isCollapsed ? "chevron.right" : "chevron.down")
-                .font(.system(size: 9))
-                .foregroundStyle(.tertiary)
+                .font(.system(size: 8, weight: .semibold))
+                .foregroundStyle(Color(NSColor.tertiaryLabelColor))
         }
         .padding(.horizontal, 12)
-        .padding(.vertical, 7)
+        .padding(.vertical, 6)
+        .background(Color(NSColor.windowBackgroundColor).opacity(0.7))
         .contentShape(Rectangle())
         .onTapGesture {
             withAnimation(.easeInOut(duration: 0.15)) {
