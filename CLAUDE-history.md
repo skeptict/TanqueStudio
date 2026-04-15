@@ -193,6 +193,10 @@ Complete redesign of StoryFlow to match the original StoryFlow web editor's accu
 **Output Panel (StoryFlowOutputPanel.swift)**
 - Previous Runs section replaced with single "Open Output Folder" button (workflow-level parent dir)
 
+**Additional fixes (same session, Apr 15 2026)**
+- PNG metadata in generated images: switched `ImageStorageManager.writePNG` from `NSBitmapImageRep` to `CGImageDestination` (ImageIO); embeds EXIF `UserComment` (full DT-format JSON, readable by PNGMetadataParser / exiftool) and IPTC `Caption-Abstract` (human-readable prompt, indexed by Spotlight, visible in Finder Get Info as "Description"); `StoryFlowStorage.saveOutputImage` delegates to `ImageStorageManager.writePNG`; engine passes `cfg` + `prompt` through
+- Wildcard variable persistence fixed: `ForEach` `Binding.get` captured `variablesOfType` by value at render time; after `commitWildcard` wrote through the setter, reading `variable` back returned the stale snapshot and `onSave` overwrote the update with nil; fixed by changing get to `{ vm.variables.filter { $0.type == type } }` for a live read; also changed `onSave` signature to `(WorkflowVariable) -> Void` so variable is always read at call time; `commitWildcard` trims whitespace from each pipe-split option
+
 **Research: Draw Things PNG metadata format**
 - DT uses EXIF UserComment (primary) + iTXt `dts_metadata` chunk (fallback)
 - JSON format: short keys (`"c"`, `"uc"`, `"scale"`) + `"v2"` sub-object with camelCase full config
