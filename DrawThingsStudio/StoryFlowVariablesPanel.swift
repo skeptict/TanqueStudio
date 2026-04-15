@@ -90,7 +90,9 @@ struct StoryFlowVariablesPanel: View {
                     )) { $variable in
                         VariableRow(
                             variable: $variable,
-                            onSave: { vm.saveVariable(variable) },
+                            // Pass the updated variable at CALL TIME so the binding's
+                            // most recent value is saved, not a stale render-time capture.
+                            onSave: { vm.saveVariable($0) },
                             onDelete: { vm.deleteVariable(id: variable.id) }
                         )
                         Divider()
@@ -170,7 +172,9 @@ private struct VariableRow: View {
     /// Avoids cursor-jump issue that occurs when a two-way Binding re-renders
     /// the field on every keystroke via vm.variables → re-render.
     @State private var wildcardText: String = ""
-    let onSave: () -> Void
+    /// Called with the current variable value after any mutation so the
+    /// binding's updated state is saved rather than a stale render-time capture.
+    let onSave: (WorkflowVariable) -> Void
     let onDelete: () -> Void
 
     var body: some View {
@@ -258,7 +262,7 @@ private struct VariableRow: View {
                 TextField("name", text: $variable.name)
                     .textFieldStyle(.roundedBorder)
                     .font(.footnote)
-                    .onSubmit { onSave() }
+                    .onSubmit { onSave(variable) }
             }
 
             // Type-specific fields
@@ -277,7 +281,7 @@ private struct VariableRow: View {
                     .font(.footnote)
                     .frame(minHeight: 60)
                     .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.secondary.opacity(0.3)))
-                    .onChange(of: variable.promptValue) { _, _ in onSave() }
+                    .onChange(of: variable.promptValue) { _, _ in onSave(variable) }
                 }
 
             case .config:
@@ -295,7 +299,7 @@ private struct VariableRow: View {
                         .font(.system(size: 12, design: .monospaced))
                         .frame(minHeight: 80)
                         .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.secondary.opacity(0.3)))
-                        .onChange(of: variable.configJSON) { _, _ in onSave() }
+                        .onChange(of: variable.configJSON) { _, _ in onSave(variable) }
                         if let json = variable.configJSON, !json.isEmpty {
                             let isValid = isValidConfigJSON(json)
                             Label(isValid ? "Valid config" : "Invalid JSON",
@@ -318,7 +322,7 @@ private struct VariableRow: View {
                     ))
                     .textFieldStyle(.roundedBorder)
                     .font(.footnote)
-                    .onSubmit { onSave() }
+                    .onSubmit { onSave(variable) }
                 }
                 HStack {
                     Text("Weight")
@@ -327,7 +331,7 @@ private struct VariableRow: View {
                         .frame(width: 60, alignment: .trailing)
                     Slider(value: Binding(
                         get: { variable.loraWeight ?? 1.0 },
-                        set: { variable.loraWeight = $0; onSave() }
+                        set: { variable.loraWeight = $0; onSave(variable) }
                     ), in: 0...2, step: 0.05)
                     Text(String(format: "%.2f", variable.loraWeight ?? 1.0))
                         .font(.caption.monospacedDigit())
@@ -380,7 +384,7 @@ private struct VariableRow: View {
                 ))
                 .textFieldStyle(.roundedBorder)
                 .font(.caption)
-                .onSubmit { onSave() }
+                .onSubmit { onSave(variable) }
             }
         }
         .padding(.top, 6)
@@ -389,9 +393,12 @@ private struct VariableRow: View {
     private func commitWildcard() {
         let options = wildcardText
             .split(separator: "|", omittingEmptySubsequences: true)
-            .map { String($0) }
+            .map { String($0).trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
         variable.wildcardOptions = options.isEmpty ? nil : options
-        onSave()
+        // Read self.variable AFTER the binding mutation above so the
+        // saved value includes the updated wildcardOptions, not a stale capture.
+        onSave(variable)
     }
 
     private func isValidConfigJSON(_ json: String) -> Bool {
