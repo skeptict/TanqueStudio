@@ -1,5 +1,6 @@
 import Foundation
 import AppKit
+import ImageIO
 import SwiftData
 
 // MARK: - Image Storage Manager
@@ -34,16 +35,25 @@ enum ImageStorageManager {
 
     // MARK: — Write PNG
 
-    /// Writes an NSImage to disk as a PNG.  Returns the saved file URL.
-    static func writePNG(_ image: NSImage, to directory: URL, id: UUID) throws -> URL {
-        guard let tiff = image.tiffRepresentation,
-              let bitmap = NSBitmapImageRep(data: tiff),
-              let pngData = bitmap.representation(using: .png, properties: [:]) else {
-            throw StorageError.encodingFailed
-        }
+    /// Writes an NSImage to disk as a PNG with optional embedded EXIF metadata.
+    /// Uses CGImageDestination so generation parameters are visible in Finder's Get Info.
+    /// Returns the saved file URL.
+    static func writePNG(_ image: NSImage,
+                         to directory: URL,
+                         id: UUID,
+                         config: DrawThingsGenerationConfig? = nil,
+                         prompt: String? = nil) throws -> URL {
         let url = directory.appendingPathComponent("\(id.uuidString).png")
-        try pngData.write(to: url, options: .atomic)
+        try writePNGData(image, to: url, config: config, prompt: prompt)
         return url
+    }
+
+    /// Overload that writes to a caller-supplied URL (used by StoryFlowStorage).
+    static func writePNG(_ image: NSImage,
+                         to url: URL,
+                         config: DrawThingsGenerationConfig? = nil,
+                         prompt: String? = nil) throws {
+        try writePNGData(image, to: url, config: config, prompt: prompt)
     }
 
     // MARK: — Thumbnail
@@ -107,7 +117,8 @@ enum ImageStorageManager {
         }
         defer { securityScopedURL?.stopAccessingSecurityScopedResource() }
 
-        let fileURL = try writePNG(image, to: directory, id: id)
+        // Write PNG with embedded EXIF metadata so Finder's Get Info shows params.
+        let fileURL = try writePNG(image, to: directory, id: id, config: config, prompt: prompt)
 
         let configJSON: String?
         if let cfg = config {
@@ -129,9 +140,109 @@ enum ImageStorageManager {
         return record
     }
 
-    // MARK: — Private helpers
+    // MARK: — Private: PNG write core
 
-    /// Encodes config + prompt into a JSON string for storage in configJSON.
+    /// Core PNG write using CGImageDestination.
+    /// When config is provided, embeds generation parameters in EXIF UserComment
+    /// using Draw Things' short-key JSON format — the same format PNGMetadataParser reads.
+    private static func writePNGData(_ image: NSImage,
+                                     to url: URL,
+                                     config: DrawThingsGenerationConfig?,
+                                     prompt: String?) throws {
+        guard let cgImage = image.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
+            throw StorageError.encodingFailed
+        }
+        guard let dest = CGImageDestinationCreateWithURL(
+            url as CFURL, "public.png" as CFString, 1, nil
+        ) else {
+            throw StorageError.encodingFailed
+        }
+
+        if let cfg = config,
+           let jsonStr = buildDTMetadataJSON(config: cfg, prompt: prompt) {
+            let promptText = prompt ?? ""
+
+            // EXIF UserComment — Draw Things' primary metadata location,
+            // readable by PNGMetadataParser and external tools (exiftool, etc.)
+            // IPTC Caption-Abstract — indexed by Spotlight as kMDItemDescription,
+            // displayed by Finder's Get Info as "Description".
+            let props: [String: Any] = [
+                kCGImagePropertyExifDictionary as String: [
+                    kCGImagePropertyExifUserComment as String: jsonStr
+                ],
+                kCGImagePropertyIPTCDictionary as String: [
+                    kCGImagePropertyIPTCCaptionAbstract as String: promptText,
+                    kCGImagePropertyIPTCOriginatingProgram as String: "TanqueStudio"
+                ]
+            ]
+            CGImageDestinationAddImage(dest, cgImage, props as CFDictionary)
+        } else {
+            CGImageDestinationAddImage(dest, cgImage, nil)
+        }
+
+        guard CGImageDestinationFinalize(dest) else {
+            throw StorageError.encodingFailed
+        }
+    }
+
+    // MARK: — Private: metadata JSON
+
+    /// Builds a Draw Things-compatible metadata JSON string.
+    /// Uses DT's short-key top-level format ("c", "uc", "scale", etc.)
+    /// plus a "v2" sub-object with camelCase full config.
+    /// PNGMetadataParser already reads both layers from Draw Things images.
+    private static func buildDTMetadataJSON(config: DrawThingsGenerationConfig,
+                                            prompt: String?) -> String? {
+        let p = prompt ?? ""
+        var top: [String: Any] = [:]
+
+        // Short-key top-level (Draw Things native format)
+        if !p.isEmpty                       { top["c"]        = p }
+        if !config.negativePrompt.isEmpty   { top["uc"]       = config.negativePrompt }
+        top["model"]     = config.model
+        top["sampler"]   = config.sampler
+        top["size"]      = "\(config.width)x\(config.height)"
+        top["steps"]     = config.steps
+        top["scale"]     = config.guidanceScale   // DT uses "scale" for CFG
+        top["seed"]      = config.seed
+        top["seed_mode"] = config.seedMode
+        top["strength"]  = config.strength
+        top["shift"]     = config.shift
+        if !config.loras.isEmpty {
+            top["lora"] = config.loras.map { ["file": $0.file, "weight": $0.weight] }
+        }
+
+        // v2 sub-object — camelCase keys, full config
+        var v2: [String: Any] = [
+            "model":         config.model,
+            "sampler":       config.sampler,
+            "steps":         config.steps,
+            "guidanceScale": config.guidanceScale,
+            "seed":          config.seed,
+            "seedMode":      config.seedMode,
+            "width":         config.width,
+            "height":        config.height,
+            "shift":         config.shift,
+            "strength":      config.strength,
+        ]
+        if !config.negativePrompt.isEmpty {
+            v2["negativePrompt"] = config.negativePrompt
+        }
+        if !config.loras.isEmpty {
+            v2["loras"] = config.loras.map { ["file": $0.file, "weight": $0.weight] }
+        }
+        top["v2"] = v2
+
+        guard let data = try? JSONSerialization.data(withJSONObject: top, options: [.sortedKeys]),
+              let str = String(data: data, encoding: .utf8) else { return nil }
+        return str
+    }
+
+    // MARK: — Private: SwiftData config JSON
+
+    /// Encodes config + prompt into a JSON string for storage in TSImage.configJSON.
+    /// Separate from buildDTMetadataJSON: this uses camelCase throughout and is
+    /// read by the app's gallery metadata display, not by external tools.
     private static func encodeConfig(
         _ config: DrawThingsGenerationConfig,
         prompt: String?

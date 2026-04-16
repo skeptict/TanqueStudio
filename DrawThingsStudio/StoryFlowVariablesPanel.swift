@@ -1,0 +1,439 @@
+import SwiftUI
+import AppKit
+
+// MARK: - Variables Panel
+
+struct StoryFlowVariablesPanel: View {
+    @Bindable var vm: StoryFlowViewModel
+    @State private var collapsedSections: Set<WorkflowVariableType> = []
+
+    private let sectionOrder: [WorkflowVariableType] = [.prompt, .config, .wildcard, .image, .lora]
+
+    var body: some View {
+        VStack(spacing: 0) {
+            header
+            Divider()
+            ScrollView {
+                VStack(spacing: 0) {
+                    ForEach(sectionOrder, id: \.self) { type in
+                        sectionForType(type)
+                        Divider()
+                    }
+                }
+            }
+        }
+        .background(Color(NSColor.controlBackgroundColor))
+    }
+
+    // MARK: - Header
+
+    private var header: some View {
+        HStack(spacing: 6) {
+            Text("Variables")
+                .font(.headline)
+            Spacer()
+            Button {
+                NSWorkspace.shared.open(StoryFlowStorage.shared.variablesFolder)
+            } label: {
+                Image(systemName: "folder")
+            }
+            .buttonStyle(.plain)
+            .help("Open variables folder in Finder")
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+    }
+
+    // MARK: - Section
+
+    @ViewBuilder
+    private func sectionForType(_ type: WorkflowVariableType) -> some View {
+        let isCollapsed = collapsedSections.contains(type)
+        let variablesOfType = vm.variables.filter { $0.type == type }
+
+        VStack(alignment: .leading, spacing: 0) {
+            // Section header row
+            sectionHeader(type: type, count: variablesOfType.count, isCollapsed: isCollapsed)
+
+            // Section body (expanded)
+            if !isCollapsed {
+                if variablesOfType.isEmpty {
+                    // Empty state row
+                    HStack(spacing: 6) {
+                        Text("No \(type.displayName.lowercased()) variables")
+                            .font(.caption)
+                            .foregroundStyle(.tertiary)
+                        Spacer()
+                        Button {
+                            vm.addVariable(type: type)
+                        } label: {
+                            Image(systemName: "plus")
+                                .font(.system(size: 12))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                } else {
+                    // Variable rows
+                    ForEach(Binding(
+                        // Live read from vm.variables so that mutations made through
+                        // the binding's setter are immediately visible when the getter
+                        // is called again (e.g. reading `variable` after setting
+                        // wildcardOptions inside commitWildcard). Capturing the local
+                        // `variablesOfType` snapshot instead caused every onSave to
+                        // read back the pre-mutation value and overwrite the update.
+                        get: { vm.variables.filter { $0.type == type } },
+                        set: { newVars in
+                            var updated = vm.variables
+                            for (idx, var1) in updated.enumerated() {
+                                if let idx2 = newVars.firstIndex(where: { $0.id == var1.id }) {
+                                    updated[idx] = newVars[idx2]
+                                }
+                            }
+                            vm.variables = updated
+                        }
+                    )) { $variable in
+                        VariableRow(
+                            variable: $variable,
+                            // Pass the updated variable at CALL TIME so the binding's
+                            // most recent value is saved, not a stale render-time capture.
+                            onSave: { vm.saveVariable($0) },
+                            onDelete: { vm.deleteVariable(id: variable.id) }
+                        )
+                        Divider()
+                    }
+                }
+            }
+        }
+    }
+
+    private func sectionHeader(type: WorkflowVariableType, count: Int, isCollapsed: Bool) -> some View {
+        // Left accent bar + content row
+        HStack(spacing: 0) {
+            Rectangle()
+                .fill(Color.accentColor.opacity(0.75))
+                .frame(width: 3)
+
+            HStack(spacing: 6) {
+                Image(systemName: type.iconName)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 16)
+
+                Text(type.displayName.uppercased())
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(.primary)
+                    .kerning(0.5)
+
+                if count > 0 {
+                    Text("\(count)")
+                        .font(.system(size: 10, weight: .semibold))
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 1)
+                        .background(Color.secondary.opacity(0.2))
+                        .foregroundStyle(.secondary)
+                        .clipShape(Capsule())
+                }
+
+                Spacer()
+
+                Button {
+                    vm.addVariable(type: type)
+                } label: {
+                    Image(systemName: "plus")
+                        .font(.system(size: 12, weight: .medium))
+                }
+                .buttonStyle(.plain)
+
+                Image(systemName: isCollapsed ? "chevron.right" : "chevron.down")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(.tertiary)
+            }
+            .padding(.leading, 10)
+            .padding(.trailing, 12)
+            .padding(.vertical, 8)
+        }
+        .background(Color.primary.opacity(0.07))
+        .contentShape(Rectangle())
+        .onTapGesture {
+            withAnimation(.easeInOut(duration: 0.15)) {
+                if collapsedSections.contains(type) {
+                    collapsedSections.remove(type)
+                } else {
+                    collapsedSections.insert(type)
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Variable Row
+
+private struct VariableRow: View {
+    @Binding var variable: WorkflowVariable
+    @State private var isExpanded = false
+    @State private var showDeleteConfirm = false
+    /// Local text state for the wildcard TextField.
+    /// Avoids cursor-jump issue that occurs when a two-way Binding re-renders
+    /// the field on every keystroke via vm.variables → re-render.
+    @State private var wildcardText: String = ""
+    /// Called with the current variable value after any mutation so the
+    /// binding's updated state is saved rather than a stale render-time capture.
+    let onSave: (WorkflowVariable) -> Void
+    let onDelete: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            rowHeader
+            if isExpanded {
+                rowEditor
+                    .padding(.horizontal, 12)
+                    .padding(.bottom, 10)
+            }
+            if showDeleteConfirm {
+                deleteConfirmBar
+                    .padding(.horizontal, 12)
+                    .padding(.bottom, 8)
+            }
+        }
+        .contentShape(Rectangle())
+        .onTapGesture {
+            // Seed local state before expanding to avoid cursor jump.
+            if !isExpanded && variable.type == .wildcard {
+                wildcardText = (variable.wildcardOptions ?? []).joined(separator: "|")
+            }
+            isExpanded.toggle()
+        }
+    }
+
+    private var rowHeader: some View {
+        HStack(spacing: 6) {
+            Image(systemName: variable.type.iconName)
+                .font(.system(size: 13))
+                .foregroundStyle(.secondary)
+                .frame(width: 16)
+
+            Text(variable.type.prefix)
+                .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                .foregroundStyle(variable.isBuiltIn ? .orange : .accentColor)
+
+            Text(variable.name)
+                .font(.footnote.weight(.medium))
+                .lineLimit(1)
+
+            if variable.isBuiltIn {
+                Text("built-in")
+                    .font(.system(size: 10, weight: .semibold))
+                    .padding(.horizontal, 4)
+                    .padding(.vertical, 1)
+                    .background(Color.orange.opacity(0.15))
+                    .foregroundStyle(.orange)
+                    .clipShape(Capsule())
+            }
+
+            Spacer()
+
+            Text(variable.valuePreview)
+                .font(.caption)
+                .foregroundStyle(.tertiary)
+                .lineLimit(1)
+
+            Button {
+                showDeleteConfirm = true
+            } label: {
+                Image(systemName: "minus.circle")
+                    .font(.system(size: 13))
+                    .foregroundStyle(.red.opacity(0.7))
+            }
+            .buttonStyle(.plain)
+
+            Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                .font(.system(size: 11))
+                .foregroundStyle(.tertiary)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+    }
+
+    @ViewBuilder
+    private var rowEditor: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            // Name field
+            HStack {
+                Text("Name")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .frame(width: 60, alignment: .trailing)
+                TextField("name", text: $variable.name)
+                    .textFieldStyle(.roundedBorder)
+                    .font(.footnote)
+                    .onSubmit { onSave(variable) }
+            }
+
+            // Type-specific fields
+            switch variable.type {
+            case .prompt:
+                HStack(alignment: .top) {
+                    Text("Value")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .frame(width: 60, alignment: .trailing)
+                        .padding(.top, 3)
+                    TextEditor(text: Binding(
+                        get: { variable.promptValue ?? "" },
+                        set: { variable.promptValue = $0 }
+                    ))
+                    .font(.footnote)
+                    .frame(minHeight: 60)
+                    .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.secondary.opacity(0.3)))
+                    .onChange(of: variable.promptValue) { _, _ in onSave(variable) }
+                }
+
+            case .config:
+                HStack(alignment: .top) {
+                    Text("Config")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .frame(width: 60, alignment: .trailing)
+                        .padding(.top, 3)
+                    VStack(alignment: .leading, spacing: 4) {
+                        TextEditor(text: Binding(
+                            get: { variable.configJSON ?? "" },
+                            set: { variable.configJSON = $0.isEmpty ? nil : $0 }
+                        ))
+                        .font(.system(size: 12, design: .monospaced))
+                        .frame(minHeight: 80)
+                        .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.secondary.opacity(0.3)))
+                        .onChange(of: variable.configJSON) { _, _ in onSave(variable) }
+                        if let json = variable.configJSON, !json.isEmpty {
+                            let isValid = isValidConfigJSON(json)
+                            Label(isValid ? "Valid config" : "Invalid JSON",
+                                  systemImage: isValid ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
+                                .font(.system(size: 12))
+                                .foregroundStyle(isValid ? Color.green : Color.orange)
+                        }
+                    }
+                }
+
+            case .lora:
+                HStack {
+                    Text("File")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .frame(width: 60, alignment: .trailing)
+                    TextField("lora.safetensors", text: Binding(
+                        get: { variable.loraFile ?? "" },
+                        set: { variable.loraFile = $0 }
+                    ))
+                    .textFieldStyle(.roundedBorder)
+                    .font(.footnote)
+                    .onSubmit { onSave(variable) }
+                }
+                HStack {
+                    Text("Weight")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .frame(width: 60, alignment: .trailing)
+                    Slider(value: Binding(
+                        get: { variable.loraWeight ?? 1.0 },
+                        set: { variable.loraWeight = $0; onSave(variable) }
+                    ), in: 0...2, step: 0.05)
+                    Text(String(format: "%.2f", variable.loraWeight ?? 1.0))
+                        .font(.caption.monospacedDigit())
+                        .frame(width: 36)
+                }
+
+            case .image:
+                HStack {
+                    Text("File")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .frame(width: 60, alignment: .trailing)
+                    Text(variable.imageFileName ?? "None")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                }
+
+            case .wildcard:
+                // Pipe-separated options on a single line: red|green|blue
+                HStack(alignment: .top) {
+                    VStack(alignment: .trailing, spacing: 2) {
+                        Text("Options")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .frame(width: 60, alignment: .trailing)
+                        Text("pipe-sep.")
+                            .font(.system(size: 10))
+                            .foregroundStyle(.tertiary)
+                            .frame(width: 60, alignment: .trailing)
+                    }
+                    .padding(.top, 3)
+                    TextField("red|green|blue", text: $wildcardText)
+                        .textFieldStyle(.roundedBorder)
+                        .font(.system(size: 13, design: .monospaced))
+                        .onSubmit { commitWildcard() }
+                        .onChange(of: wildcardText) { _, _ in commitWildcard() }
+                }
+            }
+
+            // Notes field
+            HStack(alignment: .top) {
+                Text("Notes")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .frame(width: 60, alignment: .trailing)
+                    .padding(.top, 2)
+                TextField("optional notes", text: Binding(
+                    get: { variable.notes ?? "" },
+                    set: { variable.notes = $0.isEmpty ? nil : $0 }
+                ))
+                .textFieldStyle(.roundedBorder)
+                .font(.caption)
+                .onSubmit { onSave(variable) }
+            }
+        }
+        .padding(.top, 6)
+    }
+
+    private func commitWildcard() {
+        let options = wildcardText
+            .split(separator: "|", omittingEmptySubsequences: true)
+            .map { String($0).trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+        variable.wildcardOptions = options.isEmpty ? nil : options
+        // Read self.variable AFTER the binding mutation above so the
+        // saved value includes the updated wildcardOptions, not a stale capture.
+        onSave(variable)
+    }
+
+    private func isValidConfigJSON(_ json: String) -> Bool {
+        // Accept any JSON object — partial configs and integer sampler/seedMode
+        // from DT's HTTP API are all valid; the engine's mergeDict handles the
+        // field-by-field merge and Int→String conversions at generate time.
+        guard let data = json.data(using: .utf8),
+              let obj = try? JSONSerialization.jsonObject(with: data) else { return false }
+        return obj is [String: Any]
+    }
+
+    private var deleteConfirmBar: some View {
+        HStack {
+            Text("Delete this variable?")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Spacer()
+            Button("Cancel") { showDeleteConfirm = false }
+                .font(.caption)
+                .buttonStyle(.borderless)
+            Button("Delete") {
+                showDeleteConfirm = false
+                onDelete()
+            }
+            .font(.caption)
+            .buttonStyle(.borderedProminent)
+            .tint(.red)
+        }
+        .padding(8)
+        .background(Color.red.opacity(0.08), in: RoundedRectangle(cornerRadius: 6))
+    }
+}
