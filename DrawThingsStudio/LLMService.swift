@@ -53,36 +53,41 @@ struct LLMService {
         input: String,
         model: String,
         baseURL: String,
-        provider: LLMProvider
+        provider: LLMProvider,
+        apiKey: String = ""
     ) async throws -> String {
         return try await chat(
             system: systemPrompt,
             user: input,
             model: model,
             baseURL: baseURL,
-            provider: provider
+            provider: provider,
+            apiKey: apiKey
         )
     }
 
     /// Fetch available model IDs from the /v1/models endpoint.
-    /// For Jan: the /v1/models endpoint requires an API key and returns HTTP 403.
-    /// We test reachability via GET on the base URL root instead and return [] —
-    /// an empty model list is acceptable; the user enters the model name manually.
-    static func fetchModels(baseURL: String, provider: LLMProvider) async throws -> [String] {
-        if provider == .jan {
-            // Jan requires an API key for /v1/models (returns 403). Test reachability
-            // via the root URL instead — any HTTP response means the server is up.
+    /// For Jan without an API key: the /v1/models endpoint returns HTTP 403.
+    /// In that case we test reachability via the root URL and return [] so the
+    /// user can still enter model names manually. When an API key is provided
+    /// Jan's /v1/models returns a proper model list.
+    static func fetchModels(baseURL: String, provider: LLMProvider, apiKey: String = "") async throws -> [String] {
+        if provider == .jan && apiKey.isEmpty {
+            // No key — test reachability via root URL; return empty list.
             let rootString = normalizedURL(baseURL, path: "", provider: provider)
                 .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
             guard let url = URL(string: rootString) else { throw LLMError.invalidURL }
             _ = try await URLSession.shared.data(from: url)
-            // Any response (200, 403, etc.) means Jan is reachable; return empty list.
             return []
         }
 
         let urlString = normalizedURL(baseURL, path: "v1/models", provider: provider)
         guard let url = URL(string: urlString) else { throw LLMError.invalidURL }
-        let (data, response) = try await URLSession.shared.data(from: url)
+        var request = URLRequest(url: url)
+        if !apiKey.isEmpty {
+            request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        }
+        let (data, response) = try await URLSession.shared.data(for: request)
         let code = (response as? HTTPURLResponse)?.statusCode ?? 0
         guard (200..<300).contains(code) else { throw LLMError.httpError(code) }
         guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
@@ -93,7 +98,7 @@ struct LLMService {
 
     // MARK: - Private
 
-    private static func chat(system: String, user: String, model: String, baseURL: String, provider: LLMProvider) async throws -> String {
+    private static func chat(system: String, user: String, model: String, baseURL: String, provider: LLMProvider, apiKey: String = "") async throws -> String {
         let urlString = normalizedURL(baseURL, path: "v1/chat/completions", provider: provider)
         guard let url = URL(string: urlString) else { throw LLMError.invalidURL }
 
@@ -108,6 +113,9 @@ struct LLMService {
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        if !apiKey.isEmpty {
+            request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        }
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
         let (data, response) = try await URLSession.shared.data(for: request)

@@ -125,6 +125,10 @@ struct SettingsView: View {
                     }
                 }
 
+                SecureField("API Key (required for Jan)", text: $settings.llmAPIKey)
+                    .textFieldStyle(.roundedBorder)
+                    .help("API key sent as Bearer token. Required for Jan.")
+
                 HStack {
                     Button(action: testLLMConnection) {
                         Label("Test Connection", systemImage: "network")
@@ -209,7 +213,7 @@ struct SettingsView: View {
         let enteredURL = settings.llmBaseURL
         Task { @MainActor in
             do {
-                let models = try await LLMService.fetchModels(baseURL: baseURL, provider: settings.llmProvider)
+                let models = try await LLMService.fetchModels(baseURL: baseURL, provider: settings.llmProvider, apiKey: settings.llmAPIKey)
                 llmStatus = .success(models.count)
                 settings.addLLMHost(enteredURL)
             } catch {

@@ -70,6 +70,9 @@ final class AppSettings {
     var llmModelName: String {
         didSet { UserDefaults.standard.set(llmModelName, forKey: "tanqueStudio.llmModelName") }
     }
+    var llmAPIKey: String {
+        didSet { UserDefaults.standard.set(llmAPIKey, forKey: "tanqueStudio.llmAPIKey") }
+    }
 
     // MARK: - Collection
 
@@ -106,6 +109,7 @@ final class AppSettings {
         llmProvider  = LLMProvider(rawValue: d.string(forKey: "tanqueStudio.llmProvider") ?? "") ?? .ollama
         llmBaseURL   = d.string(forKey: "tanqueStudio.llmBaseURL")   ?? ""
         llmModelName = d.string(forKey: "tanqueStudio.llmModelName") ?? ""
+        llmAPIKey    = d.string(forKey: "tanqueStudio.llmAPIKey")    ?? ""
         selectedCollection = d.string(forKey: "tanqueStudio.selectedCollection")
         dtConfigsBookmark  = d.data(forKey: "tanqueStudio.dtConfigsBookmark")
         dtHostHistory  = d.stringArray(forKey: "tanqueStudio.dtHostHistory")  ?? []

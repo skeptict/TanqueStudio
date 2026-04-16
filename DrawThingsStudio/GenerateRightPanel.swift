@@ -671,7 +671,7 @@ private struct AssistTabView: View {
         let provider = AppSettings.shared.llmProvider
         Task { @MainActor in
             availableModels = (try? await LLMService.fetchModels(
-                baseURL: baseURL, provider: provider
+                baseURL: baseURL, provider: provider, apiKey: AppSettings.shared.llmAPIKey
             )) ?? []
             if !availableModels.isEmpty && !availableModels.contains(localModelName) {
                 localModelName = availableModels[0]
@@ -719,7 +719,8 @@ private struct AssistTabView: View {
                     input: input,
                     model: model,
                     baseURL: baseURL,
-                    provider: provider
+                    provider: provider,
+                    apiKey: AppSettings.shared.llmAPIKey
                 )
                 resultText = result
             } catch {
