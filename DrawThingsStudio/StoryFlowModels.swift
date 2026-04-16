@@ -110,6 +110,16 @@ enum WorkflowStepType: String, Codable, CaseIterable {
     /// Parameters: text
     case note
 
+    /// Begin a counted loop.
+    /// Parameters: count (Int as String)
+    case loop
+
+    /// End of a counted loop — jumps back to the matching loop step until exhausted.
+    case endLoop
+
+    /// Clear the img2img canvas source (the "__img2img__" saved canvas entry).
+    case clearCanvas
+
     var displayName: String {
         switch self {
         case .configInstruction:  return "Config"
@@ -121,6 +131,9 @@ enum WorkflowStepType: String, Codable, CaseIterable {
         case .clearMoodboard:     return "Clear Moodboard"
         case .canvasToMoodboard:  return "Canvas → Moodboard"
         case .note:               return "Note"
+        case .loop:               return "Loop"
+        case .endLoop:            return "End Loop"
+        case .clearCanvas:        return "Clear Canvas"
         }
     }
 
@@ -135,6 +148,9 @@ enum WorkflowStepType: String, Codable, CaseIterable {
         case .clearMoodboard:     return "trash"
         case .canvasToMoodboard:  return "photo.stack.fill"
         case .note:               return "note.text"
+        case .loop:               return "repeat"
+        case .endLoop:            return "repeat.1"
+        case .clearCanvas:        return "xmark.square"
         }
     }
 
@@ -149,6 +165,9 @@ enum WorkflowStepType: String, Codable, CaseIterable {
         case .clearMoodboard:     return "orange"
         case .canvasToMoodboard:  return "purple"
         case .note:               return "gray"
+        case .loop:               return "yellow"
+        case .endLoop:            return "yellow"
+        case .clearCanvas:        return "red"
         }
     }
 }
@@ -210,6 +229,15 @@ struct WorkflowStep: Identifiable, Codable {
 
         case .canvasToMoodboard:
             return "canvas  ×\(parameters["weight"] ?? "1.0")"
+
+        case .loop:
+            return "×\(parameters["count"] ?? "1")"
+
+        case .endLoop:
+            return "↩"
+
+        case .clearCanvas:
+            return ""
         }
     }
 }

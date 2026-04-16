@@ -169,6 +169,11 @@ struct StoryFlowStepListPanel: View {
             Section("Canvas") {
                 menuItem(.loadCanvas)
                 menuItem(.saveCanvas)
+                menuItem(.clearCanvas)
+            }
+            Section("Flow Control") {
+                menuItem(.loop)
+                menuItem(.endLoop)
             }
             Section("Moodboard") {
                 menuItem(.addToMoodboard)
@@ -224,6 +229,9 @@ private struct StoryFlowStepCard: View {
         case .clearMoodboard:     return .orange
         case .canvasToMoodboard:  return .purple
         case .note:               return .gray
+        case .loop:               return .yellow
+        case .endLoop:            return .yellow
+        case .clearCanvas:        return .red
         }
     }
 
@@ -346,6 +354,34 @@ private struct StoryFlowStepCard: View {
             .textFieldStyle(.roundedBorder)
             .font(.caption)
             .onSubmit { onChange() }
+
+        case .loop:
+            HStack(spacing: 6) {
+                Text("Repeat")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                TextField("count", text: Binding(
+                    get: { step.parameters["count"] ?? "1" },
+                    set: { step.parameters["count"] = $0.isEmpty ? nil : $0; onChange() }
+                ))
+                .frame(width: 50)
+                .textFieldStyle(.roundedBorder)
+                .font(.caption)
+                .onSubmit { onChange() }
+                Text("times")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+        case .endLoop:
+            Text("↩ returns to matching loop")
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+
+        case .clearCanvas:
+            Text("clears img2img canvas source")
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
         }
     }
 

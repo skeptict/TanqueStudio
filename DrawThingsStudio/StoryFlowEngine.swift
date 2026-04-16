@@ -38,6 +38,12 @@ final class StoryFlowEngine {
 
     private var runTask: Task<Void, Never>?
 
+    /// Remaining loop counts keyed by the loop step's UUID.
+    private var loopCounters: [UUID: Int] = [:]
+
+    /// Set by the endLoop handler to cause the run loop to jump to a specific index.
+    private var jumpToIndex: Int? = nil
+
     /// Called on the main actor after each successful generate step.
     /// Receives (image, config-used, prompt-used, saved-file-url).
     /// Set by StoryFlowViewModel to insert the image into the SwiftData gallery.
@@ -81,14 +87,26 @@ final class StoryFlowEngine {
         runState = .running(stepIndex: 0)
         outputFolder = StoryFlowStorage.shared.outputFolder(for: workflow.name)
 
+        loopCounters = [:]
+        jumpToIndex = nil
+
         runTask = Task { @MainActor in
             do {
-                for (idx, step) in workflow.steps.enumerated() {
+                let steps = workflow.steps
+                var idx = 0
+                while idx < steps.count {
                     if Task.isCancelled { break }
+                    let step = steps[idx]
                     currentStepIndex = idx
                     runState = .running(stepIndex: idx)
-                    log("▶ Step \(idx + 1)/\(workflow.steps.count): \(step.displayLabel)")
-                    try await executeStep(step, variables: variables)
+                    log("▶ Step \(idx + 1)/\(steps.count): \(step.displayLabel)")
+                    try await executeStep(step, allSteps: steps, currentIndex: idx, variables: variables)
+                    if let jump = jumpToIndex {
+                        jumpToIndex = nil
+                        idx = jump
+                    } else {
+                        idx += 1
+                    }
                 }
                 if Task.isCancelled {
                     runState = .cancelled
@@ -121,7 +139,7 @@ final class StoryFlowEngine {
 
     // MARK: — Step execution
 
-    private func executeStep(_ step: WorkflowStep, variables: [WorkflowVariable]) async throws {
+    private func executeStep(_ step: WorkflowStep, allSteps: [WorkflowStep], currentIndex: Int, variables: [WorkflowVariable]) async throws {
         switch step.type {
 
         case .configInstruction:
@@ -193,6 +211,35 @@ final class StoryFlowEngine {
         case .note:
             let text = step.parameters["text"] ?? ""
             log("  📝 \(text)")
+
+        case .loop:
+            let count = Int(step.parameters["count"] ?? "1") ?? 1
+            if loopCounters[step.id] == nil {
+                loopCounters[step.id] = count
+            }
+            log("  ↩ Loop start (×\(loopCounters[step.id] ?? count) remaining)")
+
+        case .endLoop:
+            // Find the nearest preceding .loop step
+            if let loopIdx = allSteps[0..<currentIndex].indices.reversed()
+                .first(where: { allSteps[$0].type == .loop }) {
+                let loopStep = allSteps[loopIdx]
+                let remaining = loopCounters[loopStep.id] ?? 0
+                if remaining > 1 {
+                    loopCounters[loopStep.id] = remaining - 1
+                    jumpToIndex = loopIdx + 1
+                    log("  ↩ Loop back (\(remaining - 1) remaining)")
+                } else {
+                    loopCounters.removeValue(forKey: loopStep.id)
+                    log("  ✓ Loop complete")
+                }
+            } else {
+                log("  ⚠ endLoop: no matching loop step found")
+            }
+
+        case .clearCanvas:
+            savedCanvases.removeValue(forKey: "__img2img__")
+            log("  ✓ Canvas cleared")
         }
     }
 
