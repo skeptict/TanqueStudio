@@ -120,6 +120,9 @@ enum WorkflowStepType: String, Codable, CaseIterable {
     /// Clear the img2img canvas source (the "__img2img__" saved canvas entry).
     case clearCanvas
 
+    /// Reset the accumulated prompt to empty.
+    case clearPrompt
+
     var displayName: String {
         switch self {
         case .configInstruction:  return "Config"
@@ -134,6 +137,7 @@ enum WorkflowStepType: String, Codable, CaseIterable {
         case .loop:               return "Loop"
         case .endLoop:            return "End Loop"
         case .clearCanvas:        return "Clear Canvas"
+        case .clearPrompt:        return "Clear Prompt"
         }
     }
 
@@ -151,6 +155,7 @@ enum WorkflowStepType: String, Codable, CaseIterable {
         case .loop:               return "repeat"
         case .endLoop:            return "repeat.1"
         case .clearCanvas:        return "xmark.square"
+        case .clearPrompt:        return "text.badge.xmark"
         }
     }
 
@@ -168,6 +173,7 @@ enum WorkflowStepType: String, Codable, CaseIterable {
         case .loop:               return "yellow"
         case .endLoop:            return "yellow"
         case .clearCanvas:        return "red"
+        case .clearPrompt:        return "red"
         }
     }
 }
@@ -237,6 +243,9 @@ struct WorkflowStep: Identifiable, Codable {
             return "↩"
 
         case .clearCanvas:
+            return ""
+
+        case .clearPrompt:
             return ""
         }
     }

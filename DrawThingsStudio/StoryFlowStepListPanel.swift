@@ -183,6 +183,7 @@ struct StoryFlowStepListPanel: View {
             Section("Accumulator") {
                 menuItem(.configInstruction)
                 menuItem(.promptInstruction)
+                menuItem(.clearPrompt)
             }
             Section("Execution") {
                 menuItem(.generate)
@@ -268,8 +269,8 @@ private struct VariablePickerField: View {
                             Button {
                                 let entry = variable.type.prefix + variable.name
                                 text = text.isEmpty ? entry : text + " " + entry
-                                onChange()
-                                // picker stays open — user can select more variables
+                                // Do NOT call onChange() here — triggers parent re-render
+                                // which dismisses the popover on macOS before Done is tapped.
                             } label: {
                                 HStack(spacing: 6) {
                                     Image(systemName: variable.type.iconName)
@@ -287,10 +288,13 @@ private struct VariablePickerField: View {
                             Divider()
                         }
                         Divider()
-                        Button("Done") { showPicker = false }
-                            .buttonStyle(.borderless)
-                            .padding(8)
-                            .frame(maxWidth: .infinity, alignment: .trailing)
+                        Button("Done") {
+                            onChange()
+                            showPicker = false
+                        }
+                        .buttonStyle(.borderless)
+                        .padding(8)
+                        .frame(maxWidth: .infinity, alignment: .trailing)
                     }
                     .frame(minWidth: 200)
                 }
@@ -324,6 +328,7 @@ private struct StoryFlowStepCard: View {
         case .loop:               return .yellow
         case .endLoop:            return .yellow
         case .clearCanvas:        return .red
+        case .clearPrompt:        return .red
         }
     }
 
@@ -479,6 +484,11 @@ private struct StoryFlowStepCard: View {
 
         case .clearCanvas:
             Text("clears img2img canvas source")
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+
+        case .clearPrompt:
+            Text("resets accumulated prompt to empty")
                 .font(.caption2)
                 .foregroundStyle(.tertiary)
         }

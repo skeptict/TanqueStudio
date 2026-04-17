@@ -156,7 +156,8 @@ final class StoryFlowEngine {
 
         case .promptInstruction:
             let raw = step.parameters["text"] ?? ""
-            currentPrompt = resolveTokens(raw, variables: variables)
+            let resolved = resolveTokens(raw, variables: variables)
+            currentPrompt = currentPrompt.isEmpty ? resolved : currentPrompt + ", " + resolved
             log("  ✓ Prompt: \(currentPrompt.prefix(80))\(currentPrompt.count > 80 ? "…" : "")")
 
         case .generate:
@@ -240,6 +241,10 @@ final class StoryFlowEngine {
         case .clearCanvas:
             savedCanvases.removeValue(forKey: "__img2img__")
             log("  ✓ Canvas cleared")
+
+        case .clearPrompt:
+            currentPrompt = ""
+            log("  ✓ Prompt cleared")
         }
     }
 
