@@ -266,9 +266,10 @@ private struct VariablePickerField: View {
                     VStack(alignment: .leading, spacing: 0) {
                         ForEach(filtered) { variable in
                             Button {
-                                text = variable.name
-                                showPicker = false
+                                let entry = variable.type.prefix + variable.name
+                                text = text.isEmpty ? entry : text + " " + entry
                                 onChange()
+                                // picker stays open — user can select more variables
                             } label: {
                                 HStack(spacing: 6) {
                                     Image(systemName: variable.type.iconName)
@@ -285,6 +286,11 @@ private struct VariablePickerField: View {
                             .buttonStyle(.plain)
                             Divider()
                         }
+                        Divider()
+                        Button("Done") { showPicker = false }
+                            .buttonStyle(.borderless)
+                            .padding(8)
+                            .frame(maxWidth: .infinity, alignment: .trailing)
                     }
                     .frame(minWidth: 200)
                 }
