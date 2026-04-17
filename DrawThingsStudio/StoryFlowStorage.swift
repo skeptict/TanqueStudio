@@ -104,6 +104,10 @@ final class StoryFlowStorage {
 
     // MARK: — Output
 
+    /// Returns the output URL for a workflow run.
+    /// Uses the user's configured Generate save folder when available (security-scoped bookmark);
+    /// falls back to App Support/TanqueStudio/WorkflowOutput otherwise.
+    /// Does NOT create the directory here — creation happens in saveOutputImage under active access.
     func outputFolder(for workflowName: String) -> URL {
         let safe = workflowName
             .replacingOccurrences(of: "/", with: "-")
@@ -111,11 +115,28 @@ final class StoryFlowStorage {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withFullDate, .withTime, .withColonSeparatorInTime]
         let ts = formatter.string(from: Date()).replacingOccurrences(of: ":", with: "-")
-        let folder = outputFolder
+        return resolvedOutputBase()
             .appendingPathComponent(safe, isDirectory: true)
             .appendingPathComponent(ts, isDirectory: true)
-        ensureFolder(folder)
-        return folder
+    }
+
+    /// Resolve the base output directory. Mirrors the logic in ImageStorageManager — uses the
+    /// security-scoped bookmark URL when a custom Generate folder is set, otherwise App Support.
+    /// Resolves but does NOT start security-scoped access (caller manages access lifetime).
+    private func resolvedOutputBase() -> URL {
+        if let bookmark = AppSettings.shared.defaultImageFolderBookmark,
+           !AppSettings.shared.defaultImageFolder.isEmpty {
+            var isStale = false
+            if let resolved = try? URL(
+                resolvingBookmarkData: bookmark,
+                options: .withSecurityScope,
+                relativeTo: nil,
+                bookmarkDataIsStale: &isStale
+            ) {
+                return resolved
+            }
+        }
+        return outputFolder
     }
 
     func saveOutputImage(_ image: NSImage,
@@ -123,13 +144,31 @@ final class StoryFlowStorage {
                          to folder: URL,
                          config: DrawThingsGenerationConfig? = nil,
                          prompt: String? = nil) throws -> URL {
+        // Mirror ImageStorageManager.createAndInsert: activate security-scoped access when a
+        // custom Generate folder is configured, so subdirectory creation + file writes succeed.
+        var securityScopedURL: URL?
+        if let bookmark = AppSettings.shared.defaultImageFolderBookmark,
+           !AppSettings.shared.defaultImageFolder.isEmpty {
+            var isStale = false
+            let resolvedURL = try URL(
+                resolvingBookmarkData: bookmark,
+                options: .withSecurityScope,
+                relativeTo: nil,
+                bookmarkDataIsStale: &isStale
+            )
+            guard resolvedURL.startAccessingSecurityScopedResource() else {
+                throw StoryFlowError.imageSaveFailed
+            }
+            securityScopedURL = resolvedURL
+        }
+        defer { securityScopedURL?.stopAccessingSecurityScopedResource() }
+
         ensureFolder(folder)
         let safe = (stepLabel.isEmpty ? "output" : stepLabel)
             .replacingOccurrences(of: "/", with: "-")
             .replacingOccurrences(of: ":", with: "-")
         let name = "\(safe)-\(UUID().uuidString.prefix(8)).png"
         let url = folder.appendingPathComponent(name)
-        // Delegate to ImageStorageManager so EXIF metadata is embedded consistently.
         do {
             try ImageStorageManager.writePNG(image, to: url, config: config, prompt: prompt)
         } catch {
