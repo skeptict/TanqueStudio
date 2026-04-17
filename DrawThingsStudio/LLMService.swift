@@ -73,14 +73,30 @@ struct LLMService {
     /// Jan's /v1/models returns a proper model list.
     static func fetchModels(baseURL: String, provider: LLMProvider, apiKey: String = "") async throws -> [String] {
         if provider == .jan {
-            // Jan's /v1/models endpoint can return 403 even with a valid key depending on
-            // server config. Always test reachability via root URL for Jan; actual chat
-            // completions still send the Bearer token correctly via runOperation.
-            let rootString = normalizedURL(baseURL, path: "", provider: provider)
-                .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-            guard let url = URL(string: rootString) else { throw LLMError.invalidURL }
-            _ = try await URLSession.shared.data(from: url)
-            return apiKey.isEmpty ? [] : ["(Jan — enter model name)"]
+            if apiKey.isEmpty {
+                // No key — test reachability via root URL only.
+                let rootString = normalizedURL(baseURL, path: "", provider: provider)
+                    .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+                guard let url = URL(string: rootString) else { throw LLMError.invalidURL }
+                _ = try await URLSession.shared.data(from: url)
+                return []
+            } else {
+                // Key provided — attempt real model list. If /v1/models returns 403
+                // or fails, fall back silently; chat completions still authenticate.
+                let urlString = normalizedURL(baseURL, path: "v1/models", provider: provider)
+                guard let url = URL(string: urlString) else { throw LLMError.invalidURL }
+                var request = URLRequest(url: url)
+                request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+                if let (data, response) = try? await URLSession.shared.data(for: request),
+                   let code = (response as? HTTPURLResponse)?.statusCode,
+                   (200..<300).contains(code),
+                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                   let models = json["data"] as? [[String: Any]] {
+                    let names = models.compactMap { $0["id"] as? String }
+                    if !names.isEmpty { return names }
+                }
+                return []
+            }
         }
 
         let urlString = normalizedURL(baseURL, path: "v1/models", provider: provider)
