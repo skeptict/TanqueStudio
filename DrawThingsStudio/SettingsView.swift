@@ -143,9 +143,15 @@ struct SettingsView: View {
                     case .testing:
                         ProgressView().scaleEffect(0.7)
                     case .success(let count):
-                        Label("\(count) model\(count == 1 ? "" : "s")", systemImage: "checkmark.circle.fill")
-                            .foregroundStyle(.green)
-                            .font(.caption)
+                        if settings.llmProvider == .jan && count == 0 {
+                            Label("Connected (enter model name manually)", systemImage: "checkmark.circle.fill")
+                                .foregroundStyle(.green)
+                                .font(.caption)
+                        } else {
+                            Label("\(count) model\(count == 1 ? "" : "s")", systemImage: "checkmark.circle.fill")
+                                .foregroundStyle(.green)
+                                .font(.caption)
+                        }
                     case .failure(let msg):
                         Label(msg, systemImage: "xmark.circle.fill")
                             .foregroundStyle(.red)
