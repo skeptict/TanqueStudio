@@ -371,7 +371,7 @@
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "-";
 				CODE_SIGN_STYLE = Manual;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = Y;
+				CURRENT_PROJECT_VERSION = 7;
 				DEVELOPMENT_TEAM = "";
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -384,7 +384,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 0.9.12;
+				MARKETING_VERSION = 0.9.13;
 				PRODUCT_BUNDLE_IDENTIFIER = tanque.org.TanqueStudio;
 				PRODUCT_NAME = "Tanque Studio";
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -412,7 +412,7 @@
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "-";
 				CODE_SIGN_STYLE = Manual;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = Y;
+				CURRENT_PROJECT_VERSION = 7;
 				DEVELOPMENT_TEAM = "";
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -425,7 +425,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 0.9.12;
+				MARKETING_VERSION = 0.9.13;
 				PRODUCT_BUNDLE_IDENTIFIER = tanque.org.TanqueStudio;
 				PRODUCT_NAME = "Tanque Studio";
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -444,10 +444,10 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_STYLE = Manual;
-				CURRENT_PROJECT_VERSION = Y;
+				CURRENT_PROJECT_VERSION = 7;
 				DEVELOPMENT_TEAM = "";
 				GENERATE_INFOPLIST_FILE = YES;
-				MARKETING_VERSION = 0.9.12;
+				MARKETING_VERSION = 0.9.13;
 				PRODUCT_BUNDLE_IDENTIFIER = tanque.org.TanqueStudioUITests;
 				PRODUCT_NAME = TanqueStudioUITests;
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -464,10 +464,10 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_STYLE = Manual;
-				CURRENT_PROJECT_VERSION = Y;
+				CURRENT_PROJECT_VERSION = 7;
 				DEVELOPMENT_TEAM = "";
 				GENERATE_INFOPLIST_FILE = YES;
-				MARKETING_VERSION = 0.9.12;
+				MARKETING_VERSION = 0.9.13;
 				PRODUCT_BUNDLE_IDENTIFIER = tanque.org.TanqueStudioUITests;
 				PRODUCT_NAME = TanqueStudioUITests;
 				PROVISIONING_PROFILE_SPECIFIER = "";
