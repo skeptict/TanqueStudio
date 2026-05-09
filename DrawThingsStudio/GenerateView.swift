@@ -38,19 +38,6 @@ struct GenerateView: View {
                     // Left panel — fixed 260pt, collapses to 0
                     ZStack(alignment: .topTrailing) {
                         GenerateLeftPanel(vm: vm)
-
-                        Button {
-                            withAnimation(.easeInOut(duration: 0.2)) { vm.leftPanelCollapsed = true }
-                        } label: {
-                            Image(systemName: "chevron.left")
-                                .font(.system(size: 10, weight: .semibold))
-                                .foregroundStyle(.secondary)
-                                .padding(6)
-                                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 4))
-                        }
-                        .buttonStyle(.plain)
-                        .padding(.top, 8)
-                        .padding(.trailing, 4)
                     }
                     .frame(width: vm.leftPanelCollapsed ? 0 : 260)
                     .clipped()
@@ -70,6 +57,21 @@ struct GenerateView: View {
                                         .foregroundStyle(.secondary)
                                         .padding(6)
                                         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 4))
+                                }
+                                .buttonStyle(.plain)
+                                .padding(.leading, 4)
+                                .padding(.top, 8)
+                                .transition(.opacity)
+                            } else {
+                                Button {
+                                    withAnimation(.easeInOut(duration: 0.2)) { vm.leftPanelCollapsed = true }
+                                } label: {
+                                    Image(systemName: "chevron.left")
+                                        .font(.system(size: 10, weight: .semibold))
+                                        .foregroundStyle(TanqueDS.Color.textPrimary)
+                                        .padding(6)
+                                        .background(TanqueDS.Color.surface2.opacity(0.85), in: RoundedRectangle(cornerRadius: 4))
+                                        .overlay(RoundedRectangle(cornerRadius: 4).stroke(TanqueDS.Color.surfaceBorder, lineWidth: 1))
                                 }
                                 .buttonStyle(.plain)
                                 .padding(.leading, 4)
@@ -519,7 +521,7 @@ struct PanelDragHandle: View {
                 )
 
             Rectangle()
-                .fill(isHovered ? TanqueDS.Color.surfaceBorder.opacity(0.8) : TanqueDS.Color.surfaceBorder.opacity(0.4))
+                .fill(Color.white.opacity(isHovered ? 0.15 : 0.0))
                 .frame(width: 1)
                 .allowsHitTesting(false)
         }
