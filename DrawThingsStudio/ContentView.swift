@@ -72,7 +72,7 @@ struct ContentView: View {
         } detail: {
             detailView(for: selectedItem)
         }
-        .navigationSplitViewStyle(.balanced)
+        .navigationSplitViewStyle(.prominentDetail)
     }
 
     @ViewBuilder

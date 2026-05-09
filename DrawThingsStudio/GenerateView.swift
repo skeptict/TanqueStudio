@@ -75,7 +75,7 @@ struct GenerateView: View {
                                 }
                                 .buttonStyle(.plain)
                                 .padding(.leading, 4)
-                                .padding(.top, 8)
+                                .padding(.top, 12)
                                 .transition(.opacity)
                             }
                         }
@@ -86,8 +86,16 @@ struct GenerateView: View {
                         isLeadingPanel: false
                     )
 
+                    Rectangle()
+                        .fill(TanqueDS.Color.surface0)
+                        .frame(width: 1)
+
                     GalleryStripView(vm: vm)
                         .frame(width: vm.galleryStripWidth)
+
+                    Rectangle()
+                        .fill(TanqueDS.Color.surface0)
+                        .frame(width: 1)
 
                     PanelDragHandle(
                         width: Binding(get: { vm.rightPanelWidth }, set: { vm.rightPanelWidth = $0 }),
@@ -553,7 +561,7 @@ private struct GenerateTopBar: View {
                         .foregroundStyle(TanqueDS.Color.textMuted)
                 }
             }
-            .padding(.leading, 80)
+            .padding(.leading, vm.leftPanelCollapsed ? 90 : 80)
 
             Spacer()
 
