@@ -181,6 +181,48 @@ final class StoryFlowStorage {
         return url
     }
 
+    // MARK: — Canvas PNG I/O
+
+    /// Write `image` to `folder/<name>.png`. Uses security-scoped access when a custom folder is configured.
+    @discardableResult
+    func saveCanvasPNG(_ image: NSImage, name: String, to folder: URL) throws -> URL {
+        var securityScopedURL: URL?
+        if let bookmark = AppSettings.shared.defaultImageFolderBookmark,
+           !AppSettings.shared.defaultImageFolder.isEmpty {
+            var isStale = false
+            let resolvedURL = try URL(
+                resolvingBookmarkData: bookmark,
+                options: .withSecurityScope,
+                relativeTo: nil,
+                bookmarkDataIsStale: &isStale
+            )
+            guard resolvedURL.startAccessingSecurityScopedResource() else {
+                throw StoryFlowError.imageSaveFailed
+            }
+            securityScopedURL = resolvedURL
+        }
+        defer { securityScopedURL?.stopAccessingSecurityScopedResource() }
+
+        ensureFolder(folder)
+        let safeName = name
+            .replacingOccurrences(of: "/", with: "-")
+            .replacingOccurrences(of: ":", with: "-")
+        let fileName = safeName.hasSuffix(".png") ? safeName : "\(safeName).png"
+        let url = folder.appendingPathComponent(fileName)
+        try ImageStorageManager.writePNG(image, to: url, config: nil, prompt: nil)
+        return url
+    }
+
+    /// Load a canvas PNG named `name` (with or without .png extension) from `folder`.
+    func loadCanvasPNG(named name: String, from folder: URL) -> NSImage? {
+        let withExt    = folder.appendingPathComponent(name.hasSuffix(".png") ? name : "\(name).png")
+        let withoutExt = folder.appendingPathComponent(name)
+        for url in [withExt, withoutExt] {
+            if let img = NSImage(contentsOf: url) { return img }
+        }
+        return nil
+    }
+
     // MARK: — Built-in seeding
 
     func seedBuiltInsIfNeeded() {

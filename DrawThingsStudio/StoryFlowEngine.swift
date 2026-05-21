@@ -65,6 +65,15 @@ final class StoryFlowEngine {
     /// Last generated image — used by canvasToMoodboard, saveCanvas without a prior generate name.
     private var lastGeneratedImage: NSImage?
 
+    /// Current canvas image — set by generate and crop; used by crop, saveCanvas, clearCanvas.
+    private var currentCanvasImage: NSImage?
+
+    /// Viewport position for the next crop step.
+    private var viewportPosition: CGPoint = .zero
+
+    /// Viewport scale for the next crop step.
+    private var viewportScale: CGFloat = 1.0
+
     /// Active moodboard for the current run.
     private var activeMoodboard: [(NSImage, Float)] = []
 
@@ -81,6 +90,9 @@ final class StoryFlowEngine {
         currentPrompt = ""
         savedCanvases = [:]
         lastGeneratedImage = nil
+        currentCanvasImage = nil
+        viewportPosition = .zero
+        viewportScale = 1.0
         activeMoodboard = []
         currentStepIndex = 0
         totalSteps = workflow.steps.count
@@ -165,9 +177,17 @@ final class StoryFlowEngine {
 
         case .loadCanvas:
             let name = step.parameters["name"] ?? ""
-            if let img = savedCanvases[name] {
-                // Store as the img2img source (keyed internally)
+            let img: NSImage?
+            if let memImg = savedCanvases[name] {
+                img = memImg
+            } else if let folder = outputFolder {
+                img = StoryFlowStorage.shared.loadCanvasPNG(named: name, from: folder)
+            } else {
+                img = nil
+            }
+            if let img = img {
                 savedCanvases["__img2img__"] = img
+                currentCanvasImage = img
                 log("  ✓ Loaded canvas '\(name)' as img2img source")
             } else {
                 log("  ⚠ No saved canvas named '\(name)'")
@@ -179,11 +199,15 @@ final class StoryFlowEngine {
                 log("  ⚠ saveCanvas: no name specified")
                 return
             }
-            if let img = lastGeneratedImage {
+            let img = currentCanvasImage ?? lastGeneratedImage
+            if let img = img {
                 savedCanvases[name] = img
+                if let folder = outputFolder {
+                    try? StoryFlowStorage.shared.saveCanvasPNG(img, name: name, to: folder)
+                }
                 log("  ✓ Saved canvas as '\(name)'")
             } else {
-                log("  ⚠ saveCanvas: no generated image to save")
+                log("  ⚠ saveCanvas: no canvas image to save")
             }
 
         case .addToMoodboard:
@@ -240,11 +264,47 @@ final class StoryFlowEngine {
 
         case .clearCanvas:
             savedCanvases.removeValue(forKey: "__img2img__")
+            currentCanvasImage = nil
+            viewportPosition = .zero
+            viewportScale = 1.0
             log("  ✓ Canvas cleared")
 
         case .clearPrompt:
             currentPrompt = ""
             log("  ✓ Prompt cleared")
+
+        case .moveScale:
+            let x = Double(step.parameters["positionX"] ?? "0") ?? 0
+            let y = Double(step.parameters["positionY"] ?? "0") ?? 0
+            let s = Double(step.parameters["scale"] ?? "1") ?? 1
+            viewportPosition = CGPoint(x: x, y: y)
+            viewportScale = max(0.001, CGFloat(s))
+            log("  ✓ Viewport X=\(x) Y=\(y) scale=\(s)")
+
+        case .crop:
+            guard let image = currentCanvasImage else {
+                log("  ⚠ crop: no current canvas image")
+                return
+            }
+            guard let cropped = cropImage(image, position: viewportPosition, scale: viewportScale) else {
+                log("  ⚠ crop: failed (zero-area or invalid viewport)")
+                return
+            }
+            currentCanvasImage = cropped
+            viewportPosition = .zero
+            viewportScale = 1.0
+            log("  ✓ Cropped canvas to \(Int(cropped.size.width))×\(Int(cropped.size.height))")
+
+        case .configInline:
+            let json = step.parameters["json"] ?? ""
+            guard !json.isEmpty,
+                  let data = json.data(using: .utf8),
+                  let dict = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else {
+                log("  ⚠ configInline: empty or invalid JSON")
+                return
+            }
+            mergeDict(dict, into: &currentConfig)
+            log("  ✓ Applied inline config")
         }
     }
 
@@ -295,6 +355,7 @@ final class StoryFlowEngine {
 
         // Store result
         lastGeneratedImage = img
+        currentCanvasImage = img
         stepResults[step.id] = img
 
         // Optional named output
@@ -400,6 +461,32 @@ final class StoryFlowEngine {
                 return DrawThingsGenerationConfig.LoRAConfig(file: file, weight: weight, mode: mode)
             }
         }
+    }
+
+    // MARK: — Canvas crop
+
+    /// Crop `image` using the locked viewport formula.
+    /// CGImage uses bottom-left origin, so Y is flipped before calling `cropping(to:)`.
+    private func cropImage(_ image: NSImage, position: CGPoint, scale: CGFloat) -> NSImage? {
+        guard scale > 0 else { return nil }
+        var proposedRect = NSRect(origin: .zero, size: image.size)
+        guard let cgImage = image.cgImage(forProposedRect: &proposedRect, context: nil, hints: nil) else { return nil }
+
+        let pw = CGFloat(cgImage.width)
+        let ph = CGFloat(cgImage.height)
+
+        let cropW = (pw / scale).rounded()
+        let cropH = (ph / scale).rounded()
+        let originX = (position.x * scale).rounded()
+        let originY = (position.y * scale).rounded()
+
+        guard cropW > 0, cropH > 0 else { return nil }
+
+        let flippedY = ph - originY - cropH
+        let cropRect = CGRect(x: originX, y: flippedY, width: cropW, height: cropH)
+
+        guard let cropped = cgImage.cropping(to: cropRect) else { return nil }
+        return NSImage(cgImage: cropped, size: NSSize(width: cropW, height: cropH))
     }
 
     // MARK: — Sampler / SeedMode integer → string tables

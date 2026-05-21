@@ -203,6 +203,26 @@ final class StoryFlowViewModel {
         variables.removeAll { $0.id == id }
     }
 
+    /// Import a Draw Things project JSON as a new StoryFlow workflow + variables.
+    /// Returns (added vars, steps, skipped vars, unsupported step types).
+    func importDTProject(from url: URL) -> (added: Int, steps: Int, skipped: Int, unsupported: [String]) {
+        let existingNames = Set(variables.map { $0.name })
+        guard let result = DTProjectImporter.importProject(from: url, existingVariableNames: existingNames) else {
+            return (0, 0, 0, [])
+        }
+        for v in result.newVariables {
+            try? storage.saveVariable(v)
+        }
+        var workflow = result.workflow
+        workflow.updatedAt = Date()
+        try? storage.saveWorkflow(workflow)
+        workflows.insert(workflow, at: 0)
+        selectedWorkflow = workflow
+        updateWorkflowJSON()
+        variables = storage.loadVariables()
+        return (result.newVariables.count, workflow.steps.count, result.skipped, result.unsupported)
+    }
+
     /// Import Draw Things custom configs from the given URL.
     /// Returns (added, skipped) counts.
     func importDTCustomConfigs(from url: URL) -> (added: Int, skipped: Int) {

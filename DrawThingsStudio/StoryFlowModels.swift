@@ -123,6 +123,18 @@ enum WorkflowStepType: String, Codable, CaseIterable {
     /// Reset the accumulated prompt to empty.
     case clearPrompt
 
+    /// Set the viewport position and scale for a subsequent crop.
+    /// Parameters: positionX, positionY, scale (Strings — numeric)
+    case moveScale
+
+    /// Crop the current canvas image to the current viewport, then reset the viewport.
+    /// No parameters.
+    case crop
+
+    /// Merge a raw JSON config object inline into the engine's accumulated config state.
+    /// Parameters: json (raw JSON string, e.g. {"width":2304,"height":1280})
+    case configInline
+
     var displayName: String {
         switch self {
         case .configInstruction:  return "Config"
@@ -138,6 +150,9 @@ enum WorkflowStepType: String, Codable, CaseIterable {
         case .endLoop:            return "End Loop"
         case .clearCanvas:        return "Clear Canvas"
         case .clearPrompt:        return "Clear Prompt"
+        case .moveScale:          return "Move & Scale"
+        case .crop:               return "Crop"
+        case .configInline:       return "Config Inline"
         }
     }
 
@@ -156,6 +171,9 @@ enum WorkflowStepType: String, Codable, CaseIterable {
         case .endLoop:            return "repeat.1"
         case .clearCanvas:        return "xmark.square"
         case .clearPrompt:        return "text.badge.xmark"
+        case .moveScale:          return "arrow.up.left.and.arrow.down.right"
+        case .crop:               return "crop"
+        case .configInline:       return "gearshape.fill"
         }
     }
 
@@ -174,6 +192,9 @@ enum WorkflowStepType: String, Codable, CaseIterable {
         case .endLoop:            return "yellow"
         case .clearCanvas:        return "red"
         case .clearPrompt:        return "red"
+        case .moveScale:          return "green"
+        case .crop:               return "green"
+        case .configInline:       return "orange"
         }
     }
 }
@@ -191,6 +212,9 @@ struct WorkflowStep: Identifiable, Codable {
     ///   addToMoodboard:    imageVar, weight
     ///   canvasToMoodboard: weight
     ///   note:              text
+    ///   moveScale:         positionX, positionY, scale
+    ///   crop:              (none)
+    ///   configInline:      json (raw JSON config object string)
     var parameters: [String: String] = [:]
     var isExpanded: Bool = true
 
@@ -247,6 +271,19 @@ struct WorkflowStep: Identifiable, Codable {
 
         case .clearPrompt:
             return ""
+
+        case .moveScale:
+            let x = parameters["positionX"] ?? "0"
+            let y = parameters["positionY"] ?? "0"
+            let s = parameters["scale"] ?? "1"
+            return "X:\(x) Y:\(y) ×\(s)"
+
+        case .crop:
+            return "crop to viewport"
+
+        case .configInline:
+            let j = parameters["json"] ?? ""
+            return j.isEmpty ? "(empty)" : String(j.prefix(50))
         }
     }
 }

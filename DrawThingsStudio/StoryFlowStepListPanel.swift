@@ -182,6 +182,7 @@ struct StoryFlowStepListPanel: View {
         Menu {
             Section("Accumulator") {
                 menuItem(.configInstruction)
+                menuItem(.configInline)
                 menuItem(.promptInstruction)
                 menuItem(.clearPrompt)
             }
@@ -192,6 +193,8 @@ struct StoryFlowStepListPanel: View {
                 menuItem(.loadCanvas)
                 menuItem(.saveCanvas)
                 menuItem(.clearCanvas)
+                menuItem(.moveScale)
+                menuItem(.crop)
             }
             Section("Flow Control") {
                 menuItem(.loop)
@@ -329,6 +332,9 @@ private struct StoryFlowStepCard: View {
         case .endLoop:            return .yellow
         case .clearCanvas:        return .red
         case .clearPrompt:        return .red
+        case .moveScale:          return .green
+        case .crop:               return .green
+        case .configInline:       return .orange
         }
     }
 
@@ -491,6 +497,37 @@ private struct StoryFlowStepCard: View {
             Text("resets accumulated prompt to empty")
                 .font(.caption2)
                 .foregroundStyle(.tertiary)
+
+        case .moveScale:
+            HStack(spacing: 6) {
+                ForEach([("X", "positionX"), ("Y", "positionY"), ("Scale", "scale")], id: \.0) { label, key in
+                    Text(label)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                    TextField("0", text: Binding(
+                        get: { step.parameters[key] ?? (key == "scale" ? "1" : "0") },
+                        set: { step.parameters[key] = $0.isEmpty ? nil : $0; onChange() }
+                    ))
+                    .frame(width: 48)
+                    .textFieldStyle(.roundedBorder)
+                    .font(.caption.monospacedDigit())
+                    .onSubmit { onChange() }
+                }
+            }
+
+        case .crop:
+            Text("Crops to the current move/scale viewport.")
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+
+        case .configInline:
+            TextField("{\"width\":1024,\"height\":1024}", text: Binding(
+                get: { step.parameters["json"] ?? "" },
+                set: { step.parameters["json"] = $0.isEmpty ? nil : $0 }
+            ))
+            .textFieldStyle(.roundedBorder)
+            .font(.system(size: 11, design: .monospaced))
+            .onSubmit { onChange() }
         }
     }
 

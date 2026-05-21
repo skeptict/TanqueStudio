@@ -45,6 +45,11 @@ struct StoryFlowVariablesPanel: View {
             Text("Variables")
                 .font(.headline)
             Spacer()
+            Button { importDTProject() } label: {
+                Image(systemName: "tray.and.arrow.down")
+            }
+            .buttonStyle(.plain)
+            .help("Import Draw Things project JSON as a workflow")
             Button { importFromDT() } label: {
                 Image(systemName: "square.and.arrow.down")
             }
@@ -60,6 +65,26 @@ struct StoryFlowVariablesPanel: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
+    }
+
+    private func importDTProject() {
+        let panel = NSOpenPanel()
+        panel.title = "Select Draw Things Project JSON"
+        panel.allowedContentTypes = [.json]
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        let result = vm.importDTProject(from: url)
+
+        let name = vm.selectedWorkflow?.name ?? "project"
+        var msg = "Imported '\(name)': \(result.steps) steps, \(result.added) vars, \(result.skipped) skipped"
+        if !result.unsupported.isEmpty { msg += " (\(result.unsupported.count) unsupported)" }
+        importToast = msg
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(4))
+            importToast = nil
+        }
     }
 
     private func importFromDT() {
