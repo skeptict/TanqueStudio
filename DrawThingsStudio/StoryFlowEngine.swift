@@ -305,6 +305,10 @@ final class StoryFlowEngine {
             }
             mergeDict(dict, into: &currentConfig)
             log("  ✓ Applied inline config")
+
+        case .passthrough:
+            let itemType = step.parameters["itemType"] ?? "unknown"
+            log("  ↪ \(itemType) (preserved, not executed)")
         }
     }
 

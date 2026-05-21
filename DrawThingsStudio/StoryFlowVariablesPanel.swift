@@ -45,11 +45,16 @@ struct StoryFlowVariablesPanel: View {
             Text("Variables")
                 .font(.headline)
             Spacer()
-            Button { importDTProject() } label: {
+            Button { loadProject() } label: {
                 Image(systemName: "tray.and.arrow.down")
             }
             .buttonStyle(.plain)
-            .help("Import Draw Things project JSON as a workflow")
+            .help("Load StoryFlow Editor project JSON")
+            Button { saveProject() } label: {
+                Image(systemName: "tray.and.arrow.up")
+            }
+            .buttonStyle(.plain)
+            .help("Save current workflow as StoryFlow Editor project JSON")
             Button { importFromDT() } label: {
                 Image(systemName: "square.and.arrow.down")
             }
@@ -67,20 +72,48 @@ struct StoryFlowVariablesPanel: View {
         .padding(.vertical, 8)
     }
 
-    private func importDTProject() {
+    private func loadProject() {
         let panel = NSOpenPanel()
-        panel.title = "Select Draw Things Project JSON"
+        panel.title = "Load StoryFlow Editor Project"
         panel.allowedContentTypes = [.json]
         panel.allowsMultipleSelection = false
         panel.canChooseDirectories = false
 
         guard panel.runModal() == .OK, let url = panel.url else { return }
-        let result = vm.importDTProject(from: url)
+        let result = vm.loadProject(from: url)
 
         let name = vm.selectedWorkflow?.name ?? "project"
-        var msg = "Imported '\(name)': \(result.steps) steps, \(result.added) vars, \(result.skipped) skipped"
-        if !result.unsupported.isEmpty { msg += " (\(result.unsupported.count) unsupported)" }
+        var msg = "Loaded '\(name)': \(result.steps) steps"
+        if !result.unsupported.isEmpty { msg += " (\(result.unsupported.count) unsupported preserved)" }
         importToast = msg
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(4))
+            importToast = nil
+        }
+    }
+
+    private func saveProject() {
+        guard let workflow = vm.selectedWorkflow else {
+            importToast = "No workflow selected"
+            Task { @MainActor in
+                try? await Task.sleep(for: .seconds(2))
+                importToast = nil
+            }
+            return
+        }
+
+        let panel = NSSavePanel()
+        panel.title = "Save StoryFlow Editor Project"
+        panel.allowedContentTypes = [.json]
+        panel.nameFieldStringValue = "\(workflow.name).json"
+
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        do {
+            try vm.saveProject(to: url)
+            importToast = "Saved '\(workflow.name)'"
+        } catch {
+            importToast = "Save failed: \(error.localizedDescription)"
+        }
         Task { @MainActor in
             try? await Task.sleep(for: .seconds(4))
             importToast = nil
