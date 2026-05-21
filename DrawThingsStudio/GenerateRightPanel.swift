@@ -20,6 +20,7 @@ struct GenerateRightPanel: View {
             tabContent
         }
         .background(TanqueDS.Color.surface1)
+        .preferredColorScheme(.dark)
     }
 
     // MARK: — Image preview
@@ -174,6 +175,14 @@ struct GenerateRightPanel: View {
                 pb.setData(data, forType: .tiff)
             }
 
+            ActionButton(icon: "doc.on.clipboard", title: "Copy Config for DT", enabled: true) {
+                copyConfigToDT()
+            }
+
+            ActionButton(icon: "clipboard", title: "Paste Config from DT", enabled: true) {
+                pasteConfigFromDT()
+            }
+
             Rectangle().fill(TanqueDS.Color.surfaceBorder).frame(height: 1)
                 .padding(.vertical, 2)
 
@@ -267,6 +276,32 @@ struct GenerateRightPanel: View {
         let missing = applyConfigFields(from: meta)
         vm.sourceImage = croppedCanvasImage(image: vm.generatedImage, canvasScale: canvasScale, canvasOffset: canvasOffset, canvasSize: canvasSize)
         if !missing.isEmpty { onToast("Config sent (missing: \(missing.joined(separator: ", ")))") }
+    }
+
+    // MARK: — DT Config clipboard exchange
+
+    /// Encodes the current config as DT's clipboard JSON and copies it to the pasteboard.
+    /// The user can then paste it directly into Draw Things (same as DT's own "Save Config").
+    private func copyConfigToDT() {
+        guard let json = DTConfigExporter.encodeDTClipboard(config: vm.config) else {
+            onToast("Copy failed: could not encode config")
+            return
+        }
+        let pb = NSPasteboard.general
+        pb.clearContents()
+        pb.setString(json, forType: .string)
+        onToast("Config copied ✓")
+    }
+
+    /// Reads DT clipboard JSON from the pasteboard and merges it into the current config.
+    /// Mirrors DT's own paste-config behaviour — only fields present in the JSON are changed.
+    private func pasteConfigFromDT() {
+        guard let json = NSPasteboard.general.string(forType: .string), !json.isEmpty else {
+            onToast("Nothing on clipboard")
+            return
+        }
+        let ok = DTConfigExporter.mergeDTClipboard(json, into: &vm.config)
+        onToast(ok ? "Config pasted ✓" : "Clipboard doesn't look like a DT config")
     }
 }
 
@@ -364,6 +399,7 @@ private struct AssistTabView: View {
             .padding(12)
         }
         .onAppear {
+            localModelName = AppSettings.shared.llmModelName
             if operations.isEmpty {
                 operations = LLMOperationLoader.loadAll()
             }
@@ -372,6 +408,9 @@ private struct AssistTabView: View {
             if availableModels.isEmpty && !isFetchingModels {
                 fetchAvailableModels()
             }
+        }
+        .onChange(of: localModelName) { _, newValue in
+            AppSettings.shared.llmModelName = newValue
         }
         .onChange(of: vm.pendingLLMTrigger) { _, pending in
             if pending { checkPendingTrigger() }

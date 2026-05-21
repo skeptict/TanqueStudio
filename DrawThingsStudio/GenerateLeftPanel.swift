@@ -198,38 +198,30 @@ struct GenerateLeftPanel: View {
                 .pickerStyle(.menu)
             }
 
-            // Advanced (SSS, batch count)
-            DisclosureGroup {
-                VStack(alignment: .leading, spacing: 8) {
-                    SliderConfigRow(
-                        label: "SSS",
-                        range: 0...1,
-                        step: 0.01,
-                        increment: 0.01,
-                        displayFormat: "%.2f",
-                        value: Binding(
-                            get: { vm.config.stochasticSamplingGamma },
-                            set: { vm.config.stochasticSamplingGamma = $0 }
-                        )
-                    )
+            // SSS
+            SliderConfigRow(
+                label: "SSS",
+                range: 0...1,
+                step: 0.01,
+                increment: 0.01,
+                displayFormat: "%.2f",
+                value: Binding(
+                    get: { vm.config.stochasticSamplingGamma },
+                    set: { vm.config.stochasticSamplingGamma = $0 }
+                )
+            )
 
-                    ConfigRow("Renders") {
-                        Stepper(
-                            value: $vm.config.batchCount,
-                            in: 1...10
-                        ) {
-                            Text("\(vm.config.batchCount)")
-                                .font(TanqueDS.Font.body)
-                                .foregroundStyle(TanqueDS.Color.textPrimary)
-                                .frame(width: 20)
-                        }
-                    }
+            // Renders
+            ConfigRow("Renders") {
+                Stepper(
+                    value: $vm.config.batchCount,
+                    in: 1...10
+                ) {
+                    Text("\(vm.config.batchCount)")
+                        .font(TanqueDS.Font.body)
+                        .foregroundStyle(TanqueDS.Color.textPrimary)
+                        .frame(width: 20)
                 }
-                .padding(.top, 6)
-            } label: {
-                Text("Advanced")
-                    .font(TanqueDS.Font.body)
-                    .foregroundStyle(TanqueDS.Color.textSecondary)
             }
         }
     }

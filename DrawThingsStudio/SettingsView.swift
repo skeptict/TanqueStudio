@@ -289,6 +289,7 @@ struct SettingsView: View {
         }
         .background(TanqueDS.Color.surface0)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .preferredColorScheme(.dark)
     }
 
     private func testConnection() {

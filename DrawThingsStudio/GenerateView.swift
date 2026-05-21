@@ -544,10 +544,20 @@ private struct GenerateTopBar: View {
 
     private var isConnected: Bool { !vm.models.isEmpty }
 
+    private var modelDisplayName: String {
+        guard !vm.config.model.isEmpty else { return "—" }
+        let base = URL(fileURLWithPath: vm.config.model)
+            .deletingPathExtension()
+            .lastPathComponent
+        guard base.count > 20 else { return base }
+        return String(base.prefix(20)) + "…"
+    }
+
     var body: some View {
         HStack(spacing: 0) {
-            // Left: icon + wordmark
+            // Left: icon + wordmark — leading spacer clears traffic lights
             HStack(spacing: 6) {
+                Spacer().frame(width: vm.leftPanelCollapsed ? 80 : 16)
                 Image(nsImage: NSApp.applicationIconImage)
                     .resizable()
                     .frame(width: 28, height: 28)
@@ -561,44 +571,55 @@ private struct GenerateTopBar: View {
                         .foregroundStyle(TanqueDS.Color.textMuted)
                 }
             }
-            .padding(.leading, vm.leftPanelCollapsed ? 90 : 80)
 
             Spacer()
 
-            // Center: connection status
+            // Center: active model + sampler
             HStack(spacing: 6) {
-                Circle()
-                    .fill(isConnected ? TanqueDS.Color.connected : TanqueDS.Color.textMuted)
-                    .frame(width: 6, height: 6)
-                Text(isConnected ? "connected" : "disconnected")
+                Text(modelDisplayName)
                     .font(TanqueDS.Font.body)
-                    .foregroundStyle(isConnected ? TanqueDS.Color.connected : TanqueDS.Color.textMuted)
+                    .foregroundStyle(TanqueDS.Color.textSecondary)
+                Text("·")
+                    .font(TanqueDS.Font.body)
+                    .foregroundStyle(TanqueDS.Color.textMuted)
+                Text(vm.config.sampler)
+                    .font(TanqueDS.Font.body)
+                    .foregroundStyle(TanqueDS.Color.textSecondary)
             }
 
             Spacer()
 
-            // Right: format toggle
-            HStack(spacing: 4) {
-                ForEach([OutputFormat.svg, OutputFormat.png], id: \.self) { format in
-                    let isActive = outputFormat == format
-                    Button {
-                        outputFormat = format
-                    } label: {
-                        Text(format == .svg ? "SVG" : "PNG")
-                            .font(TanqueDS.Font.bodyMedium)
-                            .foregroundStyle(isActive ? TanqueDS.Color.surface0 : TanqueDS.Color.textMuted)
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 5)
-                            .background(isActive ? TanqueDS.Color.brass : TanqueDS.Color.surface2)
-                            .clipShape(RoundedRectangle(cornerRadius: TanqueDS.Layout.inputCornerRadius))
+            // Right: connection status + format toggle
+            HStack(spacing: 12) {
+                HStack(spacing: 6) {
+                    Circle()
+                        .fill(isConnected ? TanqueDS.Color.connected : TanqueDS.Color.textMuted)
+                        .frame(width: 6, height: 6)
+                    Text(isConnected ? "connected" : "disconnected")
+                        .font(TanqueDS.Font.body)
+                        .foregroundStyle(isConnected ? TanqueDS.Color.connected : TanqueDS.Color.textMuted)
+                }
+                HStack(spacing: 4) {
+                    ForEach([OutputFormat.svg, OutputFormat.png], id: \.self) { format in
+                        let isActive = outputFormat == format
+                        Button {
+                            outputFormat = format
+                        } label: {
+                            Text(format == .svg ? "SVG" : "PNG")
+                                .font(TanqueDS.Font.bodyMedium)
+                                .foregroundStyle(isActive ? TanqueDS.Color.surface0 : TanqueDS.Color.textMuted)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 5)
+                                .background(isActive ? TanqueDS.Color.brass : TanqueDS.Color.surface2)
+                                .clipShape(RoundedRectangle(cornerRadius: TanqueDS.Layout.inputCornerRadius))
+                        }
+                        .buttonStyle(.plain)
                     }
-                    .buttonStyle(.plain)
                 }
             }
             .padding(.trailing, TanqueDS.Spacing.md)
         }
-        .padding(.top, 20)
-        .frame(height: TanqueDS.Layout.topBarHeight + 20)
+        .frame(height: TanqueDS.Layout.topBarHeight)
         .background(TanqueDS.Color.surface1)
         .overlay(alignment: .bottom) {
             Rectangle()
