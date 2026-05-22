@@ -245,6 +245,33 @@ final class StoryFlowViewModel {
         try StoryFlowProjectCodec.save(project, to: url)
     }
 
+    /// Export the current live workflow state as a pipeline instruction array JSON string.
+    /// Rebuilds a StoryFlowProject from the editable workflow + variables so any edits
+    /// made since loading are included. Passes `loadedProject` as `original:` so
+    /// passthrough/unsupported items and project-level fields survive the rebuild.
+    /// Returns nil only when there is no active workflow at all.
+    func exportPipeline() -> String? {
+        guard let workflow = selectedWorkflow else { return nil }
+        let project = StoryFlowProjectCodec.toProject(
+            workflow: workflow,
+            variables: variables,
+            original: loadedProject
+        )
+        return try? StoryFlowProjectCodec.exportPipelineJSON(project)
+    }
+
+    /// Write the live-state pipeline JSON to `url`. No-ops when no workflow is active.
+    func exportPipelineToFile(url: URL) throws {
+        guard let workflow = selectedWorkflow else { return }
+        let project = StoryFlowProjectCodec.toProject(
+            workflow: workflow,
+            variables: variables,
+            original: loadedProject
+        )
+        let json = try StoryFlowProjectCodec.exportPipelineJSON(project)
+        try json.write(to: url, atomically: true, encoding: .utf8)
+    }
+
     /// Import Draw Things custom configs from the given URL.
     /// Returns (added, skipped) counts.
     func importDTCustomConfigs(from url: URL) -> (added: Int, skipped: Int) {

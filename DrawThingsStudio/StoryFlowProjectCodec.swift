@@ -314,4 +314,120 @@ enum StoryFlowProjectCodec {
     private static func fmtNum(_ d: Double) -> String {
         d.truncatingRemainder(dividingBy: 1) == 0 ? String(Int(d)) : String(d)
     }
+
+    // MARK: — Shared prompt token expansion
+
+    /// Expand `@key` tokens in `text` using a promptTriggers map.
+    /// Keys may be stored with or without the leading `@`; both are matched.
+    /// `$wildcard` tokens are intentionally NOT expanded here — resolution is
+    /// non-deterministic (random pick) and belongs only in the engine at run time.
+    static func expandPromptTokens(_ text: String, promptTriggers: [String: String]) -> String {
+        var result = text
+        for (key, value) in promptTriggers {
+            let token = key.hasPrefix("@") ? key : "@\(key)"
+            if result.contains(token) {
+                result = result.replacingOccurrences(of: token, with: value)
+            }
+        }
+        return result
+    }
+
+    // MARK: — Pipeline array export
+
+    /// Convert a StoryFlowProject to the flat pipeline instruction array consumed
+    /// by DT's JavaScript pipeline runner. Transform rules:
+    ///   1. Shape:        {type,value} → {type: value}
+    ///   2. Config ref:   "#shortcut"  → parse configShortcuts[key] → JSON object
+    ///   3. Config inline: string JSON → parsed JSON object
+    ///   4. Prompt:       @tokens expanded from promptTriggers
+    ///   5. MoveScale:    JSON string  → parsed JSON object
+    ///   6. Append:       {"end": true}
+    ///   Note: $wildcard tokens are left unexpanded (non-deterministic).
+    static func toPipelineArray(_ project: StoryFlowProject) -> [[String: Any]] {
+        var result: [[String: Any]] = []
+
+        for item in project.items {
+            switch item.type {
+
+            case "note":
+                result.append(["note": item.value.stringValue ?? ""])
+
+            case "canvasClear":
+                result.append(["canvasClear": true])
+
+            case "crop":
+                result.append(["crop": true])
+
+            case "canvasSave":
+                result.append(["canvasSave": item.value.stringValue ?? ""])
+
+            case "canvasLoad":
+                result.append(["canvasLoad": item.value.stringValue ?? ""])
+
+            case "prompt":
+                let raw = item.value.stringValue ?? ""
+                if raw.contains("$") {
+                    // $wildcard tokens intentionally unexpanded in pipeline export
+                    print("[StoryFlowProjectCodec] WARNING: prompt contains $wildcard tokens — left unexpanded in pipeline export")
+                }
+                let expanded = expandPromptTokens(raw, promptTriggers: project.promptTriggers)
+                result.append(["prompt": expanded])
+
+            case "config":
+                let v = item.value.stringValue ?? ""
+                if v.hasPrefix("#") {
+                    // Config shortcut: look up and expand to full JSON object
+                    if let json = project.configShortcuts[v],
+                       let data = json.data(using: .utf8),
+                       let obj = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] {
+                        result.append(["config": obj])
+                    } else {
+                        // Shortcut not found — emit reference as-is
+                        result.append(["config": v])
+                    }
+                } else if let data = v.data(using: .utf8),
+                          let obj = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] {
+                    // Inline config JSON string → parsed object
+                    result.append(["config": obj])
+                } else {
+                    result.append(["config": v])
+                }
+
+            case "moveScale":
+                let v = item.value.stringValue ?? ""
+                if let data = v.data(using: .utf8),
+                   let obj = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] {
+                    result.append(["moveScale": obj])
+                } else {
+                    result.append(["moveScale": v])
+                }
+
+            case "loop":
+                result.append(["loop": item.value.stringValue ?? "1"])
+
+            case "loopEnd":
+                result.append(["loopEnd": true])
+
+            default:
+                // Unknown / passthrough: emit {type: value} verbatim
+                switch item.value {
+                case .bool(let b):   result.append([item.type: b])
+                case .string(let s): result.append([item.type: s])
+                }
+            }
+        }
+
+        result.append(["end": true])
+        return result
+    }
+
+    /// Serialize the pipeline instruction array to a JSON string.
+    static func exportPipelineJSON(_ project: StoryFlowProject) throws -> String {
+        let array = toPipelineArray(project)
+        let data = try JSONSerialization.data(withJSONObject: array, options: [.prettyPrinted, .sortedKeys])
+        guard let str = String(data: data, encoding: .utf8) else {
+            throw CocoaError(.fileReadUnknownStringEncoding)
+        }
+        return str
+    }
 }
