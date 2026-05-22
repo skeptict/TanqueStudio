@@ -88,7 +88,7 @@ struct GalleryStripView: View {
             vm.errorMessage = "Image file not found at: \(tsImage.filePath)"
             return
         }
-        guard let data = try? Data(contentsOf: url),
+        guard let data = try? ImageFolderAccess.readData(at: url),
               let image = NSImage(data: data) else {
             vm.errorMessage = "Could not load image at: \(tsImage.filePath)"
             return
@@ -139,7 +139,7 @@ struct GalleryStripView: View {
 
     private func copyToClipboard(_ tsImage: TSImage) {
         let url = URL(fileURLWithPath: tsImage.filePath)
-        guard let data = try? Data(contentsOf: url),
+        guard let data = try? ImageFolderAccess.readData(at: url),
               let image = NSImage(data: data),
               let tiff = image.tiffRepresentation else { return }
         let pb = NSPasteboard.general

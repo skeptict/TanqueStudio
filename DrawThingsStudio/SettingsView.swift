@@ -369,8 +369,10 @@ struct SettingsView: View {
         panel.allowsMultipleSelection = false
         panel.prompt = "Select Folder"
         if panel.runModal() == .OK, let url = panel.url {
+            let bm = try? url.bookmarkData(options: .withSecurityScope)
             settings.defaultImageFolder = url.path
-            settings.defaultImageFolderBookmark = try? url.bookmarkData(options: .withSecurityScope)
+            settings.defaultImageFolderBookmark = bm
+            if let bm { settings.addImageFolderBookmark(bm) }
         }
     }
 }

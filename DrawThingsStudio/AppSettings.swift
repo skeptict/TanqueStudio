@@ -28,6 +28,9 @@ final class AppSettings {
     var dtConfigsBookmark: Data? {
         didSet { UserDefaults.standard.set(dtConfigsBookmark, forKey: "tanqueStudio.dtConfigsBookmark") }
     }
+    var imageFolderBookmarks: [Data] {
+        didSet { UserDefaults.standard.set(imageFolderBookmarks, forKey: "tanqueStudio.imageFolderBookmarks") }
+    }
 
     // MARK: - Host History
 
@@ -102,6 +105,15 @@ final class AppSettings {
 
         defaultImageFolder         = folderPath
         defaultImageFolderBookmark = folderBookmark
+
+        // Load the folder-bookmarks collection; migrate from the legacy single bookmark if empty.
+        var folderBookmarks = (d.array(forKey: "tanqueStudio.imageFolderBookmarks") as? [Data]) ?? []
+        if folderBookmarks.isEmpty, let legacy = folderBookmark {
+            folderBookmarks = [legacy]
+            d.set(folderBookmarks, forKey: "tanqueStudio.imageFolderBookmarks")
+        }
+        imageFolderBookmarks = folderBookmarks
+
         leftPanelWidth     = d.cgFloat(forKey: "tanqueStudio.leftPanelWidth")    ?? 260
         leftPanelCollapsed = d.object(forKey: "tanqueStudio.leftPanelCollapsed") as? Bool ?? false
         rightPanelWidth    = d.cgFloat(forKey: "tanqueStudio.rightPanelWidth")  ?? 300
@@ -140,6 +152,34 @@ extension AppSettings {
         return appSupport
             .appendingPathComponent("TanqueStudio", isDirectory: true)
             .appendingPathComponent("GeneratedImages", isDirectory: true)
+    }
+}
+
+// MARK: - Image Folder Bookmark Helpers
+
+extension AppSettings {
+    /// Add a security-scoped folder bookmark to the collection if not already present.
+    /// Deduplicates by resolving each stored bookmark and comparing resolved paths.
+    func addImageFolderBookmark(_ data: Data) {
+        var isStale = false
+        guard let newURL = try? URL(
+            resolvingBookmarkData: data,
+            options: .withSecurityScope,
+            relativeTo: nil,
+            bookmarkDataIsStale: &isStale
+        ) else { return }
+        let newPath = newURL.path
+        for existing in imageFolderBookmarks {
+            if let existingURL = try? URL(
+                resolvingBookmarkData: existing,
+                options: .withSecurityScope,
+                relativeTo: nil,
+                bookmarkDataIsStale: &isStale
+            ), existingURL.path == newPath {
+                return
+            }
+        }
+        imageFolderBookmarks.append(data)
     }
 }
 

@@ -110,6 +110,7 @@ enum ImageStorageManager {
                 throw StorageError.cannotAccessDirectory
             }
             securityScopedURL = resolvedURL
+            AppSettings.shared.addImageFolderBookmark(bookmarkData)
             try FileManager.default.createDirectory(at: resolvedURL, withIntermediateDirectories: true)
             directory = resolvedURL
         } else {

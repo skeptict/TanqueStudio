@@ -445,7 +445,7 @@ private struct ImmersiveOverlay: View {
     private static func navigate(to tsImage: TSImage, vm: GenerateViewModel) {
         let url = URL(fileURLWithPath: tsImage.filePath)
         guard FileManager.default.fileExists(atPath: tsImage.filePath),
-              let data = try? Data(contentsOf: url),
+              let data = try? ImageFolderAccess.readData(at: url),
               let image = NSImage(data: data) else { return }
         vm.generatedImage   = image
         vm.selectedGalleryID = tsImage.id
