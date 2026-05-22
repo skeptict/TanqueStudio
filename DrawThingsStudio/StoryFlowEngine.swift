@@ -305,6 +305,10 @@ final class StoryFlowEngine {
             }
             mergeDict(dict, into: &currentConfig)
             log("  ✓ Applied inline config")
+
+        case .passthrough:
+            let itemType = step.parameters["itemType"] ?? "unknown"
+            log("  ↪ \(itemType) (preserved, not executed)")
         }
     }
 
@@ -534,17 +538,14 @@ final class StoryFlowEngine {
 
     /// Resolve @promptVar and $wildcardVar tokens in a prompt string.
     private func resolveTokens(_ text: String, variables: [WorkflowVariable]) -> String {
-        var result = text
-
-        // @promptVar → variable's promptValue
+        // Build promptTriggers dict and delegate @ expansion to the shared codec helper.
+        var triggers: [String: String] = [:]
         for v in variables where v.type == .prompt {
-            let token = "@\(v.name)"
-            if result.contains(token), let value = v.promptValue {
-                result = result.replacingOccurrences(of: token, with: value)
-            }
+            triggers["@\(v.name)"] = v.promptValue ?? ""
         }
+        var result = StoryFlowProjectCodec.expandPromptTokens(text, promptTriggers: triggers)
 
-        // $wildcardVar → random pick from options
+        // $wildcardVar → random pick from options (non-deterministic; engine-only)
         for v in variables where v.type == .wildcard {
             let token = "$\(v.name)"
             if result.contains(token) {

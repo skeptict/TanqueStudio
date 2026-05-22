@@ -135,6 +135,11 @@ enum WorkflowStepType: String, Codable, CaseIterable {
     /// Parameters: json (raw JSON string, e.g. {"width":2304,"height":1280})
     case configInline
 
+    /// Opaque passthrough for StoryFlow item types TanqueStudio cannot yet execute.
+    /// Carries the original {type, value} verbatim and re-emits it on project save.
+    /// Parameters: itemType (original type string), rawValueJSON (JSON-encoded original value)
+    case passthrough
+
     var displayName: String {
         switch self {
         case .configInstruction:  return "Config"
@@ -153,6 +158,7 @@ enum WorkflowStepType: String, Codable, CaseIterable {
         case .moveScale:          return "Move & Scale"
         case .crop:               return "Crop"
         case .configInline:       return "Config Inline"
+        case .passthrough:        return "Passthrough"
         }
     }
 
@@ -174,6 +180,7 @@ enum WorkflowStepType: String, Codable, CaseIterable {
         case .moveScale:          return "arrow.up.left.and.arrow.down.right"
         case .crop:               return "crop"
         case .configInline:       return "gearshape.fill"
+        case .passthrough:        return "questionmark.square.dashed"
         }
     }
 
@@ -195,6 +202,7 @@ enum WorkflowStepType: String, Codable, CaseIterable {
         case .moveScale:          return "green"
         case .crop:               return "green"
         case .configInline:       return "orange"
+        case .passthrough:        return "gray"
         }
     }
 }
@@ -215,6 +223,7 @@ struct WorkflowStep: Identifiable, Codable {
     ///   moveScale:         positionX, positionY, scale
     ///   crop:              (none)
     ///   configInline:      json (raw JSON config object string)
+    ///   passthrough:       itemType (original editor type), rawValueJSON (JSON-encoded original value)
     var parameters: [String: String] = [:]
     var isExpanded: Bool = true
 
@@ -284,6 +293,10 @@ struct WorkflowStep: Identifiable, Codable {
         case .configInline:
             let j = parameters["json"] ?? ""
             return j.isEmpty ? "(empty)" : String(j.prefix(50))
+
+        case .passthrough:
+            let t = parameters["itemType"] ?? "unknown"
+            return "\(t) (not yet executable)"
         }
     }
 }

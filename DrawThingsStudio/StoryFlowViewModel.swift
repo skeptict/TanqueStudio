@@ -15,6 +15,9 @@ final class StoryFlowViewModel {
     var showTextView: Bool = false
     var workflowJSON: String = ""
 
+    /// The most-recently loaded StoryFlowProject, kept for lossless round-trip save.
+    var loadedProject: StoryFlowProject?
+
     let engine = StoryFlowEngine()
 
     private let storage = StoryFlowStorage.shared
@@ -203,16 +206,22 @@ final class StoryFlowViewModel {
         variables.removeAll { $0.id == id }
     }
 
-    /// Import a Draw Things project JSON as a new StoryFlow workflow + variables.
-    /// Returns (added vars, steps, skipped vars, unsupported step types).
-    func importDTProject(from url: URL) -> (added: Int, steps: Int, skipped: Int, unsupported: [String]) {
+    // MARK: — Project Load / Save
+
+    /// Load a StoryFlow Editor project JSON, project it into the engine model, and select it.
+    /// Stores the original StoryFlowProject for lossless round-trip on saveProject.
+    /// Returns (stepCount, unsupportedTypeNames) for UI feedback.
+    @discardableResult
+    func loadProject(from url: URL) -> (steps: Int, unsupported: [String]) {
+        guard let project = try? StoryFlowProjectCodec.load(from: url) else { return (0, []) }
+        let result = StoryFlowProjectCodec.toWorkflow(project)
+
+        // Persist new variables; skip names already in the library
         let existingNames = Set(variables.map { $0.name })
-        guard let result = DTProjectImporter.importProject(from: url, existingVariableNames: existingNames) else {
-            return (0, 0, 0, [])
-        }
-        for v in result.newVariables {
+        for v in result.variables where !existingNames.contains(v.name) {
             try? storage.saveVariable(v)
         }
+
         var workflow = result.workflow
         workflow.updatedAt = Date()
         try? storage.saveWorkflow(workflow)
@@ -220,7 +229,47 @@ final class StoryFlowViewModel {
         selectedWorkflow = workflow
         updateWorkflowJSON()
         variables = storage.loadVariables()
-        return (result.newVariables.count, workflow.steps.count, result.skipped, result.unsupported)
+        loadedProject = project
+        return (workflow.steps.count, result.unsupported)
+    }
+
+    /// Save the selected workflow as a StoryFlow Editor project JSON.
+    /// Uses the stored `loadedProject` as the original for lossless round-trip.
+    func saveProject(to url: URL) throws {
+        guard let workflow = selectedWorkflow else { return }
+        let project = StoryFlowProjectCodec.toProject(
+            workflow: workflow,
+            variables: variables,
+            original: loadedProject
+        )
+        try StoryFlowProjectCodec.save(project, to: url)
+    }
+
+    /// Export the current live workflow state as a pipeline instruction array JSON string.
+    /// Rebuilds a StoryFlowProject from the editable workflow + variables so any edits
+    /// made since loading are included. Passes `loadedProject` as `original:` so
+    /// passthrough/unsupported items and project-level fields survive the rebuild.
+    /// Returns nil only when there is no active workflow at all.
+    func exportPipeline() -> String? {
+        guard let workflow = selectedWorkflow else { return nil }
+        let project = StoryFlowProjectCodec.toProject(
+            workflow: workflow,
+            variables: variables,
+            original: loadedProject
+        )
+        return try? StoryFlowProjectCodec.exportPipelineJSON(project)
+    }
+
+    /// Write the live-state pipeline JSON to `url`. No-ops when no workflow is active.
+    func exportPipelineToFile(url: URL) throws {
+        guard let workflow = selectedWorkflow else { return }
+        let project = StoryFlowProjectCodec.toProject(
+            workflow: workflow,
+            variables: variables,
+            original: loadedProject
+        )
+        let json = try StoryFlowProjectCodec.exportPipelineJSON(project)
+        try json.write(to: url, atomically: true, encoding: .utf8)
     }
 
     /// Import Draw Things custom configs from the given URL.

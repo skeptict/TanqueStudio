@@ -335,6 +335,7 @@ private struct StoryFlowStepCard: View {
         case .moveScale:          return .green
         case .crop:               return .green
         case .configInline:       return .orange
+        case .passthrough:        return .gray
         }
     }
 
@@ -528,6 +529,16 @@ private struct StoryFlowStepCard: View {
             .textFieldStyle(.roundedBorder)
             .font(.system(size: 11, design: .monospaced))
             .onSubmit { onChange() }
+
+        case .passthrough:
+            VStack(alignment: .leading, spacing: 2) {
+                Text(step.parameters["itemType"] ?? "unknown")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                Text("Preserved on save, not yet executable in TanqueStudio.")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+            }
         }
     }
 

@@ -45,16 +45,33 @@ struct StoryFlowVariablesPanel: View {
             Text("Variables")
                 .font(.headline)
             Spacer()
-            Button { importDTProject() } label: {
+            Button { loadProject() } label: {
                 Image(systemName: "tray.and.arrow.down")
             }
             .buttonStyle(.plain)
-            .help("Import Draw Things project JSON as a workflow")
+            .help("Load StoryFlow Editor project JSON")
+            Button { saveProject() } label: {
+                Image(systemName: "tray.and.arrow.up")
+            }
+            .buttonStyle(.plain)
+            .help("Save current workflow as StoryFlow Editor project JSON")
             Button { importFromDT() } label: {
                 Image(systemName: "square.and.arrow.down")
             }
             .buttonStyle(.plain)
             .help("Import configs from Draw Things custom_configs.json")
+            Button { copyPipeline() } label: {
+                Image(systemName: "doc.on.clipboard")
+            }
+            .buttonStyle(.plain)
+            .disabled(vm.selectedWorkflow == nil)
+            .help("Copy pipeline instruction array to clipboard")
+            Button { exportPipelineFile() } label: {
+                Image(systemName: "arrow.up.doc")
+            }
+            .buttonStyle(.plain)
+            .disabled(vm.selectedWorkflow == nil)
+            .help("Export pipeline instruction array…")
             Button {
                 NSWorkspace.shared.open(StoryFlowStorage.shared.variablesFolder)
             } label: {
@@ -67,24 +84,82 @@ struct StoryFlowVariablesPanel: View {
         .padding(.vertical, 8)
     }
 
-    private func importDTProject() {
+    private func loadProject() {
         let panel = NSOpenPanel()
-        panel.title = "Select Draw Things Project JSON"
+        panel.title = "Load StoryFlow Editor Project"
         panel.allowedContentTypes = [.json]
         panel.allowsMultipleSelection = false
         panel.canChooseDirectories = false
 
         guard panel.runModal() == .OK, let url = panel.url else { return }
-        let result = vm.importDTProject(from: url)
+        let result = vm.loadProject(from: url)
 
         let name = vm.selectedWorkflow?.name ?? "project"
-        var msg = "Imported '\(name)': \(result.steps) steps, \(result.added) vars, \(result.skipped) skipped"
-        if !result.unsupported.isEmpty { msg += " (\(result.unsupported.count) unsupported)" }
+        var msg = "Loaded '\(name)': \(result.steps) steps"
+        if !result.unsupported.isEmpty { msg += " (\(result.unsupported.count) unsupported preserved)" }
         importToast = msg
         Task { @MainActor in
             try? await Task.sleep(for: .seconds(4))
             importToast = nil
         }
+    }
+
+    private func saveProject() {
+        guard let workflow = vm.selectedWorkflow else {
+            importToast = "No workflow selected"
+            Task { @MainActor in
+                try? await Task.sleep(for: .seconds(2))
+                importToast = nil
+            }
+            return
+        }
+
+        let panel = NSSavePanel()
+        panel.title = "Save StoryFlow Editor Project"
+        panel.allowedContentTypes = [.json]
+        panel.nameFieldStringValue = "\(workflow.name).json"
+
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        do {
+            try vm.saveProject(to: url)
+            importToast = "Saved '\(workflow.name)'"
+        } catch {
+            importToast = "Save failed: \(error.localizedDescription)"
+        }
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(4))
+            importToast = nil
+        }
+    }
+
+    private func copyPipeline() {
+        guard let json = vm.exportPipeline() else {
+            importToast = "No project loaded — load a project first"
+            Task { @MainActor in try? await Task.sleep(for: .seconds(3)); importToast = nil }
+            return
+        }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(json, forType: .string)
+        importToast = "Pipeline copied to clipboard"
+        Task { @MainActor in try? await Task.sleep(for: .seconds(3)); importToast = nil }
+    }
+
+    private func exportPipelineFile() {
+        guard vm.loadedProject != nil else { return }
+        let panel = NSSavePanel()
+        panel.title = "Export Pipeline Instruction Array"
+        panel.allowedContentTypes = [.text]
+        let name = vm.loadedProject?.projectName ?? vm.selectedWorkflow?.name ?? "pipeline"
+        panel.nameFieldStringValue = "\(name).txt"
+
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        do {
+            try vm.exportPipelineToFile(url: url)
+            importToast = "Pipeline exported to \(url.lastPathComponent)"
+        } catch {
+            importToast = "Export failed: \(error.localizedDescription)"
+        }
+        Task { @MainActor in try? await Task.sleep(for: .seconds(4)); importToast = nil }
     }
 
     private func importFromDT() {
