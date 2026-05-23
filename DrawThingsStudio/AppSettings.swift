@@ -1,4 +1,7 @@
 import SwiftUI
+import OSLog
+
+private let appSettingsBmLog = Logger(subsystem: "org.tanque.TanqueStudio", category: "ImgBookmark")
 
 @Observable
 final class AppSettings {
@@ -113,6 +116,22 @@ final class AppSettings {
             d.set(folderBookmarks, forKey: "tanqueStudio.imageFolderBookmarks")
         }
         imageFolderBookmarks = folderBookmarks
+
+        // Diagnostic logging — image folder bookmarks state at launch.
+        appSettingsBmLog.debug("🔖 IMGBOOKMARK AppSettings.init: imageFolderBookmarks.count=\(folderBookmarks.count) defaultImageFolder=\(folderPath, privacy: .public)")
+        for (i, bm) in folderBookmarks.enumerated() {
+            var stale = false
+            if let resolved = try? URL(
+                resolvingBookmarkData: bm,
+                options: .withSecurityScope,
+                relativeTo: nil,
+                bookmarkDataIsStale: &stale
+            ) {
+                appSettingsBmLog.debug("🔖 IMGBOOKMARK   bookmark[\(i)] resolved=\(resolved.path, privacy: .public) isStale=\(stale)")
+            } else {
+                appSettingsBmLog.error("🔖 IMGBOOKMARK   bookmark[\(i)] FAILED to resolve at launch")
+            }
+        }
 
         leftPanelWidth     = d.cgFloat(forKey: "tanqueStudio.leftPanelWidth")    ?? 260
         leftPanelCollapsed = d.object(forKey: "tanqueStudio.leftPanelCollapsed") as? Bool ?? false

@@ -1,7 +1,10 @@
 import Foundation
 import AppKit
 import ImageIO
+import OSLog
 import SwiftData
+
+private let storageBmLog = Logger(subsystem: "org.tanque.TanqueStudio", category: "ImgBookmark")
 
 // MARK: - Image Storage Manager
 
@@ -111,6 +114,7 @@ enum ImageStorageManager {
             }
             securityScopedURL = resolvedURL
             AppSettings.shared.addImageFolderBookmark(bookmarkData)
+            storageBmLog.debug("🔖 IMGBOOKMARK write: registered bookmark for \(resolvedURL.path, privacy: .public) isStale=\(isStale) imageFolderBookmarks.count=\(AppSettings.shared.imageFolderBookmarks.count)")
             try FileManager.default.createDirectory(at: resolvedURL, withIntermediateDirectories: true)
             directory = resolvedURL
         } else {
