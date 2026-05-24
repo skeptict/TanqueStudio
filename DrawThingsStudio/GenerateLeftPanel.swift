@@ -4,6 +4,7 @@ import SwiftUI
 
 struct GenerateLeftPanel: View {
     @Bindable var vm: GenerateViewModel
+    @Environment(\.modelContext) private var modelContext
 
     var body: some View {
         VStack(spacing: 0) {
@@ -549,7 +550,7 @@ struct GenerateLeftPanel: View {
             if vm.isGenerating {
                 vm.cancelGeneration()
             } else {
-                vm.generate()
+                vm.generate(in: modelContext)
             }
         } label: {
             HStack(spacing: 6) {

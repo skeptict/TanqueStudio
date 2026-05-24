@@ -87,8 +87,6 @@ final class GenerateViewModel {
     var showConfigPicker: Bool = false
 
     // MARK: — Persistence state
-    /// Changed after each successful generation so GenerateView can trigger auto-save.
-    var lastGenerationID: UUID?
     /// Brief confirmation message shown after a successful save ("Saved ✓").
     var savedMessage: String?
     private var savedMessageTask: Task<Void, Never>?
@@ -116,7 +114,7 @@ final class GenerateViewModel {
 
     // MARK: — Generate
 
-    func generate() {
+    func generate(in context: ModelContext) {
         guard !isGenerating else { return }
         errorMessage = nil
         isGenerating = true
@@ -141,20 +139,28 @@ final class GenerateViewModel {
             do {
                 for _ in 0..<count {
                     if Task.isCancelled { break }
+                    // Resolve random seed locally so metadata records the actual seed used.
+                    // cfg.seed stays -1 (preserves the user's "randomize" intent for next run).
+                    var iterCfg = cfg
+                    if iterCfg.seed < 0 {
+                        iterCfg.seed = Int(UInt32.random(in: 0...UInt32.max))
+                    }
                     let images = try await client.generateImage(
                         prompt: capturedPrompt,
                         sourceImage: capturedSource,
                         mask: nil,
-                        config: cfg,
+                        config: iterCfg,
                         onProgress: { [weak self] p in
                             Task { @MainActor [weak self] in self?.progress = p }
                         }
                     )
                     self.generatedImage = images.first
-                    self.currentMetadata = cfg.asPNGMetadata(prompt: capturedPrompt)
+                    self.currentMetadata = iterCfg.asPNGMetadata(prompt: capturedPrompt)
                     self.currentImageSource = .generated
                     self.selectedRightTab = .metadata
-                    self.lastGenerationID = UUID()  // triggers auto-save observer in GenerateView
+                    if AppSettings.shared.autoSaveGenerated {
+                        saveCurrentImage(in: context, source: .generated, resolvedConfig: iterCfg)
+                    }
                 }
                 self.isGenerating = false
                 self.progress = .complete
@@ -180,13 +186,14 @@ final class GenerateViewModel {
 
     // MARK: — Save to SwiftData
 
-    func saveCurrentImage(in context: ModelContext, source: ImageSource = .generated) {
+    func saveCurrentImage(in context: ModelContext, source: ImageSource = .generated, resolvedConfig: DrawThingsGenerationConfig? = nil) {
         guard let image = generatedImage else { return }
+        let cfgToSave = resolvedConfig ?? config
         do {
             try ImageStorageManager.createAndInsert(
                 image: image,
                 source: source,
-                config: config,
+                config: cfgToSave,
                 prompt: prompt,
                 in: context
             )

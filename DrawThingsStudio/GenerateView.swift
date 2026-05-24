@@ -9,7 +9,6 @@ enum OutputFormat { case svg, png }
 
 struct GenerateView: View {
     let vm: GenerateViewModel
-    @Environment(\.modelContext) private var modelContext
     @Query(sort: \TSImage.createdAt, order: .reverse) private var savedImages: [TSImage]
 
     @State private var toastMessage: String? = nil
@@ -134,10 +133,6 @@ struct GenerateView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .onAppear { vm.loadAssets() }
-            .onChange(of: vm.lastGenerationID) { _, id in
-                guard id != nil, AppSettings.shared.autoSaveGenerated else { return }
-                vm.saveCurrentImage(in: modelContext, source: .generated)
-            }
 
             GenerateStatusBar(vm: vm)
         }

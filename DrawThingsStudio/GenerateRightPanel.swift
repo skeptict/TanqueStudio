@@ -336,6 +336,7 @@ private struct MetadataRow: View {
 
 private struct AssistTabView: View {
     @Bindable var vm: GenerateViewModel
+    @Environment(\.modelContext) private var modelContext
     let canvasScale: CGFloat
     let canvasOffset: CGSize
     let canvasSize: CGSize
@@ -536,7 +537,7 @@ private struct AssistTabView: View {
             Button {
                 vm.prompt = result
                 resultText = nil
-                vm.generate()
+                vm.generate(in: modelContext)
             } label: {
                 Label("Apply & Generate", systemImage: "paintbrush.fill")
                     .font(.callout.weight(.semibold))

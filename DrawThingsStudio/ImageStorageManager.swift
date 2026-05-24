@@ -209,7 +209,7 @@ enum ImageStorageManager {
         top["size"]      = "\(config.width)x\(config.height)"
         top["steps"]     = config.steps
         top["scale"]     = config.guidanceScale   // DT uses "scale" for CFG
-        top["seed"]      = config.seed
+        if config.seed >= 0 { top["seed"] = config.seed }
         top["seed_mode"] = config.seedMode
         top["strength"]  = config.strength
         top["shift"]     = config.shift
@@ -223,13 +223,13 @@ enum ImageStorageManager {
             "sampler":       config.sampler,
             "steps":         config.steps,
             "guidanceScale": config.guidanceScale,
-            "seed":          config.seed,
             "seedMode":      config.seedMode,
             "width":         config.width,
             "height":        config.height,
             "shift":         config.shift,
             "strength":      config.strength,
         ]
+        if config.seed >= 0 { v2["seed"] = config.seed }
         if !config.negativePrompt.isEmpty {
             v2["negativePrompt"] = config.negativePrompt
         }
@@ -258,7 +258,7 @@ enum ImageStorageManager {
         dict["sampler"]       = config.sampler
         dict["steps"]         = config.steps
         dict["guidanceScale"] = config.guidanceScale
-        dict["seed"]          = config.seed
+        if config.seed >= 0 { dict["seed"] = config.seed }
         dict["seedMode"]      = config.seedMode
         dict["width"]         = config.width
         dict["height"]        = config.height
