@@ -172,14 +172,30 @@ struct GenerateLeftPanel: View {
                 }
             }
 
-            // Shift
+            // Resolution Dependent Shift toggle
+            ConfigRow("Res. Shift") {
+                Toggle("", isOn: Binding(
+                    get: { vm.config.resolutionDependentShift ?? false },
+                    set: { vm.config.resolutionDependentShift = $0 }
+                ))
+                .labelsHidden()
+                .tint(TanqueDS.Color.brass)
+            }
+
+            // Shift (disabled + shows computed value when RDS is on)
+            let rdsOn = vm.config.resolutionDependentShift == true
             SliderConfigRow(
                 label: "Shift",
                 range: 0...10,
                 step: 0.1,
                 increment: 0.1,
-                displayFormat: "%.1f",
-                value: $vm.config.shift
+                displayFormat: "%.2f",
+                value: $vm.config.shift,
+                disabled: rdsOn,
+                overrideDisplayValue: rdsOn
+                    ? DrawThingsGenerationConfig.rdsComputedShift(
+                        width: vm.config.width, height: vm.config.height)
+                    : nil
             )
 
             // Seed
@@ -600,6 +616,8 @@ private struct SliderConfigRow: View {
     let increment: Double
     let displayFormat: String
     @Binding var value: Double
+    var disabled: Bool = false
+    var overrideDisplayValue: Double? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {
@@ -608,7 +626,8 @@ private struct SliderConfigRow: View {
                 .foregroundStyle(TanqueDS.Color.textSecondary)
             HStack(spacing: 4) {
                 Slider(value: $value, in: range, step: step)
-                    .tint(TanqueDS.Color.brass)
+                    .tint(disabled ? TanqueDS.Color.textMuted : TanqueDS.Color.brass)
+                    .disabled(disabled)
                 Button {
                     value = max(range.lowerBound, value - increment)
                 } label: {
@@ -618,7 +637,8 @@ private struct SliderConfigRow: View {
                 }
                 .buttonStyle(.borderless)
                 .frame(width: 16)
-                Text(String(format: displayFormat, value))
+                .disabled(disabled)
+                Text(String(format: displayFormat, overrideDisplayValue ?? value))
                     .font(TanqueDS.Font.body)
                     .foregroundStyle(TanqueDS.Color.textPrimary)
                     .frame(width: 36, alignment: .center)
@@ -631,6 +651,7 @@ private struct SliderConfigRow: View {
                 }
                 .buttonStyle(.borderless)
                 .frame(width: 16)
+                .disabled(disabled)
             }
         }
     }

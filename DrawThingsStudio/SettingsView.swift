@@ -1,4 +1,3 @@
-import OSLog
 import SwiftUI
 
 struct SettingsView: View {
@@ -371,14 +370,9 @@ struct SettingsView: View {
         panel.prompt = "Select Folder"
         if panel.runModal() == .OK, let url = panel.url {
             let bm = try? url.bookmarkData(options: .withSecurityScope)
-            let settingsBmLog = Logger(subsystem: "org.tanque.TanqueStudio", category: "ImgBookmark")
-            settingsBmLog.debug("🔖 IMGBOOKMARK SettingsView.browseForFolder: url=\(url.path, privacy: .public) bookmarkCreated=\(bm != nil)")
             settings.defaultImageFolder = url.path
             settings.defaultImageFolderBookmark = bm
-            if let bm {
-                settings.addImageFolderBookmark(bm)
-                settingsBmLog.debug("🔖 IMGBOOKMARK   after addImageFolderBookmark: count=\(settings.imageFolderBookmarks.count)")
-            }
+            if let bm { settings.addImageFolderBookmark(bm) }
         }
     }
 }

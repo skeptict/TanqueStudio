@@ -368,12 +368,12 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = DrawThingsStudio/TanqueStudio.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
-				CODE_SIGN_STYLE = Manual;
+				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 10;
-				DEVELOPMENT_TEAM = "";
-				"DEVELOPMENT_TEAM[sdk=macosx*]" = AKR62MZF3K;
+				CURRENT_PROJECT_VERSION = 11;
+				DEVELOPMENT_TEAM = AKR62MZF3K;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
@@ -386,7 +386,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 0.9.16;
+				MARKETING_VERSION = 0.9.17;
 				PRODUCT_BUNDLE_IDENTIFIER = tanque.org.TanqueStudio;
 				PRODUCT_NAME = "Tanque Studio";
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -414,7 +414,7 @@
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Manual;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 10;
+				CURRENT_PROJECT_VERSION = 11;
 				DEVELOPMENT_TEAM = "";
 				"DEVELOPMENT_TEAM[sdk=macosx*]" = AKR62MZF3K;
 				ENABLE_APP_SANDBOX = YES;
@@ -429,7 +429,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 0.9.16;
+				MARKETING_VERSION = 0.9.17;
 				PRODUCT_BUNDLE_IDENTIFIER = tanque.org.TanqueStudio;
 				PRODUCT_NAME = "Tanque Studio";
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -448,10 +448,10 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_STYLE = Manual;
-				CURRENT_PROJECT_VERSION = 10;
+				CURRENT_PROJECT_VERSION = 11;
 				DEVELOPMENT_TEAM = "";
 				GENERATE_INFOPLIST_FILE = YES;
-				MARKETING_VERSION = 0.9.16;
+				MARKETING_VERSION = 0.9.17;
 				PRODUCT_BUNDLE_IDENTIFIER = tanque.org.TanqueStudioUITests;
 				PRODUCT_NAME = TanqueStudioUITests;
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -468,10 +468,10 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_STYLE = Manual;
-				CURRENT_PROJECT_VERSION = 10;
+				CURRENT_PROJECT_VERSION = 11;
 				DEVELOPMENT_TEAM = "";
 				GENERATE_INFOPLIST_FILE = YES;
-				MARKETING_VERSION = 0.9.16;
+				MARKETING_VERSION = 0.9.17;
 				PRODUCT_BUNDLE_IDENTIFIER = tanque.org.TanqueStudioUITests;
 				PRODUCT_NAME = TanqueStudioUITests;
 				PROVISIONING_PROFILE_SPECIFIER = "";

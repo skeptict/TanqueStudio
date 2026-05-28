@@ -88,22 +88,35 @@ struct GalleryStripView: View {
             vm.errorMessage = "Image file not found at: \(tsImage.filePath)"
             return
         }
-        guard let data = try? ImageFolderAccess.readData(at: url),
-              let image = NSImage(data: data) else {
-            vm.errorMessage = "Could not load image at: \(tsImage.filePath)"
+        func applyLoadedImage(_ image: NSImage) {
+            vm.generatedImage = image
+            vm.currentImageSource = .generated
+            if let json = tsImage.configJSON, let meta = metadata(from: json) {
+                vm.currentMetadata = meta
+            } else if tsImage.source == .imported {
+                // Only call PNGMetadataParser for imported images — TanqueStudio-written PNGs
+                // have no embedded metadata chunks; PNGMetadataParser would always return nil.
+                vm.currentMetadata = PNGMetadataParser.parse(url: url)
+            } else {
+                vm.currentMetadata = nil
+            }
+            vm.errorMessage = nil
+        }
+
+        if let data = try? ImageFolderAccess.readData(at: url),
+           let image = NSImage(data: data) {
+            applyLoadedImage(image)
             return
         }
-        vm.generatedImage = image
-        vm.currentImageSource = .generated
-        if let json = tsImage.configJSON, let meta = metadata(from: json) {
-            vm.currentMetadata = meta
-        } else if tsImage.source == .imported {
-            // Only call PNGMetadataParser for imported images — TanqueStudio-written PNGs
-            // have no embedded metadata chunks; PNGMetadataParser would always return nil.
-            vm.currentMetadata = PNGMetadataParser.parse(url: url)
-        } else {
-            vm.currentMetadata = nil
+
+        if ImageFolderAccess.reauthorizeFolder(containing: url),
+           let data = try? ImageFolderAccess.readData(at: url),
+           let image = NSImage(data: data) {
+            applyLoadedImage(image)
+            return
         }
+
+        vm.errorMessage = "Could not load image at: \(tsImage.filePath)"
     }
 
     /// Decodes a configJSON string (written by ImageStorageManager.encodeConfig) into PNGMetadata.

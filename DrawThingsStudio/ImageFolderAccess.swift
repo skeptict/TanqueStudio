@@ -1,7 +1,5 @@
 import Foundation
-import OSLog
-
-private let bmLog = Logger(subsystem: "org.tanque.TanqueStudio", category: "ImgBookmark")
+import AppKit
 
 // MARK: - ImageFolderAccess
 
@@ -45,6 +43,40 @@ enum ImageFolderAccess {
         return try Data(contentsOf: url)
     }
 
+    /// Prompts the user to reauthorize the folder containing `url` and persists the bookmark.
+    /// Returns `true` if a bookmark was stored, `false` if the user cancelled or the bookmark failed.
+    @discardableResult
+    static func reauthorizeFolder(containing url: URL) -> Bool {
+        let folderURL = url.deletingLastPathComponent()
+
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.directoryURL = folderURL
+        panel.message = "Select the folder containing this image to restore access"
+        panel.prompt = "Select Folder"
+
+        guard panel.runModal() == .OK, let chosenFolder = panel.url else {
+            return false
+        }
+
+        guard let bookmarkData = try? chosenFolder.bookmarkData(
+            options: .withSecurityScope,
+            includingResourceValuesForKeys: nil,
+            relativeTo: nil
+        ) else {
+            return false
+        }
+
+        AppSettings.shared.addImageFolderBookmark(bookmarkData)
+
+        if AppSettings.shared.defaultImageFolder == chosenFolder.path {
+            AppSettings.shared.defaultImageFolderBookmark = bookmarkData
+        }
+        return true
+    }
+
     /// Execute `body` with a security-scoped access grant for the folder containing `url`.
     ///
     /// Returns the result of `body`, or `nil` if no matching bookmark was found
@@ -56,35 +88,20 @@ enum ImageFolderAccess {
         var bookmarks = AppSettings.shared.imageFolderBookmarks
         var didUpdate = false
 
-        bmLog.debug("🔖 IMGBOOKMARK withScopedFolder entry: filePath=\(filePath, privacy: .public) bookmarks.count=\(bookmarks.count)")
-
         for idx in bookmarks.indices {
             var isStale = false
-            let folderURL: URL
-            do {
-                folderURL = try URL(
-                    resolvingBookmarkData: bookmarks[idx],
-                    options: .withSecurityScope,
-                    relativeTo: nil,
-                    bookmarkDataIsStale: &isStale
-                )
-            } catch {
-                bmLog.error("🔖 IMGBOOKMARK bookmark[\(idx)] resolution FAILED: \(error.localizedDescription, privacy: .public)")
-                continue
-            }
+            guard let folderURL = try? URL(
+                resolvingBookmarkData: bookmarks[idx],
+                options: .withSecurityScope,
+                relativeTo: nil,
+                bookmarkDataIsStale: &isStale
+            ) else { continue }
 
+            // Only activate a bookmark whose folder is a direct ancestor of the file path.
+            // Appending "/" prevents "/Users/ned/Desktop" matching "/Users/ned/Desktop2/...".
             let folderPath = folderURL.path
-            let prefixMatch = filePath.hasPrefix(folderPath + "/")
-            let exactMatch  = filePath == folderPath
-            bmLog.debug("🔖 IMGBOOKMARK bookmark[\(idx)] resolved ok — isStale=\(isStale) prefixMatch=\(prefixMatch) exactMatch=\(exactMatch)")
-            bmLog.debug("🔖 IMGBOOKMARK   filePath:      \(filePath, privacy: .public)")
-            bmLog.debug("🔖 IMGBOOKMARK   folderPath+/:  \(folderPath + "/", privacy: .public)")
-
-            guard prefixMatch || exactMatch else { continue }
-
-            let accessGranted = folderURL.startAccessingSecurityScopedResource()
-            bmLog.debug("🔖 IMGBOOKMARK bookmark[\(idx)] startAccessingSecurityScopedResource=\(accessGranted)")
-            guard accessGranted else { continue }
+            guard filePath.hasPrefix(folderPath + "/") || filePath == folderPath else { continue }
+            guard folderURL.startAccessingSecurityScopedResource() else { continue }
             defer { folderURL.stopAccessingSecurityScopedResource() }
 
             // Refresh stale bookmark before reading so future restarts still work.
@@ -103,7 +120,7 @@ enum ImageFolderAccess {
             return try body()
         }
 
-        bmLog.warning("🔖 IMGBOOKMARK NO MATCHING BOOKMARK — falling back to bare read for \(filePath, privacy: .public)")
+        if didUpdate { AppSettings.shared.imageFolderBookmarks = bookmarks }
         return nil
     }
 }

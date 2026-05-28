@@ -439,18 +439,31 @@ private struct ImmersiveOverlay: View {
     /// Load a gallery image into the ViewModel (updates generatedImage, metadata, selection).
     private static func navigate(to tsImage: TSImage, vm: GenerateViewModel) {
         let url = URL(fileURLWithPath: tsImage.filePath)
-        guard FileManager.default.fileExists(atPath: tsImage.filePath),
-              let data = try? ImageFolderAccess.readData(at: url),
-              let image = NSImage(data: data) else { return }
-        vm.generatedImage   = image
-        vm.selectedGalleryID = tsImage.id
-        vm.currentImageSource = tsImage.source
-        if let json = tsImage.configJSON, let meta = metadataFromJSON(json) {
-            vm.currentMetadata = meta
-        } else if tsImage.source == .imported {
-            vm.currentMetadata = PNGMetadataParser.parse(url: url)
-        } else {
-            vm.currentMetadata = nil
+        guard FileManager.default.fileExists(atPath: tsImage.filePath) else { return }
+
+        func applyLoadedImage(_ image: NSImage) {
+            vm.generatedImage = image
+            vm.selectedGalleryID = tsImage.id
+            vm.currentImageSource = tsImage.source
+            if let json = tsImage.configJSON, let meta = metadataFromJSON(json) {
+                vm.currentMetadata = meta
+            } else if tsImage.source == .imported {
+                vm.currentMetadata = PNGMetadataParser.parse(url: url)
+            } else {
+                vm.currentMetadata = nil
+            }
+        }
+
+        if let data = try? ImageFolderAccess.readData(at: url),
+           let image = NSImage(data: data) {
+            applyLoadedImage(image)
+            return
+        }
+
+        if ImageFolderAccess.reauthorizeFolder(containing: url),
+           let data = try? ImageFolderAccess.readData(at: url),
+           let image = NSImage(data: data) {
+            applyLoadedImage(image)
         }
     }
 

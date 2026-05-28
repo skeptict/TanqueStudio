@@ -1,7 +1,4 @@
 import SwiftUI
-import OSLog
-
-private let appSettingsBmLog = Logger(subsystem: "org.tanque.TanqueStudio", category: "ImgBookmark")
 
 @Observable
 final class AppSettings {
@@ -117,22 +114,6 @@ final class AppSettings {
         }
         imageFolderBookmarks = folderBookmarks
 
-        // Diagnostic logging — image folder bookmarks state at launch.
-        appSettingsBmLog.debug("🔖 IMGBOOKMARK AppSettings.init: imageFolderBookmarks.count=\(folderBookmarks.count) defaultImageFolder=\(folderPath, privacy: .public)")
-        for (i, bm) in folderBookmarks.enumerated() {
-            var stale = false
-            if let resolved = try? URL(
-                resolvingBookmarkData: bm,
-                options: .withSecurityScope,
-                relativeTo: nil,
-                bookmarkDataIsStale: &stale
-            ) {
-                appSettingsBmLog.debug("🔖 IMGBOOKMARK   bookmark[\(i)] resolved=\(resolved.path, privacy: .public) isStale=\(stale)")
-            } else {
-                appSettingsBmLog.error("🔖 IMGBOOKMARK   bookmark[\(i)] FAILED to resolve at launch")
-            }
-        }
-
         leftPanelWidth     = d.cgFloat(forKey: "tanqueStudio.leftPanelWidth")    ?? 260
         leftPanelCollapsed = d.object(forKey: "tanqueStudio.leftPanelCollapsed") as? Bool ?? false
         rightPanelWidth    = d.cgFloat(forKey: "tanqueStudio.rightPanelWidth")  ?? 300
@@ -177,6 +158,16 @@ extension AppSettings {
 // MARK: - Image Folder Bookmark Helpers
 
 extension AppSettings {
+    func resolveBookmarkData(_ data: Data) -> URL? {
+        var isStale = false
+        return try? URL(
+            resolvingBookmarkData: data,
+            options: .withSecurityScope,
+            relativeTo: nil,
+            bookmarkDataIsStale: &isStale
+        )
+    }
+
     /// Add a security-scoped folder bookmark to the collection if not already present.
     /// Deduplicates by resolving each stored bookmark and comparing resolved paths.
     func addImageFolderBookmark(_ data: Data) {

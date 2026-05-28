@@ -106,8 +106,9 @@ final class DTProjectBrowserViewModel {
             reloadAllProjects()
             return
         }
+        let bookmarkURL = URL(fileURLWithPath: url.path, isDirectory: true)
         do {
-            let bookmarkData = try url.bookmarkData(options: .withSecurityScope, includingResourceValuesForKeys: nil, relativeTo: nil)
+            let bookmarkData = try bookmarkURL.bookmarkData(options: [], includingResourceValuesForKeys: nil, relativeTo: nil)
             appendBookmark(bookmarkData)
             folders.append(DTBookmarkedFolder(id: UUID(), url: url, label: folderLabel(for: url), isAvailable: true, bookmarkData: bookmarkData))
         } catch {
@@ -167,8 +168,7 @@ final class DTProjectBrowserViewModel {
     }
 
     private func resolveBookmark(_ data: Data) -> URL? {
-        var isStale = false
-        return try? URL(resolvingBookmarkData: data, options: .withSecurityScope, relativeTo: nil, bookmarkDataIsStale: &isStale)
+        AppSettings.shared.resolveBookmarkData(data)
     }
 
     private func restoreBookmarks() {
@@ -187,26 +187,19 @@ final class DTProjectBrowserViewModel {
         var hasAny = false
 
         for bookmarkData in bookmarks {
-            do {
-                var isStale = false
-                let url = try URL(resolvingBookmarkData: bookmarkData, options: .withSecurityScope, relativeTo: nil, bookmarkDataIsStale: &isStale)
-                let accessible = url.startAccessingSecurityScopedResource()
-                if accessible { accessedURLs.append(url) }
-
-                let newData: Data
-                if isStale, let refreshed = try? url.bookmarkData(options: .withSecurityScope, includingResourceValuesForKeys: nil, relativeTo: nil) {
-                    newData = refreshed
-                } else {
-                    newData = bookmarkData
-                }
-                updatedBookmarks.append(newData)
-
-                let available = accessible && FileManager.default.fileExists(atPath: url.path)
-                folders.append(DTBookmarkedFolder(id: UUID(), url: url, label: folderLabel(for: url), isAvailable: available, bookmarkData: newData))
-                if available { hasAny = true }
-            } catch {
+            guard let url = AppSettings.shared.resolveBookmarkData(bookmarkData) else {
                 updatedBookmarks.append(bookmarkData)
+                continue
             }
+            let accessible = url.startAccessingSecurityScopedResource()
+            if accessible { accessedURLs.append(url) }
+
+            let newData = bookmarkData
+            updatedBookmarks.append(newData)
+
+            let available = FileManager.default.fileExists(atPath: url.path)
+            folders.append(DTBookmarkedFolder(id: UUID(), url: url, label: folderLabel(for: url), isAvailable: available, bookmarkData: newData))
+            if available { hasAny = true }
         }
 
         UserDefaults.standard.set(updatedBookmarks, forKey: bookmarksKey)
