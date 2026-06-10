@@ -20,6 +20,9 @@ final class DrawThingsGRPCClient: DrawThingsProvider {
 
     private let host: String
     private let port: Int
+    /// Optional Draw Things server shared secret; sent with generate requests only
+    /// (the echo RPC does not take one). nil when the server has no secret configured.
+    private let sharedSecret: String?
     private var client: DrawThingsClient?
     private var service: DrawThingsService?
     /// Hints built from moodboard entries; set by GenerateViewModel before generation, cleared after.
@@ -37,9 +40,10 @@ final class DrawThingsGRPCClient: DrawThingsProvider {
         moodboardHints = builder.build()
     }
 
-    init(host: String = "127.0.0.1", port: Int = 7859) {
+    init(host: String = "127.0.0.1", port: Int = 7859, sharedSecret: String? = nil) {
         self.host = host
         self.port = port
+        self.sharedSecret = sharedSecret
     }
 
     // MARK: - Connection
@@ -99,7 +103,8 @@ final class DrawThingsGRPCClient: DrawThingsProvider {
                 configuration: grpcConfig,
                 image: sourceImage,
                 mask: mask,
-                hints: hints
+                hints: hints,
+                sharedSecret: sharedSecret
             )
 
             onProgress?(.complete)

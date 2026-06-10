@@ -317,7 +317,8 @@ final class StoryFlowEngine {
     private func executeGenerate(step: WorkflowStep, variables: [WorkflowVariable]) async throws {
         let grpcClient = DrawThingsGRPCClient(
             host: AppSettings.shared.dtHost,
-            port: AppSettings.shared.dtPort
+            port: AppSettings.shared.dtPort,
+            sharedSecret: AppSettings.shared.dtSharedSecretOrNil
         )
 
         // Build config from accumulated state; force batchCount = 1.

@@ -216,8 +216,17 @@ extension AppSettings {
 // MARK: - Factory
 
 extension AppSettings {
+    /// dtSharedSecret normalized for transport: nil when unset/empty.
+    var dtSharedSecretOrNil: String? {
+        dtSharedSecret.isEmpty ? nil : dtSharedSecret
+    }
+
     func createDrawThingsClient() -> any DrawThingsProvider {
-        return DrawThingsGRPCClient(host: dtHost, port: dtPort)
+        return DrawThingsGRPCClient(
+            host: dtHost,
+            port: dtPort,
+            sharedSecret: dtSharedSecretOrNil
+        )
     }
 }
 
