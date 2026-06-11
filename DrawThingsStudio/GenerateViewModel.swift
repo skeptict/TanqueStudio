@@ -154,7 +154,13 @@ final class GenerateViewModel {
                             Task { @MainActor [weak self] in self?.progress = p }
                         }
                     )
-                    self.generatedImage = images.first
+                    guard let image = images.first else {
+                        // DT completed the request but produced nothing (e.g. model/sampler
+                        // mismatch). Surface it — don't silently clear the canvas.
+                        self.errorMessage = "Draw Things returned no image — check that the model supports the current sampler and parameters."
+                        continue
+                    }
+                    self.generatedImage = image
                     self.currentMetadata = iterCfg.asPNGMetadata(prompt: capturedPrompt)
                     self.currentImageSource = .generated
                     self.selectedRightTab = .metadata

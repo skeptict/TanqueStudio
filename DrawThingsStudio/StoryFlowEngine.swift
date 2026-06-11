@@ -500,29 +500,10 @@ final class StoryFlowEngine {
     // Update here if DT adds new samplers.
 
     private func samplerString(for n: Int) -> String {
-        let table: [Int: String] = [
-            0:  "PLMS",
-            1:  "DDIM",
-            2:  "DPM++ 2M Karras",
-            3:  "Euler A",
-            4:  "DPM++ SDE Karras",
-            5:  "UniPC",
-            6:  "LCM",
-            7:  "Euler A Substep",
-            8:  "DPM++ SDE Substep",
-            9:  "TCD",
-            10: "TCD Trailing",
-            11: "Euler A Trailing",
-            12: "DPM++ SDE Trailing",
-            13: "DPM++ 2M AYS",
-            14: "Euler A AYS",
-            15: "DPM++ SDE AYS",
-            16: "DPM++ 2M Trailing",
-            17: "DDIM Trailing",
-            18: "UniPC Trailing",
-            19: "UniPC AYS",
-        ]
-        return table[n] ?? "DPM++ 2M Karras"
+        // Canonical mapping: DrawThingsSampler.builtIn index == DT SamplerType ordinal.
+        let samplers = DrawThingsSampler.builtIn
+        guard n >= 0 && n < samplers.count else { return "DPM++ 2M Karras" }
+        return samplers[n].name
     }
 
     private func seedModeString(for n: Int) -> String {

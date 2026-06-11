@@ -482,28 +482,33 @@ struct DrawThingsSampler: Identifiable, Hashable {
         self.displayName = displayName ?? name
     }
 
-    /// Built-in samplers available in Draw Things
+    /// Built-in samplers available in Draw Things.
+    ///
+    /// ⚠️ ORDER INVARIANT: array index MUST equal Draw Things' SamplerType enum
+    /// ordinal (DT-gRPC-Swift-Client config_generated.swift). DTConfigImporter and
+    /// StoryFlowEngine map integer sampler values from DT configs through this array.
+    /// New samplers are APPENDED by DT (e.g. tcdtrailing = 19) — never insert mid-list.
     static let builtIn: [DrawThingsSampler] = [
-        DrawThingsSampler(name: "DPM++ 2M Karras", displayName: "DPM++ 2M Karras"),
-        DrawThingsSampler(name: "Euler a", displayName: "Euler Ancestral"),
-        DrawThingsSampler(name: "DDIM", displayName: "DDIM"),
-        DrawThingsSampler(name: "PLMS", displayName: "PLMS"),
-        DrawThingsSampler(name: "DPM++ SDE Karras", displayName: "DPM++ SDE Karras"),
-        DrawThingsSampler(name: "UniPC", displayName: "UniPC"),
-        DrawThingsSampler(name: "LCM", displayName: "LCM"),
-        DrawThingsSampler(name: "Euler a Substep", displayName: "Euler Ancestral Substep"),
-        DrawThingsSampler(name: "DPM++ SDE Substep", displayName: "DPM++ SDE Substep"),
-        DrawThingsSampler(name: "TCD", displayName: "TCD"),
-        DrawThingsSampler(name: "TCD Trailing", displayName: "TCD Trailing"),
-        DrawThingsSampler(name: "Euler A Trailing", displayName: "Euler Ancestral Trailing"),
-        DrawThingsSampler(name: "DPM++ SDE Trailing", displayName: "DPM++ SDE Trailing"),
-        DrawThingsSampler(name: "DPM++ 2M AYS", displayName: "DPM++ 2M AYS"),
-        DrawThingsSampler(name: "Euler A AYS", displayName: "Euler Ancestral AYS"),
-        DrawThingsSampler(name: "DPM++ SDE AYS", displayName: "DPM++ SDE AYS"),
-        DrawThingsSampler(name: "DPM++ 2M Trailing", displayName: "DPM++ 2M Trailing"),
-        DrawThingsSampler(name: "DDIM Trailing", displayName: "DDIM Trailing"),
-        DrawThingsSampler(name: "UniPC Trailing", displayName: "UniPC Trailing"),
-        DrawThingsSampler(name: "UniPC AYS", displayName: "UniPC AYS"),
+        DrawThingsSampler(name: "DPM++ 2M Karras", displayName: "DPM++ 2M Karras"),          // 0
+        DrawThingsSampler(name: "Euler a", displayName: "Euler Ancestral"),                  // 1
+        DrawThingsSampler(name: "DDIM", displayName: "DDIM"),                                // 2
+        DrawThingsSampler(name: "PLMS", displayName: "PLMS"),                                // 3
+        DrawThingsSampler(name: "DPM++ SDE Karras", displayName: "DPM++ SDE Karras"),        // 4
+        DrawThingsSampler(name: "UniPC", displayName: "UniPC"),                              // 5
+        DrawThingsSampler(name: "LCM", displayName: "LCM"),                                  // 6
+        DrawThingsSampler(name: "Euler a Substep", displayName: "Euler Ancestral Substep"),  // 7
+        DrawThingsSampler(name: "DPM++ SDE Substep", displayName: "DPM++ SDE Substep"),      // 8
+        DrawThingsSampler(name: "TCD", displayName: "TCD"),                                  // 9
+        DrawThingsSampler(name: "Euler A Trailing", displayName: "Euler Ancestral Trailing"),// 10
+        DrawThingsSampler(name: "DPM++ SDE Trailing", displayName: "DPM++ SDE Trailing"),    // 11
+        DrawThingsSampler(name: "DPM++ 2M AYS", displayName: "DPM++ 2M AYS"),                // 12
+        DrawThingsSampler(name: "Euler A AYS", displayName: "Euler Ancestral AYS"),          // 13
+        DrawThingsSampler(name: "DPM++ SDE AYS", displayName: "DPM++ SDE AYS"),              // 14
+        DrawThingsSampler(name: "DPM++ 2M Trailing", displayName: "DPM++ 2M Trailing"),      // 15
+        DrawThingsSampler(name: "DDIM Trailing", displayName: "DDIM Trailing"),              // 16
+        DrawThingsSampler(name: "UniPC Trailing", displayName: "UniPC Trailing"),            // 17
+        DrawThingsSampler(name: "UniPC AYS", displayName: "UniPC AYS"),                      // 18
+        DrawThingsSampler(name: "TCD Trailing", displayName: "TCD Trailing"),                // 19
     ]
 }
 
