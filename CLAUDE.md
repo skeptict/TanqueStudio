@@ -9,7 +9,7 @@ Read project context from the AI-Memory vault:
 
 ## Project Overview
 
-**Tanque Studio v2** is a macOS native app (Swift/SwiftUI) for AI image generation. It connects to Draw Things via HTTP and gRPC.
+**Tanque Studio v2** is a macOS native app (Swift/SwiftUI) for AI image generation. It connects to Draw Things via gRPC only (HTTP transport was removed 2026-04-06 — a deliberate, permanent simplification).
 
 - **Repo:** `/Users/skeptict/Documents/GitHub/TanqueStudio`
 - **Archive of v0.9.x:** branch `archive/v0.9.x`
@@ -81,8 +81,7 @@ These files were carried forward from v0.9.x and should compile cleanly but are 
 
 | File | Purpose |
 |------|---------|
-| `DrawThingsGRPCClient.swift` | gRPC transport (port 7859) |
-| `DrawThingsHTTPClient.swift` | HTTP transport (port 7860) |
+| `DrawThingsGRPCClient.swift` | gRPC transport (port 7859); approved modifications: moodboard hints (4b3ceff), sharedSecret pass-through (2026-06-10) |
 | `DrawThingsProvider.swift` | Protocol + shared types (`DrawThingsGenerationConfig`, `LoRAConfig`, `DrawThingsTransport`) |
 | `PNGMetadataParser.swift` | Reads DTS, DT native, A1111, ComfyUI PNG metadata |
 | `CloudModelCatalog.swift` | Fetches ~400 models from Draw Things GitHub repo |
@@ -100,12 +99,19 @@ These files were carried forward from v0.9.x and should compile cleanly but are 
 | `AppSettings.swift` | `@Observable` settings singleton, UserDefaults persistence; `defaultImageFolderBookmark: Data?` stores security-scoped bookmark for custom save dir; `galleryStripWidth: CGFloat` (default 120, key `tanqueStudio.galleryStripWidth`); `leftPanelCollapsed: Bool` (default false, key `tanqueStudio.leftPanelCollapsed`) |
 | `SettingsView.swift` | Settings panel (connection, folder, appearance) |
 | `DataModels.swift` | SwiftData schema (`TSImage`, `ImageSource`) |
-| `GenerateViewModel.swift` | `@MainActor @Observable` ViewModel; owned by `ContentView`; drives generation, assets, LoRA, aspect ratio; `currentImageSource: ImageSource` tracks .generated/.imported for Save button logic; `RightTab` enum (Metadata/Enhance/Actions — no Gallery); `selectedGalleryID: UUID?` for gallery strip selection; `galleryStripWidth: CGFloat` proxy to AppSettings; `leftPanelCollapsed: Bool` proxy to AppSettings |
+| `GenerateViewModel.swift` | `@MainActor @Observable` ViewModel; owned by `ContentView`; drives generation, assets, LoRA, aspect ratio; `currentImageSource: ImageSource` tracks .generated/.imported for Save button logic; `RightTab` enum (Metadata/Assist/Actions — no Gallery); `selectedGalleryID: UUID?` for gallery strip selection; `galleryStripWidth: CGFloat` proxy to AppSettings; `leftPanelCollapsed: Bool` proxy to AppSettings |
 | `GenerateView.swift` | Four-panel root layout: Left \| Canvas \| GalleryStrip \| Right; `PanelDragHandle` between Canvas/Gallery and Gallery/Right only (left panel is fixed 260pt, no drag resize); left panel collapses to 0 via `vm.leftPanelCollapsed`; floating chevron overlay on canvas re-expands it; `ImmersiveOverlay` (ZStack, `@Query savedImages`, keyboard nav via `NSEvent.addLocalMonitorForEvents`; arrow keys navigate gallery, Escape/click/xmark.circle.fill dismiss); receives `let vm: GenerateViewModel` (does not own it) |
 | `GenerateLeftPanel.swift` | Config panel: prompt, params, aspect tiles, LoRA list, Generate button |
 | `GalleryStripView.swift` | Resizable gallery column (default 120px, min 80, max 200); green-tinted `LazyVStack`; source-based border (green=generated, gray=imported); selection highlight; relative timestamp; context menu (Reveal/Copy/Delete); tap loads image+metadata into `vm` via `selectImage()` + `metadata(from:)` helper; falls back to `PNGMetadataParser` for imported images |
-| `GenerateRightPanel.swift` | Right panel: image preview (shows `vm.generatedImage`), Metadata/Enhance/Actions tabs only — Gallery tab removed |
-| `ImageStorageManager.swift` | Writes PNG to disk, generates thumbnail, constructs TSImage; uses security-scoped bookmark from AppSettings for custom directories |
+| `GenerateRightPanel.swift` | Right panel: image preview (shows `vm.generatedImage`), Metadata/Assist/Actions tabs only — Gallery tab removed; Assist tab hosts the LLM operations UI |
+| `ImageStorageManager.swift` | Writes PNG to disk (EXIF UserComment + IPTC via CGImageDestination; omits seed key when seed < 0 — never write -1), generates thumbnail, constructs TSImage; uses security-scoped bookmark from AppSettings for custom directories |
+| `ImageFolderAccess.swift` | Security-scoped READ access for gallery images in custom folders; `readData(at:)` + `reauthorizeFolder(containing:)`; searches `AppSettings.imageFolderBookmarks` by path prefix |
+| `TanqueDS.swift` | Tanque Design System tokens (colors, fonts, surfaces) — use these, not raw SwiftUI colors |
+| `LLMService.swift` | LLM provider client (Ollama / LM Studio / Jan); `normalizedURL` port logic |
+| `LLMOperationLoader.swift` | File-based LLM operations (.md + YAML frontmatter) from App Support/LLMOperations/ |
+| `DTConfigImporter.swift` | Parses Draw Things `custom_configs.json` into `DTCustomConfig` |
+| `DTProjectDatabase.swift` / `DTProjectBrowserViewModel.swift` / `DTProjectBrowserView.swift` | DT Project Browser: SQLite + FlatBuffer reader, paginated grid, Send to Generate |
+| `StoryFlowEngine.swift` + `StoryFlowModels/Storage/ViewModel/View/Project/ProjectCodec/*Panel.swift` | StoryFlow v2: accumulator engine (config + prompt), Loop/EndLoop, canvas ops, lossless project codec, DT pipeline export |
 
 ---
 
@@ -144,9 +150,8 @@ xcodebuild -project TanqueStudio.xcodeproj -scheme TanqueStudio -configuration R
 | Transport | Port | File |
 |-----------|------|------|
 | gRPC | 7859 | `DrawThingsGRPCClient.swift` |
-| HTTP | 7860 | `DrawThingsHTTPClient.swift` |
 
-gRPC config is passed as a FlatBuffer blob. See `DrawThingsProvider.swift` for `DrawThingsGenerationConfig` → `DrawThingsConfiguration` mapping.
+gRPC only — HTTP transport removed 2026-04-06. Shared secret (`AppSettings.dtSharedSecret`) is sent on generate requests only; the echo RPC does not take one. gRPC config is passed as a FlatBuffer blob. See `DrawThingsProvider.swift` for `DrawThingsGenerationConfig` → `DrawThingsConfiguration` mapping.
 
 ### FlatBuffer Gotcha
 `fbb.add(element: value, def: X)` omits the field when `value == X`. The read-side default may differ from `X`. Always check both sides when adding new config fields.
@@ -162,6 +167,7 @@ gRPC config is passed as a FlatBuffer blob. See `DrawThingsProvider.swift` for `
 - **Adding `@Published` or `@State` properties to `AppSettings`** — use `@Observable` pattern consistently
 - **Moving `GenerateViewModel` back into `GenerateView`** — it must stay in `ContentView` (`@State private var generateVM`) so canvas state survives NavigationSplitView transitions
 - **Storing user-selected folder paths as plain strings** — always use `url.bookmarkData(options: .withSecurityScope)` + `AppSettings.defaultImageFolderBookmark`; `URL(fileURLWithPath:)` from a stored string loses sandbox access on relaunch
+- **Creating a bookmark with `options: []`** — a non-scoped bookmark resolves to NSCocoaErrorDomain 259 at every `.withSecurityScope` resolve site. This exact one-line regression cost two days in 0.9.17. When touching ANY bookmark call, grep all `bookmarkData(options:` and `resolvingBookmarkData` sites afterward and confirm both sides use `.withSecurityScope`
 - **Activating security-scoped bookmark when no custom folder is set** — always gate on BOTH `bookmark != nil` AND `!defaultImageFolder.isEmpty`; a stale bookmark in UserDefaults will cause `startAccessingSecurityScopedResource()` to fail for the default App Support path
 - **Parsing metadata from TanqueStudio-written PNGs** — these PNGs have NO embedded metadata chunks; metadata lives only in `TSImage.configJSON`. Use `metadata(from:)` in `GalleryStripView`, not `PNGMetadataParser`, for generated images. Only call `PNGMetadataParser` for `.imported` source images. Use `(value as? NSNumber)?.intValue` / `.doubleValue` for numeric fields — bare `as? Int` / `as? Double` on `NSNumber` can silently return nil
 
@@ -169,7 +175,7 @@ gRPC config is passed as a FlatBuffer blob. See `DrawThingsProvider.swift` for `
 
 ## Labs Features
 
-StoryFlow, Story Studio, and Workflow Builder are carried forward from v0.9.x but are not the focus of v2 development. They show "Coming soon" placeholders. Do not implement feature views for these unless explicitly tasked.
+StoryFlow is implemented in v2 (engine, Loop/EndLoop, canvas ops, project codec, DT pipeline export — shipped 0.9.15–0.9.16). Story Studio and Workflow Builder still show "Coming soon" placeholders — do not implement feature views for those two unless explicitly tasked.
 
 ---
 

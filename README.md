@@ -65,7 +65,6 @@ Add reference images to influence generation via gRPC shuffle hints.
 - Per-image weight sliders (0.0–1.0)
 - Remove individual images or clear all
 - Works with models that support reference/shuffle hints (Qwen Image Edit, Flux, etc.)
-- gRPC only — no effect when using HTTP transport
 
 ---
 
@@ -83,7 +82,7 @@ Browse Draw Things project databases directly from the app.
 
 ### Settings
 
-- **Draw Things connection** — host, port, transport (gRPC / HTTP), history dropdown, test connection
+- **Draw Things connection** — host, port, shared secret, history dropdown, test connection (gRPC)
 - **LLM provider** — Ollama / LM Studio / Jan; host with history dropdown, model, max tokens, test connection
 - **Save folder** — default save location (security-scoped bookmark)
 - **Appearance** — panel width defaults
@@ -147,8 +146,22 @@ DrawThingsStudio/
 │   ├── DTProjectBrowserView.swift     # 3-column HSplitView browser
 │   └── DTProjectBrowserViewModel.swift
 │
+├── StoryFlow (Labs)
+│   ├── StoryFlowEngine.swift          # Accumulator engine: config + prompt, Loop/EndLoop, canvas ops
+│   ├── StoryFlowModels.swift          # Variables, steps, workflows
+│   ├── StoryFlowStorage.swift         # JSON-per-file storage, output folders, canvas PNG I/O
+│   ├── StoryFlowProjectCodec.swift    # Lossless project export/import + DT pipeline export
+│   └── StoryFlowView/ViewModel/*Panel.swift
+│
 ├── Settings
 │   └── SettingsView.swift
+│
+├── Support
+│   ├── TanqueDS.swift                 # Tanque Design System tokens
+│   ├── ImageFolderAccess.swift        # Security-scoped reads for custom folders
+│   ├── LLMService.swift               # Ollama / LM Studio / Jan client
+│   ├── LLMOperationLoader.swift       # File-based LLM operations
+│   └── DTConfigImporter.swift         # Draw Things custom_configs.json import
 │
 ├── Data & Persistence
 │   └── DataModels.swift               # TSImage SwiftData model, ImageSource
@@ -156,7 +169,6 @@ DrawThingsStudio/
 └── Draw Things Integration (ported, do not modify)
     ├── DrawThingsProvider.swift        # Protocol + DrawThingsGenerationConfig
     ├── DrawThingsGRPCClient.swift      # gRPC transport (port 7859)
-    ├── DrawThingsHTTPClient.swift      # HTTP transport (port 7860)
     ├── DrawThingsAssetManager.swift    # Local model/LoRA management
     ├── CloudModelCatalog.swift         # ~400 models from Draw Things GitHub
     ├── PNGMetadataParser.swift         # DTS, DT native, A1111, ComfyUI metadata
@@ -195,13 +207,18 @@ DrawThingsStudio/
 - [x] DT Project Browser — SQLite + FlatBuffer, pagination, Send to Generate
 - [x] gRPC transport with streaming progress
 - [x] Host connection history dropdowns
+- [x] StoryFlow v2 — accumulator workflow engine, Loop/EndLoop, canvas ops, project codec, DT pipeline export
+- [x] PNG metadata embedding — EXIF UserComment (DT-compatible) + IPTC, resolved seeds (never -1)
+- [x] Custom save folder — security-scoped bookmarks, restart-safe gallery reads
+- [x] Shared secret support for protected Draw Things servers
 
 ### Upcoming
 
-- [ ] **StoryFlow v2** — port working v0.9.x visual workflow builder
 - [ ] **Story Studio** — multi-scene narrative system with character consistency
 - [ ] **Canvas inpainting** — paint masks on canvas, send masked region via gRPC
 - [ ] **Inspector modes** — Review / Edit / Browse tool palette rail
+- [ ] **Batch seed parity** — match Draw Things' base+increment seed derivation across a batch
+- [ ] **DT metadata protocol parity** — integer sampler/seedMode enums in v2 metadata
 - [ ] **README polish** — screenshots, demo GIF
 
 ---
