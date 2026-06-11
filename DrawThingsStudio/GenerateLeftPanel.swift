@@ -200,10 +200,28 @@ struct GenerateLeftPanel: View {
 
             // Seed
             ConfigRow("Seed") {
-                TextField("–1 = random", value: $vm.config.seed, format: .number)
+                HStack(spacing: 6) {
+                    TextField("seed", value: $vm.config.seed, format: .number)
+                        .font(TanqueDS.Font.body)
+                        .foregroundStyle(TanqueDS.Color.textPrimary)
+                        .multilineTextAlignment(.trailing)
+                    Button {
+                        vm.config.seed = Int(UInt32.random(in: 0...UInt32.max))
+                    } label: {
+                        Image(systemName: "die.face.5")
+                            .font(.system(size: 13))
+                            .foregroundStyle(TanqueDS.Color.textSecondary)
+                    }
+                    .buttonStyle(.borderless)
+                    .help("Roll new seed")
+                }
+            }
+            // Randomize toggle
+            ConfigRow("") {
+                Toggle("Randomize each run", isOn: $vm.randomizeSeed)
                     .font(TanqueDS.Font.body)
                     .foregroundStyle(TanqueDS.Color.textPrimary)
-                    .multilineTextAlignment(.trailing)
+                    .tint(TanqueDS.Color.brass)
             }
 
             // Seed Mode

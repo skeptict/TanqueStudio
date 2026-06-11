@@ -338,6 +338,9 @@ final class StoryFlowEngine {
             grpcClient.setMoodboard(activeMoodboard)
         }
 
+        // Resolve negative seed: roll concrete and record so output metadata is reproducible.
+        if cfg.seed < 0 { cfg.seed = Int(UInt32.random(in: 0...UInt32.max)) }
+
         log("  Generating… model: \(cfg.model.isEmpty ? "(none set)" : cfg.model)")
 
         // Generate

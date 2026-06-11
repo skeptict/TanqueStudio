@@ -412,7 +412,13 @@ struct DTProjectBrowserView: View {
         if entry.height > 0             { vm.config.height  = entry.height }
         if entry.steps  > 0             { vm.config.steps   = entry.steps }
         vm.config.guidanceScale = Double(entry.guidanceScale)
-        vm.config.seed          = Int(entry.seed)
+        let entrySeed = Int(entry.seed)
+        if entrySeed < 0 {
+            vm.randomizeSeed = true
+            vm.config.seed = Int(UInt32.random(in: 0...UInt32.max))
+        } else {
+            vm.config.seed = entrySeed
+        }
         if !entry.sampler.isEmpty       { vm.config.sampler  = entry.sampler }
         if !entry.seedMode.isEmpty      { vm.config.seedMode = entry.seedMode }
         if !entry.model.isEmpty         { vm.config.model    = entry.model }

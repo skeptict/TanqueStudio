@@ -46,6 +46,9 @@ final class AppSettings {
     var autoSaveGenerated: Bool {
         didSet { UserDefaults.standard.set(autoSaveGenerated, forKey: "tanqueStudio.autoSaveGenerated") }
     }
+    var randomizeSeed: Bool {
+        didSet { UserDefaults.standard.set(randomizeSeed, forKey: "tanqueStudio.randomizeSeed") }
+    }
 
     // MARK: - Layout
 
@@ -90,6 +93,7 @@ final class AppSettings {
     private init() {
         let d = UserDefaults.standard
         autoSaveGenerated  = d.object(forKey: "tanqueStudio.autoSaveGenerated") as? Bool ?? true
+        randomizeSeed      = d.object(forKey: "tanqueStudio.randomizeSeed")      as? Bool ?? true
         dtHost             = d.string(forKey: "tanqueStudio.dtHost")          ?? "127.0.0.1"
         dtPort             = d.integer(forKey: "tanqueStudio.dtPort").nonZero ?? 7859
         dtSharedSecret     = d.string(forKey: "tanqueStudio.dtSharedSecret")  ?? ""
