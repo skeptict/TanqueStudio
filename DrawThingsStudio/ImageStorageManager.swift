@@ -213,18 +213,27 @@ enum ImageStorageManager {
             top["lora"] = config.loras.map { ["file": $0.file, "weight": $0.weight] }
         }
 
-        // v2 sub-object — camelCase keys, full config
+        // v2 sub-object — camelCase keys, full config.
+        // v2.sampler and v2.seedMode are INTEGER ordinals matching DT's SamplerType and SeedMode
+        // enums — DT reads these as integers when loading clipboard configs.
+        // Top-level "sampler" and "seed_mode" remain strings (DT's own short-key format).
         var v2: [String: Any] = [
             "model":         config.model,
-            "sampler":       config.sampler,
             "steps":         config.steps,
             "guidanceScale": config.guidanceScale,
-            "seedMode":      config.seedMode,
             "width":         config.width,
             "height":        config.height,
             "shift":         config.shift,
             "strength":      config.strength,
         ]
+        // sampler — integer ordinal from DrawThingsSampler.builtIn (order invariant in DrawThingsProvider)
+        if let idx = DrawThingsSampler.builtIn.firstIndex(where: { $0.name == config.sampler }) {
+            v2["sampler"] = idx
+        }
+        // seedMode — integer ordinal matching DT SeedMode enum 0–3
+        if let idx = Self.seedModeOrdinals.firstIndex(of: config.seedMode) {
+            v2["seedMode"] = idx
+        }
         if config.seed >= 0 { v2["seed"] = config.seed }
         if !config.negativePrompt.isEmpty {
             v2["negativePrompt"] = config.negativePrompt
@@ -268,6 +277,17 @@ enum ImageStorageManager {
               let str = String(data: data, encoding: .utf8) else { return nil }
         return str
     }
+
+    // MARK: — Constants
+
+    // Same ordering as GenerateLeftPanel.seedModes and DTConfigImporter.seedModes;
+    // mirrors DT's SeedMode enum (0=legacy, 1=torchCPUCompatible, 2=scaleAlike, 3=nvidiaGPUCompatible).
+    private static let seedModeOrdinals = [
+        "Legacy",
+        "Torch CPU Compatible",
+        "Scale Alike",
+        "Nvidia GPU Compatible",
+    ]
 
     // MARK: — Errors
 

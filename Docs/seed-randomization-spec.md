@@ -20,6 +20,30 @@ DT's exact batch seed derivation is unknown. Before writing code:
 
 If the scheme is not simply derivable, fall back to: TS rolls a random base seed, then applies DT's observed derivation for the batch; whole-batch reproducibility from the base seed is the acceptance bar.
 
+### Result — 2026-06-11
+
+**DT derives per-image seeds using xorshift32, chained from the base seed.**
+
+Empirical test: batch of 3, base seed 1000. Seeds recorded in each PNG's metadata:
+- Image 0: 1000 (base seed)
+- Image 1: 266172694 = xorshift32(1000)
+- Image 2: 3204629577 = xorshift32(266172694)
+
+Algorithm (Marsaglia xorshift32):
+```swift
+func xorshift32(_ x: UInt32) -> UInt32 {
+    var x = x
+    x ^= x << 13
+    x ^= x >> 17
+    x ^= x << 5
+    return x
+}
+```
+
+Each image in the batch uses a distinct seed; the full sequence is deterministically reproducible from the base seed. Note: the project DB (`tensorhistorynode`) stores only the base seed — per-image seeds are internal to DT's generation pipeline and only surface in each PNG's embedded metadata.
+
+**Implementation:** In `generate()`, derive per-iteration seeds by chaining xorshift32 from `cfg.seed`. Each `iterCfg.seed` carries the concrete derived seed for that image (existing plumbing in `ImageStorageManager` already records it). Whole batch reproducible from base seed with randomize OFF.
+
 ## Design
 
 ### State
