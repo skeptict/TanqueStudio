@@ -214,7 +214,24 @@ final class StoryFlowStorage {
     }
 
     /// Load a canvas PNG named `name` (with or without .png extension) from `folder`.
+    /// Mirrors saveCanvasPNG: activates security-scoped access when a custom folder is
+    /// configured, so canvas loads succeed after an app restart (not just in-session).
     func loadCanvasPNG(named name: String, from folder: URL) -> NSImage? {
+        var securityScopedURL: URL?
+        if let bookmark = AppSettings.shared.defaultImageFolderBookmark,
+           !AppSettings.shared.defaultImageFolder.isEmpty {
+            var isStale = false
+            if let resolvedURL = try? URL(
+                resolvingBookmarkData: bookmark,
+                options: .withSecurityScope,
+                relativeTo: nil,
+                bookmarkDataIsStale: &isStale
+            ), resolvedURL.startAccessingSecurityScopedResource() {
+                securityScopedURL = resolvedURL
+            }
+        }
+        defer { securityScopedURL?.stopAccessingSecurityScopedResource() }
+
         let withExt    = folder.appendingPathComponent(name.hasSuffix(".png") ? name : "\(name).png")
         let withoutExt = folder.appendingPathComponent(name)
         for url in [withExt, withoutExt] {

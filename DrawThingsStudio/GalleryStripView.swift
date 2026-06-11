@@ -90,7 +90,9 @@ struct GalleryStripView: View {
         }
         func applyLoadedImage(_ image: NSImage) {
             vm.generatedImage = image
-            vm.currentImageSource = .generated
+            // Use the record's actual source (matches ImmersiveOverlay.navigate) so
+            // imported images keep their identity for Save-button logic and metadata fallback.
+            vm.currentImageSource = tsImage.source
             if let json = tsImage.configJSON, let meta = metadata(from: json) {
                 vm.currentMetadata = meta
             } else if tsImage.source == .imported {
@@ -142,7 +144,7 @@ struct GalleryStripView: View {
         if let loras = dict["loras"] as? [[String: Any]] {
             m.loras = loras.compactMap { d in
                 guard let file   = d["file"]   as? String,
-                      let weight = d["weight"] as? Double else { return nil }
+                      let weight = (d["weight"] as? NSNumber)?.doubleValue else { return nil }
                 return PNGMetadataLoRA(file: file, weight: weight)
             }
         }

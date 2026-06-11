@@ -486,7 +486,7 @@ private struct ImmersiveOverlay: View {
         if let loras = dict["loras"] as? [[String: Any]] {
             m.loras = loras.compactMap { d in
                 guard let file   = d["file"]   as? String,
-                      let weight = d["weight"] as? Double else { return nil }
+                      let weight = (d["weight"] as? NSNumber)?.doubleValue else { return nil }
                 return PNGMetadataLoRA(file: file, weight: weight)
             }
         }

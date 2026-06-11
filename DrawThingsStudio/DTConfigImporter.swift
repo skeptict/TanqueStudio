@@ -47,7 +47,7 @@ enum DTConfigImporter {
 
         // Sampler: Int index into DrawThingsSampler.builtIn
         let samplerName: String? = {
-            guard let idx = cfg["sampler"] as? Int else { return nil }
+            guard let idx = (cfg["sampler"] as? NSNumber)?.intValue else { return nil }
             let samplers = DrawThingsSampler.builtIn
             guard idx >= 0 && idx < samplers.count else { return nil }
             return samplers[idx].name
@@ -55,7 +55,7 @@ enum DTConfigImporter {
 
         // SeedMode: Int index into ordered string list matching GenerateLeftPanel.seedModes
         let seedModeName: String? = {
-            guard let idx = cfg["seedMode"] as? Int else { return nil }
+            guard let idx = (cfg["seedMode"] as? NSNumber)?.intValue else { return nil }
             let modes = ["Legacy", "Torch CPU Compatible", "Scale Alike", "Nvidia GPU Compatible"]
             guard idx >= 0 && idx < modes.count else { return nil }
             return modes[idx]
@@ -66,7 +66,7 @@ enum DTConfigImporter {
             guard let raw = cfg["loras"] as? [[String: Any]] else { return [] }
             return raw.compactMap { l in
                 guard let file = l["file"] as? String else { return nil }
-                let weight = (l["weight"] as? Double) ?? 1.0
+                let weight = (l["weight"] as? NSNumber)?.doubleValue ?? 1.0
                 return DrawThingsGenerationConfig.LoRAConfig(file: file, weight: weight, mode: "all")
             }
         }()
@@ -74,18 +74,18 @@ enum DTConfigImporter {
         return DTCustomConfig(
             name: name,
             model:                   cfg["model"]                   as? String,
-            steps:                   cfg["steps"]                   as? Int,
-            guidanceScale:           cfg["guidanceScale"]           as? Double,
-            seed:                    cfg["seed"]                    as? Int,
+            steps:                   (cfg["steps"]                   as? NSNumber)?.intValue,
+            guidanceScale:           (cfg["guidanceScale"]           as? NSNumber)?.doubleValue,
+            seed:                    (cfg["seed"]                    as? NSNumber)?.intValue,
             seedMode:                seedModeName,
             sampler:                 samplerName,
-            shift:                   cfg["shift"]                   as? Double,
-            strength:                cfg["strength"]                as? Double,
-            stochasticSamplingGamma: cfg["stochasticSamplingGamma"] as? Double,
-            batchCount:              cfg["batchCount"]              as? Int,
+            shift:                   (cfg["shift"]                   as? NSNumber)?.doubleValue,
+            strength:                (cfg["strength"]                as? NSNumber)?.doubleValue,
+            stochasticSamplingGamma: (cfg["stochasticSamplingGamma"] as? NSNumber)?.doubleValue,
+            batchCount:              (cfg["batchCount"]              as? NSNumber)?.intValue,
             loras:                   loras,
             refinerModel:            cfg["refinerModel"]            as? String,
-            refinerStart:            cfg["refinerStart"]            as? Double,
+            refinerStart:            (cfg["refinerStart"]            as? NSNumber)?.doubleValue,
             resolutionDependentShift: cfg["resolutionDependentShift"] as? Bool,
             cfgZeroStar:             cfg["cfgZeroStar"]             as? Bool
         )
@@ -118,7 +118,6 @@ enum DTConfigExporter {
             "height":                  config.height,
             "steps":                   config.steps,
             "guidanceScale":           config.guidanceScale,
-            "seed":                    config.seed,
             "seedMode":                seedModeIndex,
             "sampler":                 samplerIndex,
             "shift":                   config.shift,
@@ -134,6 +133,11 @@ enum DTConfigExporter {
         ]
         if let rds = config.resolutionDependentShift {
             dict["resolutionDependentShift"] = rds
+        }
+        // Serialization floor (same rule as ImageStorageManager): never emit the -1
+        // randomize sentinel — DT stores seeds as unsigned 32-bit and SIGILLs on -1.
+        if config.seed >= 0 {
+            dict["seed"] = config.seed
         }
 
         guard let data = try? JSONSerialization.data(withJSONObject: dict, options: []) else { return nil }

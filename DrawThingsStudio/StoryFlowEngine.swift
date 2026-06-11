@@ -414,13 +414,13 @@ final class StoryFlowEngine {
         func val(_ k1: String, _ k2: String? = nil) -> Any? {
             dict[k1] ?? (k2 != nil ? dict[k2!] : nil)
         }
+        // NSNumber casts per project rule: bare `as? Int` / `as? Double` on JSON-decoded
+        // numbers can silently return nil when NSNumber's storage type doesn't match.
         func intVal(_ k1: String, _ k2: String? = nil) -> Int? {
-            val(k1, k2) as? Int
+            (val(k1, k2) as? NSNumber)?.intValue
         }
         func dblVal(_ k1: String, _ k2: String? = nil) -> Double? {
-            if let d = val(k1, k2) as? Double { return d }
-            if let i = val(k1, k2) as? Int    { return Double(i) }
-            return nil
+            (val(k1, k2) as? NSNumber)?.doubleValue
         }
         func strVal(_ k1: String, _ k2: String? = nil) -> String? {
             val(k1, k2) as? String
@@ -458,10 +458,7 @@ final class StoryFlowEngine {
         if let lorasArr = dict["loras"] as? [[String: Any]] {
             config.loras = lorasArr.compactMap { d in
                 guard let file = d["file"] as? String else { return nil }
-                let weight: Double
-                if let w = d["weight"] as? Double { weight = w }
-                else if let w = d["weight"] as? Int { weight = Double(w) }
-                else { weight = 1.0 }
+                let weight = (d["weight"] as? NSNumber)?.doubleValue ?? 1.0
                 let mode = d["mode"] as? String ?? "all"
                 return DrawThingsGenerationConfig.LoRAConfig(file: file, weight: weight, mode: mode)
             }
