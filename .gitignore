@@ -12,7 +12,19 @@ output/
 tmp/
 .claude/commands/
 .claude/agents/
+.claude/skills/
 .claude/*.old.json
+
+# Internal Claude Code workflow and AI-memory files (not for public consumption)
+CLAUDE.md
+CLAUDE-history.md
+REFERENCES.md
+memory/
+CODE_AUDIT_REPORT.md
+EXECUTION_VERIFICATION_REPORT.md
+TEST_REPORT.md
+DrawThingsStudioUITests/FUNCTIONAL_TEST_REPORT.md
+DrawThingsStudioUITests/QA_REPORT.md
 
 # Compiled test binaries in repo root
 main
