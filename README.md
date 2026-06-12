@@ -219,14 +219,17 @@ DrawThingsStudio/
 - [x] PNG metadata embedding — EXIF UserComment (DT-compatible) + IPTC, resolved seeds (never -1)
 - [x] Custom save folder — security-scoped bookmarks, restart-safe gallery reads
 - [x] Shared secret support for protected Draw Things servers
+- [x] Batch seed parity — xorshift32 per-image seed derivation matching Draw Things exactly
+- [x] DT metadata protocol parity — integer sampler/seedMode enums in v2 metadata
+- [x] Seed randomization — dice button + randomize-each-run toggle, -1 sentinel eliminated from UI
+- [x] Built-in presets — 49 bundled Draw Things community-models configs
 
 ### Upcoming
 
+- [ ] **Connection & inventory UX** *(in progress)* — secret normalization + reveal toggle, model-list refresh (echo with shared secret), connection-cause banner, unknown-model toast
 - [ ] **Story Studio** — multi-scene narrative system with character consistency
 - [ ] **Canvas inpainting** — paint masks on canvas, send masked region via gRPC
 - [ ] **Inspector modes** — Review / Edit / Browse tool palette rail
-- [ ] **Batch seed parity** — match Draw Things' base+increment seed derivation across a batch
-- [ ] **DT metadata protocol parity** — integer sampler/seedMode enums in v2 metadata
 - [ ] **README polish** — screenshots, demo GIF
 
 ---
