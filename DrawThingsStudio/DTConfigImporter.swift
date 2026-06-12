@@ -28,6 +28,15 @@ struct DTCustomConfig: Identifiable {
 
 enum DTConfigImporter {
 
+    /// Load the bundled built-in presets (community_models_configs.json), pulled from
+    /// drawthingsai/community-models — Draw Things' built-in model configurations.
+    /// Returns empty if the resource is missing from the bundle.
+    static func loadBuiltIn() -> [DTCustomConfig] {
+        guard let url = Bundle.main.url(forResource: "community_models_configs", withExtension: "json")
+        else { return [] }
+        return load(from: url)
+    }
+
     /// Load and parse all configs from a custom_configs.json file URL.
     /// Ignores entries that cannot be parsed. Never throws — returns empty on failure.
     static func load(from url: URL) -> [DTCustomConfig] {

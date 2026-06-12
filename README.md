@@ -126,7 +126,7 @@ Browse Draw Things project databases directly from the app.
 
 ## Bundled Config Presets
 
-`community_models_configs.json` (repo root) contains all 49 of Draw Things' built-in model configurations, pulled from the official [drawthingsai/community-models](https://github.com/drawthingsai/community-models/tree/main/configs) repo and merged into the `custom_configs.json` array format. Import it via **Config import** in the Generate left panel.
+`DrawThingsStudio/Resources/community_models_configs.json` contains all 49 of Draw Things' built-in model configurations, pulled from the official [drawthingsai/community-models](https://github.com/drawthingsai/community-models/tree/main/configs) repo and merged into the `custom_configs.json` array format. These ship inside the app bundle and appear automatically in the config picker under **Built-in**, alongside any configs you import yourself.
 
 Source retrieved 2026-06-12. Note: each preset references a specific model file (e.g. `flux_1_dev_q5p.ckpt`) and applies fully only if that model is downloaded in Draw Things.
 
