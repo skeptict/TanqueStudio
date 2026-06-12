@@ -14,7 +14,7 @@ final class GenerateViewModel {
     var showNegativePrompt: Bool = false
 
     // MARK: — Config
-    var config = DrawThingsGenerationConfig()
+    var config = DrawThingsGenerationConfig(seed: Int(UInt32.random(in: 0...UInt32.max)))
 
     // MARK: — Current image & metadata
     var generatedImage: NSImage?
@@ -91,6 +91,12 @@ final class GenerateViewModel {
     var savedMessage: String?
     private var savedMessageTask: Task<Void, Never>?
 
+    // MARK: — Seed randomization (persisted via AppSettings)
+    var randomizeSeed: Bool {
+        get { AppSettings.shared.randomizeSeed }
+        set { AppSettings.shared.randomizeSeed = newValue }
+    }
+
     // MARK: — Panel widths (persisted via AppSettings)
     var leftPanelWidth: CGFloat {
         get { AppSettings.shared.leftPanelWidth }
@@ -124,10 +130,19 @@ final class GenerateViewModel {
         var cfg = config
         cfg.negativePrompt = negativePrompt
         cfg.applyRDSShiftIfNeeded()
+
+        // Roll base seed before capturing cfg; write back so UI shows the base seed used.
+        if randomizeSeed {
+            let newSeed = Int(UInt32.random(in: 0...UInt32.max))
+            config.seed = newSeed
+            cfg.seed = newSeed
+        }
+
         let capturedPrompt = prompt
         let capturedSource = sourceImage
         let count = cfg.batchCount  // how many sequential renders were requested
         cfg.batchCount = 1          // send one at a time so each result arrives individually
+        let baseSeed = UInt32(truncatingIfNeeded: max(0, cfg.seed))
 
         // Pass moodboard entries to the gRPC client as hints (no-op for HTTP or empty moodboard)
         let capturedMoodboard = moodboardEntries.map { ($0.image, $0.weight) }
@@ -137,14 +152,13 @@ final class GenerateViewModel {
 
         generationTask = Task {
             do {
+                var iterSeed = baseSeed
                 for _ in 0..<count {
                     if Task.isCancelled { break }
-                    // Resolve random seed locally so metadata records the actual seed used.
-                    // cfg.seed stays -1 (preserves the user's "randomize" intent for next run).
+                    // Derive per-image seed via xorshift32 chain matching DT's batch derivation.
                     var iterCfg = cfg
-                    if iterCfg.seed < 0 {
-                        iterCfg.seed = Int(UInt32.random(in: 0...UInt32.max))
-                    }
+                    iterCfg.seed = Int(iterSeed)
+                    iterSeed = xorshift32(iterSeed)
                     let images = try await client.generateImage(
                         prompt: capturedPrompt,
                         sourceImage: capturedSource,
@@ -227,7 +241,10 @@ final class GenerateViewModel {
         if let v = dtConfig.model,                  !v.isEmpty  { config.model                   = v }
         if let v = dtConfig.steps                               { config.steps                   = v }
         if let v = dtConfig.guidanceScale                       { config.guidanceScale           = v }
-        if let v = dtConfig.seed                                { config.seed                    = v }
+        if let v = dtConfig.seed {
+            if v < 0 { randomizeSeed = true; config.seed = Int(UInt32.random(in: 0...UInt32.max)) }
+            else { config.seed = v }
+        }
         if let v = dtConfig.seedMode,               !v.isEmpty  { config.seedMode                = v }
         if let v = dtConfig.sampler,                !v.isEmpty  { config.sampler                 = v }
         if let v = dtConfig.shift                               { config.shift                   = v }
@@ -248,7 +265,10 @@ final class GenerateViewModel {
         if let sampler = meta.sampler,  !sampler.isEmpty { config.sampler = sampler }
         if let steps   = meta.steps                      { config.steps   = steps }
         if let cfg     = meta.guidanceScale              { config.guidanceScale = cfg }
-        if let seed    = meta.seed                       { config.seed    = seed }
+        if let seed    = meta.seed {
+            if seed < 0 { randomizeSeed = true; config.seed = Int(UInt32.random(in: 0...UInt32.max)) }
+            else { config.seed = seed }
+        }
         if let mode    = meta.seedMode, !mode.isEmpty    { config.seedMode = mode }
         if let w       = meta.width                      { config.width   = w }
         if let h       = meta.height                     { config.height  = h }
@@ -314,6 +334,14 @@ final class GenerateViewModel {
         let target  = Double(w) / Double(h)
         return abs(current - target) < 0.02
     }
+}
+
+// MARK: - Seed derivation
+
+// Marsaglia xorshift32 — matches DT's per-image batch seed derivation.
+// Empirically confirmed 2026-06-11: base seed 1000 → [1000, 266172694, 3204629577]
+fileprivate func xorshift32(_ x: UInt32) -> UInt32 {
+    var x = x; x ^= x << 13; x ^= x >> 17; x ^= x << 5; return x
 }
 
 // MARK: - Config → PNGMetadata helper (extension on ported type; no stored properties added)

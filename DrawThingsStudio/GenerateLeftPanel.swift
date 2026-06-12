@@ -200,10 +200,28 @@ struct GenerateLeftPanel: View {
 
             // Seed
             ConfigRow("Seed") {
-                TextField("–1 = random", value: $vm.config.seed, format: .number)
+                HStack(spacing: 6) {
+                    TextField("seed", value: $vm.config.seed, format: .number)
+                        .font(TanqueDS.Font.body)
+                        .foregroundStyle(TanqueDS.Color.textPrimary)
+                        .multilineTextAlignment(.trailing)
+                    Button {
+                        vm.config.seed = Int(UInt32.random(in: 0...UInt32.max))
+                    } label: {
+                        Image(systemName: "die.face.5")
+                            .font(.system(size: 13))
+                            .foregroundStyle(TanqueDS.Color.textSecondary)
+                    }
+                    .buttonStyle(.borderless)
+                    .help("Roll new seed")
+                }
+            }
+            // Randomize toggle
+            ConfigRow("") {
+                Toggle("Randomize each run", isOn: $vm.randomizeSeed)
                     .font(TanqueDS.Font.body)
                     .foregroundStyle(TanqueDS.Color.textPrimary)
-                    .multilineTextAlignment(.trailing)
+                    .tint(TanqueDS.Color.brass)
             }
 
             // Seed Mode
@@ -961,13 +979,14 @@ private struct ConfigPickerSheet: View {
     @Bindable var vm: GenerateViewModel
     @Environment(\.dismiss) private var dismiss
     @State private var configs: [DTCustomConfig] = []
+    @State private var builtInConfigs: [DTCustomConfig] = []
     @State private var searchText = ""
     @State private var isLoading = false
     @State private var errorMessage: String? = nil
 
-    private var filteredConfigs: [DTCustomConfig] {
-        if searchText.isEmpty { return configs }
-        return configs.filter { $0.name.localizedCaseInsensitiveContains(searchText) }
+    private func filtered(_ list: [DTCustomConfig]) -> [DTCustomConfig] {
+        if searchText.isEmpty { return list }
+        return list.filter { $0.name.localizedCaseInsensitiveContains(searchText) }
     }
 
     var body: some View {
@@ -992,7 +1011,7 @@ private struct ConfigPickerSheet: View {
                     .padding()
             }
 
-            if configs.isEmpty && !isLoading {
+            if configs.isEmpty && builtInConfigs.isEmpty && !isLoading {
                 ContentUnavailableView(
                     "No Configs Loaded",
                     systemImage: "doc.badge.plus",
@@ -1009,31 +1028,48 @@ private struct ConfigPickerSheet: View {
 
                 Divider()
 
-                List(filteredConfigs) { config in
-                    HStack {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(config.name).font(.callout)
-                            let summary = [
-                                config.model.map { $0.components(separatedBy: ".").first ?? $0 },
-                                config.sampler,
-                                config.steps.map { "\($0) steps" }
-                            ].compactMap { $0 }.joined(separator: " · ")
-                            if !summary.isEmpty {
-                                Text(summary).font(.caption2).foregroundStyle(.secondary)
-                            }
+                List {
+                    if !filtered(configs).isEmpty {
+                        Section("Imported") {
+                            ForEach(filtered(configs)) { configRow($0) }
                         }
-                        Spacer()
-                        Button("Apply") {
-                            vm.applyDTConfig(config)
-                            dismiss()
+                    }
+                    if !filtered(builtInConfigs).isEmpty {
+                        Section("Built-in") {
+                            ForEach(filtered(builtInConfigs)) { configRow($0) }
                         }
-                        .font(.callout)
                     }
                 }
             }
         }
         .frame(minWidth: 420, minHeight: 400)
-        .onAppear { loadConfigsFromBookmark() }
+        .onAppear {
+            builtInConfigs = DTConfigImporter.loadBuiltIn()
+            loadConfigsFromBookmark()
+        }
+    }
+
+    @ViewBuilder
+    private func configRow(_ config: DTCustomConfig) -> some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(config.name).font(.callout)
+                let summary = [
+                    config.model.map { $0.components(separatedBy: ".").first ?? $0 },
+                    config.sampler,
+                    config.steps.map { "\($0) steps" }
+                ].compactMap { $0 }.joined(separator: " · ")
+                if !summary.isEmpty {
+                    Text(summary).font(.caption2).foregroundStyle(.secondary)
+                }
+            }
+            Spacer()
+            Button("Apply") {
+                vm.applyDTConfig(config)
+                dismiss()
+            }
+            .font(.callout)
+        }
     }
 
     // MARK: — File picking

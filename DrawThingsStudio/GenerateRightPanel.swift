@@ -301,6 +301,10 @@ struct GenerateRightPanel: View {
             return
         }
         let ok = DTConfigExporter.mergeDTClipboard(json, into: &vm.config)
+        if ok && vm.config.seed < 0 {
+            vm.randomizeSeed = true
+            vm.config.seed = Int(UInt32.random(in: 0...UInt32.max))
+        }
         onToast(ok ? "Config pasted ✓" : "Clipboard doesn't look like a DT config")
     }
 }
