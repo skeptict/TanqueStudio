@@ -14,7 +14,7 @@ final class GenerateViewModel {
     var showNegativePrompt: Bool = false
 
     // MARK: — Config
-    var config = DrawThingsGenerationConfig()
+    var config = DrawThingsGenerationConfig(seed: Int(UInt32.random(in: 0...UInt32.max)))
 
     // MARK: — Current image & metadata
     var generatedImage: NSImage?
