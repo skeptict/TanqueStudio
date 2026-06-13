@@ -226,11 +226,21 @@ DrawThingsStudio/
 
 ### Upcoming
 
-- [ ] **Connection & inventory UX** *(in progress)* — secret normalization + reveal toggle, model-list refresh (echo with shared secret), connection-cause banner, unknown-model toast
-- [ ] **Story Studio** — multi-scene narrative system with character consistency
-- [ ] **Canvas inpainting** — paint masks on canvas, send masked region via gRPC
-- [ ] **Inspector modes** — Review / Edit / Browse tool palette rail
-- [ ] **README polish** — screenshots, demo GIF
+In priority order:
+
+1. [ ] **Connection & inventory UX** *(in progress)* — secret normalization + reveal toggle, model-list refresh (echo with shared secret), connection-cause banner, unknown-model toast
+2. [ ] **Inspector modes** — Review / Edit / Browse tool palette rail, with **canvas inpainting** as Edit mode (paint masks on canvas, send masked region via gRPC)
+3. [ ] **Path handling** — image save/load bug (spaces in path, intermittent folder availability) + LLMOperations directory on a remote volume; shared security-scoped-bookmark infrastructure
+4. [ ] **Resolution Dependent Shift** — surface the existing `resolutionDependentShift` config field as a Generate toggle (auto-computed shift for rectified-flow models)
+5. [ ] **Story Studio** — multi-scene narrative system with character consistency (v2 port)
+6. [ ] **README polish** — screenshots, demo GIF
+
+### Backlog
+
+- [ ] StoryFlow polish — promptInstruction replace-mode toggle, image-variable drag-drop import, end-to-end UX testing
+- [ ] Patterns Studio integration — WKWebView panel or PNG export feeding img2img
+- [ ] Gallery collections / organization
+- [ ] Intel Mac launch failure (root cause unknown, low priority)
 
 ---
 
