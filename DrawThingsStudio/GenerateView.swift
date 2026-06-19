@@ -452,20 +452,23 @@ private struct InpaintLayer: View {
                     .frame(width: rect.width, height: rect.height)
                     .position(x: rect.midX, y: rect.midY)
 
-                Canvas { ctx, _ in
+                Canvas { ctx, size in
+                    let local = CGRect(origin: .zero, size: size)
                     for stroke in vm.maskStrokes {
                         drawStroke(stroke.points,
                                    radius: stroke.radius,
                                    isErase: stroke.isErase,
-                                   in: ctx, rect: rect)
+                                   in: ctx, rect: local)
                     }
                     if !currentStroke.isEmpty {
                         drawStroke(currentStroke,
                                    radius: (vm.brushSize / 2) / rect.width,
                                    isErase: vm.brushErase,
-                                   in: ctx, rect: rect)
+                                   in: ctx, rect: local)
                     }
                 }
+                .frame(width: rect.width, height: rect.height)
+                .position(x: rect.midX, y: rect.midY)
                 .allowsHitTesting(false)
 
                 // Brush cursor preview
