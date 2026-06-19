@@ -9,6 +9,7 @@ enum OutputFormat { case svg, png }
 
 struct GenerateView: View {
     let vm: GenerateViewModel
+    var sidebarCollapsed: Bool = false
     @Query(sort: \TSImage.createdAt, order: .reverse) private var savedImages: [TSImage]
 
     @State private var toastMessage: String? = nil
@@ -30,7 +31,7 @@ struct GenerateView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            GenerateTopBar(vm: vm, outputFormat: $outputFormat)
+            GenerateTopBar(vm: vm, outputFormat: $outputFormat, sidebarCollapsed: sidebarCollapsed)
 
             ZStack {
                 HStack(spacing: 0) {
@@ -897,6 +898,7 @@ struct PanelDragHandle: View {
 private struct GenerateTopBar: View {
     let vm: GenerateViewModel
     @Binding var outputFormat: OutputFormat
+    var sidebarCollapsed: Bool = false
 
     private var isConnected: Bool { !vm.models.isEmpty }
 
@@ -911,9 +913,10 @@ private struct GenerateTopBar: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            // Left: icon + wordmark — leading spacer clears traffic lights
+            // Left: icon + wordmark — leading spacer clears the window traffic
+            // lights when the navigation sidebar is hidden (detail sits at the edge).
             HStack(spacing: 6) {
-                Spacer().frame(width: vm.leftPanelCollapsed ? 80 : 16)
+                Spacer().frame(width: sidebarCollapsed ? 78 : 16)
                 Image(nsImage: NSApp.applicationIconImage)
                     .resizable()
                     .frame(width: 28, height: 28)
