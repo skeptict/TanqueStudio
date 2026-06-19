@@ -358,6 +358,21 @@ private struct GenerateCenterPanel: View {
                             .foregroundStyle(vm.brushErase ? Color.accentColor : TanqueDS.Color.textSecondary)
                     }
                     .buttonStyle(.plain)
+                    Divider().frame(height: 18)
+                    Button { vm.undoStroke() } label: {
+                        Image(systemName: "arrow.uturn.backward").font(.caption)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(!vm.canUndoStroke)
+                    .keyboardShortcut("z", modifiers: .command)
+                    .help("Undo stroke")
+                    Button { vm.redoStroke() } label: {
+                        Image(systemName: "arrow.uturn.forward").font(.caption)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(!vm.canRedoStroke)
+                    .keyboardShortcut("z", modifiers: [.command, .shift])
+                    .help("Redo stroke")
                     Button { vm.clearMask() } label: {
                         Label("Clear", systemImage: "trash").font(.caption)
                     }
@@ -535,7 +550,7 @@ private struct InpaintLayer: View {
                     }
                     .onEnded { _ in
                         if !currentStroke.isEmpty {
-                            vm.maskStrokes.append(.init(
+                            vm.addMaskStroke(.init(
                                 points: currentStroke,
                                 radius: (vm.brushSize / 2) / rect.width,
                                 isErase: vm.brushErase

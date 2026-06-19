@@ -53,6 +53,8 @@ final class GenerateViewModel {
 
     var canvasMode: CanvasMode = .view
     var maskStrokes: [MaskStroke] = []
+    /// Redo stack — strokes removed by undo, cleared when a new stroke is added.
+    private var redoStrokes: [MaskStroke] = []
     /// Brush diameter in on-screen points; converted to normalized radius at draw time.
     var brushSize: CGFloat = 40
     var brushErase: Bool = false
@@ -60,6 +62,23 @@ final class GenerateViewModel {
     var cropRect: CGRect?
 
     var hasMask: Bool { maskStrokes.contains { !$0.points.isEmpty && !$0.isErase } }
+    var canUndoStroke: Bool { !maskStrokes.isEmpty }
+    var canRedoStroke: Bool { !redoStrokes.isEmpty }
+
+    func addMaskStroke(_ stroke: MaskStroke) {
+        maskStrokes.append(stroke)
+        redoStrokes.removeAll()
+    }
+
+    func undoStroke() {
+        guard let last = maskStrokes.popLast() else { return }
+        redoStrokes.append(last)
+    }
+
+    func redoStroke() {
+        guard let s = redoStrokes.popLast() else { return }
+        maskStrokes.append(s)
+    }
     var hasCrop: Bool {
         guard let r = cropRect else { return false }
         return r.width > 0.01 && r.height > 0.01
@@ -68,6 +87,7 @@ final class GenerateViewModel {
     func enterPaintMode() {
         guard generatedImage != nil else { return }
         maskStrokes.removeAll()
+        redoStrokes.removeAll()
         cropRect = nil
         canvasMode = .paint
     }
@@ -83,11 +103,15 @@ final class GenerateViewModel {
     func exitEditMode() {
         canvasMode = .view
         maskStrokes.removeAll()
+        redoStrokes.removeAll()
         cropRect = nil
         brushErase = false
     }
 
-    func clearMask() { maskStrokes.removeAll() }
+    func clearMask() {
+        maskStrokes.removeAll()
+        redoStrokes.removeAll()
+    }
 
     // MARK: — Crop
 
