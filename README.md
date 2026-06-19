@@ -238,6 +238,7 @@ In priority order:
 ### Backlog
 
 - [ ] StoryFlow polish — promptInstruction replace-mode toggle, image-variable drag-drop import, end-to-end UX testing
+- [ ] DT Project Browser bulk export — multi-select images in a project database and export all (or selected) at once
 - [ ] Patterns Studio integration — WKWebView panel or PNG export feeding img2img
 - [ ] Gallery collections / organization
 - [ ] Intel Mac launch failure (root cause unknown, low priority)
