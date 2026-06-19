@@ -6,6 +6,7 @@ struct SettingsView: View {
     @State private var llmStatus: LLMStatus = .idle
     @State private var showDTHostHistory = false
     @State private var showLLMHostHistory = false
+    @State private var revealSharedSecret = false
 
     enum ConnectionStatus { case idle, testing, success, failure }
 
@@ -68,12 +69,34 @@ struct SettingsView: View {
 
                         Rectangle().fill(TanqueDS.Color.surfaceBorder).frame(height: 1)
 
-                        SecureField("Shared Secret", text: $settings.dtSharedSecret)
+                        HStack(spacing: TanqueDS.Spacing.xs) {
+                            Group {
+                                if revealSharedSecret {
+                                    TextField("Shared Secret", text: $settings.dtSharedSecret)
+                                } else {
+                                    SecureField("Shared Secret", text: $settings.dtSharedSecret)
+                                }
+                            }
                             .textFieldStyle(.plain)
                             .font(TanqueDS.Font.body)
                             .foregroundStyle(TanqueDS.Color.textPrimary)
+                            Button { revealSharedSecret.toggle() } label: {
+                                Image(systemName: revealSharedSecret ? "eye.slash" : "eye").font(.caption)
+                                    .foregroundStyle(TanqueDS.Color.textSecondary)
+                            }
+                            .buttonStyle(.borderless)
+                            .help(revealSharedSecret ? "Hide shared secret" : "Show shared secret")
+                        }
+                        .padding(.horizontal, TanqueDS.Spacing.md)
+                        .padding(.vertical, TanqueDS.Spacing.sm)
+                        .background(TanqueDS.Color.surface1)
+
+                        Text("Spaces are ignored.")
+                            .font(TanqueDS.Font.bodySmall)
+                            .foregroundStyle(TanqueDS.Color.textMuted)
                             .padding(.horizontal, TanqueDS.Spacing.md)
-                            .padding(.vertical, TanqueDS.Spacing.sm)
+                            .padding(.bottom, TanqueDS.Spacing.sm)
+                            .frame(maxWidth: .infinity, alignment: .leading)
                             .background(TanqueDS.Color.surface1)
 
                         Rectangle().fill(TanqueDS.Color.surfaceBorder).frame(height: 1)
@@ -300,7 +323,10 @@ struct SettingsView: View {
             let client = DrawThingsGRPCClient(host: host, port: port)
             let reachable = await client.checkConnection()
             connectionStatus = reachable ? .success : .failure
-            if reachable { settings.addDTHost(host) }
+            if reachable {
+                settings.addDTHost(host)
+                NotificationCenter.default.post(name: .tanqueDTConnectionVerified, object: nil)
+            }
         }
     }
 

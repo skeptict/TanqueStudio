@@ -27,6 +27,10 @@ final class GenerateViewModel {
     var progress: GenerationProgress = .complete
     var errorMessage: String?
 
+    /// Non-blocking warning surfaced as a toast by GenerateView (e.g. an imported
+    /// config referencing a model Draw Things doesn't have). Set, then observed.
+    var transientWarning: String?
+
     // MARK: — Assets
     var models: [DrawThingsModel] = []
     var loras: [DrawThingsLoRA] = []
@@ -122,6 +126,21 @@ final class GenerateViewModel {
 
     func generate(in context: ModelContext) {
         guard !isGenerating else { return }
+        // No model → Draw Things denoises into colorful static with no error.
+        // Block early with a clear message instead.
+        guard !config.model.trimmingCharacters(in: .whitespaces).isEmpty else {
+            errorMessage = "Select a model first."
+            return
+        }
+        // Model not in a loaded inventory → DT runs a nonexistent model and returns
+        // a bogus image (and we'd write the fake name into metadata). Don't waste the
+        // render. Only enforced when the inventory is populated — an empty list means
+        // we couldn't fetch it (e.g. a secret-protected server), so we can't validate.
+        if !models.isEmpty,
+           !models.contains(where: { $0.filename == config.model || $0.name == config.model }) {
+            errorMessage = "Model '\(config.model)' isn't in Draw Things' model list. Choose an installed model."
+            return
+        }
         errorMessage = nil
         isGenerating = true
         progress = .starting
@@ -171,7 +190,7 @@ final class GenerateViewModel {
                     guard let image = images.first else {
                         // DT completed the request but produced nothing (e.g. model/sampler
                         // mismatch). Surface it — don't silently clear the canvas.
-                        self.errorMessage = "Draw Things returned no image — check that the model supports the current sampler and parameters."
+                        self.errorMessage = "Draw Things returned no image. Possible causes: the model isn't downloaded in Draw Things, the sampler isn't supported by this model, or the server's shared secret doesn't match (Settings → Draw Things)."
                         continue
                     }
                     self.generatedImage = image
@@ -256,6 +275,18 @@ final class GenerateViewModel {
         if let v = dtConfig.resolutionDependentShift            { config.resolutionDependentShift = v }
         if let v = dtConfig.cfgZeroStar                         { config.cfgZeroStar             = v }
         if !dtConfig.loras.isEmpty                              { config.loras                   = dtConfig.loras }
+        warnIfModelUnknown(config.model)
+    }
+
+    /// Warns (non-blocking) when an applied model isn't in Draw Things' known model
+    /// list. Only fires when the list is populated — an empty list means we couldn't
+    /// fetch the inventory, which is a connection problem, not an unknown model.
+    private func warnIfModelUnknown(_ modelName: String) {
+        guard !modelName.isEmpty, !models.isEmpty else { return }
+        let known = models.contains { $0.filename == modelName || $0.name == modelName }
+        if !known {
+            transientWarning = "Model '\(modelName)' isn't in Draw Things' model list."
+        }
     }
 
     /// Applies all non-nil fields from a PNGMetadata snapshot to the current config.

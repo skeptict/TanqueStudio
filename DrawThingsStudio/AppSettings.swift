@@ -220,9 +220,12 @@ extension AppSettings {
 // MARK: - Factory
 
 extension AppSettings {
-    /// dtSharedSecret normalized for transport: nil when unset/empty.
+    /// dtSharedSecret normalized for transport: all whitespace stripped, nil when unset/empty.
+    /// DT displays the secret grouped with spaces ("8EA9 N6UM WYFM") but expects it without —
+    /// normalize here so a verbatim paste authenticates regardless of spacing.
     var dtSharedSecretOrNil: String? {
-        dtSharedSecret.isEmpty ? nil : dtSharedSecret
+        let stripped = dtSharedSecret.filter { !$0.isWhitespace }
+        return stripped.isEmpty ? nil : stripped
     }
 
     func createDrawThingsClient() -> any DrawThingsProvider {

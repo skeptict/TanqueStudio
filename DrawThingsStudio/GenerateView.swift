@@ -133,6 +133,15 @@ struct GenerateView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .onAppear { vm.loadAssets() }
+            .onChange(of: vm.transientWarning) { _, warning in
+                if let warning {
+                    showToast(warning)
+                    vm.transientWarning = nil
+                }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .tanqueDTConnectionVerified)) { _ in
+                if vm.models.isEmpty { vm.loadAssets() }
+            }
 
             GenerateStatusBar(vm: vm)
         }
@@ -298,13 +307,13 @@ private struct GenerateCenterPanel: View {
 
     private func errorBanner(_ message: String) -> some View {
         VStack {
-            HStack(spacing: 8) {
+            HStack(alignment: .top, spacing: 8) {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .foregroundStyle(.yellow)
                 Text(message)
                     .font(.caption)
-                    .lineLimit(3)
-                Spacer()
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 8)
                 Button {
                     vm.errorMessage = nil
                 } label: {
@@ -313,6 +322,7 @@ private struct GenerateCenterPanel: View {
                 .buttonStyle(.plain)
             }
             .padding(12)
+            .frame(maxWidth: 420)
             .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
             .padding()
             Spacer()
