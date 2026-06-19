@@ -126,6 +126,12 @@ final class GenerateViewModel {
 
     func generate(in context: ModelContext) {
         guard !isGenerating else { return }
+        // No model → Draw Things denoises into colorful static with no error.
+        // Block early with a clear message instead.
+        guard !config.model.trimmingCharacters(in: .whitespaces).isEmpty else {
+            errorMessage = "Select a model first."
+            return
+        }
         errorMessage = nil
         isGenerating = true
         progress = .starting
