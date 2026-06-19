@@ -545,6 +545,7 @@ private struct InpaintLayer: View {
             .gesture(
                 DragGesture(minimumDistance: 0)
                     .onChanged { v in
+                        guard rect.width > 0, rect.height > 0 else { return }
                         cursor = v.location
                         currentStroke.append(normalize(v.location, in: rect))
                     }
@@ -645,6 +646,7 @@ private struct CropLayer: View {
             .gesture(
                 DragGesture(minimumDistance: 1)
                     .onChanged { v in
+                        guard rect.width > 0, rect.height > 0 else { return }
                         if dragStart == nil { dragStart = clamp(v.startLocation, to: rect) }
                         let a = dragStart!
                         let b = clamp(v.location, to: rect)

@@ -85,7 +85,7 @@ final class GenerateViewModel {
     }
 
     func enterPaintMode() {
-        guard generatedImage != nil else { return }
+        guard generatedImage != nil, !isGenerating else { return }
         maskStrokes.removeAll()
         redoStrokes.removeAll()
         cropRect = nil
@@ -93,8 +93,9 @@ final class GenerateViewModel {
     }
 
     func enterCropMode() {
-        guard generatedImage != nil else { return }
+        guard generatedImage != nil, !isGenerating else { return }
         maskStrokes.removeAll()
+        redoStrokes.removeAll()
         cropRect = nil
         canvasMode = .crop
     }
