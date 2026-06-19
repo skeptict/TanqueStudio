@@ -132,6 +132,15 @@ final class GenerateViewModel {
             errorMessage = "Select a model first."
             return
         }
+        // Model not in a loaded inventory → DT runs a nonexistent model and returns
+        // a bogus image (and we'd write the fake name into metadata). Don't waste the
+        // render. Only enforced when the inventory is populated — an empty list means
+        // we couldn't fetch it (e.g. a secret-protected server), so we can't validate.
+        if !models.isEmpty,
+           !models.contains(where: { $0.filename == config.model || $0.name == config.model }) {
+            errorMessage = "Model '\(config.model)' isn't in Draw Things' model list. Choose an installed model."
+            return
+        }
         errorMessage = nil
         isGenerating = true
         progress = .starting
