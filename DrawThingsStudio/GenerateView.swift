@@ -156,6 +156,7 @@ private struct GenerateCenterPanel: View {
     @Binding var canvasScale: CGFloat
     @Binding var canvasOffset: CGSize
     @Binding var canvasSize: CGSize
+    @Environment(\.modelContext) private var modelContext
 
     @State private var isDropTargeted = false
     @State private var lastScale: CGFloat = 1.0
@@ -190,37 +191,41 @@ private struct GenerateCenterPanel: View {
             Color.black
 
             if let image = vm.generatedImage {
-                Image(nsImage: image)
-                    .resizable()
-                    .aspectRatio(contentMode: .fit)
-                    .padding(16)
-                    .scaleEffect(canvasScale)
-                    .offset(canvasOffset)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .contentShape(Rectangle())
-                    .onTapGesture(count: 2) {
-                        withAnimation(.spring(response: 0.3)) {
-                            canvasScale  = 1.0
-                            canvasOffset = .zero
-                            lastScale    = 1.0
-                            lastOffset   = .zero
-                        }
-                    }
-                    .onTapGesture(count: 1) {
-                        vm.showImmersive = true
-                    }
-                    .simultaneousGesture(magnificationGesture)
-                    .simultaneousGesture(
-                        DragGesture()
-                            .onChanged { value in
-                                guard canvasScale > 1.05 else { return }
-                                canvasOffset = CGSize(
-                                    width:  lastOffset.width  + value.translation.width,
-                                    height: lastOffset.height + value.translation.height
-                                )
+                if vm.canvasMode == .paint {
+                    InpaintLayer(vm: vm, image: image)
+                } else {
+                    Image(nsImage: image)
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .padding(16)
+                        .scaleEffect(canvasScale)
+                        .offset(canvasOffset)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .contentShape(Rectangle())
+                        .onTapGesture(count: 2) {
+                            withAnimation(.spring(response: 0.3)) {
+                                canvasScale  = 1.0
+                                canvasOffset = .zero
+                                lastScale    = 1.0
+                                lastOffset   = .zero
                             }
-                            .onEnded { _ in lastOffset = canvasOffset }
-                    )
+                        }
+                        .onTapGesture(count: 1) {
+                            vm.showImmersive = true
+                        }
+                        .simultaneousGesture(magnificationGesture)
+                        .simultaneousGesture(
+                            DragGesture()
+                                .onChanged { value in
+                                    guard canvasScale > 1.05 else { return }
+                                    canvasOffset = CGSize(
+                                        width:  lastOffset.width  + value.translation.width,
+                                        height: lastOffset.height + value.translation.height
+                                    )
+                                }
+                                .onEnded { _ in lastOffset = canvasOffset }
+                        )
+                }
             } else {
                 emptyState
             }
@@ -240,19 +245,31 @@ private struct GenerateCenterPanel: View {
                     .allowsHitTesting(false)
             }
 
-            // Zoom indicator
-            VStack {
-                Spacer()
-                Text("\(Int(canvasScale * 100))%")
-                    .font(.caption)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 6))
-                    .padding(.bottom, 10)
-                    .opacity(abs(canvasScale - 1.0) < 0.01 ? 0 : 1)
-                    .animation(.easeInOut(duration: 0.2), value: canvasScale)
+            // Zoom indicator (view mode only)
+            if vm.canvasMode == .view {
+                VStack {
+                    Spacer()
+                    Text("\(Int(canvasScale * 100))%")
+                        .font(.caption)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 6))
+                        .padding(.bottom, 10)
+                        .opacity(abs(canvasScale - 1.0) < 0.01 ? 0 : 1)
+                        .animation(.easeInOut(duration: 0.2), value: canvasScale)
+                }
+                .allowsHitTesting(false)
             }
-            .allowsHitTesting(false)
+
+            // Canvas mode toolbar (only with an image loaded)
+            if vm.generatedImage != nil {
+                canvasModeToolbar
+            }
+
+            // Paint controls + inpaint action bar
+            if vm.canvasMode == .paint {
+                paintControls
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .contentShape(Rectangle())
@@ -264,7 +281,10 @@ private struct GenerateCenterPanel: View {
             vm.handleDroppedImageURL(url)
             return true
         } isTargeted: { isDropTargeted = $0 }
-        .onChange(of: vm.generatedImage) { _, _ in resetZoom() }
+        .onChange(of: vm.generatedImage) { _, _ in
+            resetZoom()
+            vm.exitPaintMode()
+        }
         .background(
             GeometryReader { geo in
                 Color.clear
@@ -272,6 +292,82 @@ private struct GenerateCenterPanel: View {
                     .onChange(of: geo.size) { _, newSize in canvasSize = newSize }
             }
         )
+    }
+
+    // Top-right toggle between View and Paint modes.
+    private var canvasModeToolbar: some View {
+        VStack {
+            HStack {
+                Spacer()
+                HStack(spacing: 2) {
+                    modeButton(.view, system: "hand.draw", help: "View — zoom & pan")
+                    modeButton(.paint, system: "paintbrush.pointed", help: "Paint a mask to inpaint")
+                }
+                .padding(4)
+                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+                .padding(12)
+            }
+            Spacer()
+        }
+    }
+
+    private func modeButton(_ mode: GenerateViewModel.CanvasMode, system: String, help: String) -> some View {
+        Button {
+            if mode == .paint { vm.enterPaintMode() } else { vm.exitPaintMode() }
+        } label: {
+            Image(systemName: system)
+                .font(.system(size: 13, weight: .medium))
+                .frame(width: 30, height: 26)
+                .background(vm.canvasMode == mode ? Color.accentColor.opacity(0.85) : Color.clear,
+                           in: RoundedRectangle(cornerRadius: 6))
+                .foregroundStyle(vm.canvasMode == mode ? Color.white : TanqueDS.Color.textSecondary)
+        }
+        .buttonStyle(.plain)
+        .help(help)
+    }
+
+    // Bottom overlay: brush size, eraser, clear, and the inpaint/cancel actions.
+    private var paintControls: some View {
+        VStack {
+            Spacer()
+            VStack(spacing: 10) {
+                HStack(spacing: 12) {
+                    Image(systemName: "paintbrush.pointed").font(.caption)
+                    Slider(value: $vm.brushSize, in: 10...200)
+                        .frame(width: 140)
+                    Text("\(Int(vm.brushSize))pt")
+                        .font(.caption.monospacedDigit())
+                        .frame(width: 38, alignment: .leading)
+                    Divider().frame(height: 18)
+                    Button { vm.brushErase.toggle() } label: {
+                        Label("Erase", systemImage: "eraser")
+                            .font(.caption)
+                            .foregroundStyle(vm.brushErase ? Color.accentColor : TanqueDS.Color.textSecondary)
+                    }
+                    .buttonStyle(.plain)
+                    Button { vm.clearMask() } label: {
+                        Label("Clear", systemImage: "trash").font(.caption)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(vm.maskStrokes.isEmpty)
+                }
+                HStack(spacing: 10) {
+                    Button {
+                        vm.generateInpaint(in: modelContext)
+                    } label: {
+                        Label("Generate (inpaint)", systemImage: "wand.and.stars")
+                            .font(.callout.weight(.medium))
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(!vm.hasMask || vm.isGenerating)
+                    Button("Done") { vm.exitPaintMode() }
+                        .buttonStyle(.bordered)
+                }
+            }
+            .padding(12)
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 10))
+            .padding(.bottom, 16)
+        }
     }
 
     private var emptyState: some View {
@@ -327,6 +423,118 @@ private struct GenerateCenterPanel: View {
             .padding()
             Spacer()
         }
+    }
+}
+
+// MARK: - Inpaint Paint Layer
+
+/// Renders the image at fit-scale with a live mask overlay and captures brush
+/// strokes in normalized image coordinates. Zoom/pan are intentionally disabled
+/// while painting so strokes map through a single known transform.
+private struct InpaintLayer: View {
+    @Bindable var vm: GenerateViewModel
+    let image: NSImage
+
+    @State private var currentStroke: [CGPoint] = []
+    @State private var cursor: CGPoint? = nil
+
+    var body: some View {
+        GeometryReader { geo in
+            let pad: CGFloat = 16
+            let avail = CGSize(width: max(0, geo.size.width - pad * 2),
+                               height: max(0, geo.size.height - pad * 2))
+            let fit = aspectFit(image.size, in: avail)
+            let rect = CGRect(x: pad + fit.minX, y: pad + fit.minY, width: fit.width, height: fit.height)
+
+            ZStack(alignment: .topLeading) {
+                Image(nsImage: image)
+                    .resizable()
+                    .frame(width: rect.width, height: rect.height)
+                    .position(x: rect.midX, y: rect.midY)
+
+                Canvas { ctx, _ in
+                    for stroke in vm.maskStrokes {
+                        drawStroke(stroke.points,
+                                   radius: stroke.radius,
+                                   isErase: stroke.isErase,
+                                   in: ctx, rect: rect)
+                    }
+                    if !currentStroke.isEmpty {
+                        drawStroke(currentStroke,
+                                   radius: (vm.brushSize / 2) / rect.width,
+                                   isErase: vm.brushErase,
+                                   in: ctx, rect: rect)
+                    }
+                }
+                .allowsHitTesting(false)
+
+                // Brush cursor preview
+                if let c = cursor {
+                    Circle()
+                        .strokeBorder(Color.white.opacity(0.9), lineWidth: 1)
+                        .frame(width: vm.brushSize, height: vm.brushSize)
+                        .position(c)
+                        .allowsHitTesting(false)
+                }
+            }
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { v in
+                        cursor = v.location
+                        currentStroke.append(normalize(v.location, in: rect))
+                    }
+                    .onEnded { _ in
+                        if !currentStroke.isEmpty {
+                            vm.maskStrokes.append(.init(
+                                points: currentStroke,
+                                radius: (vm.brushSize / 2) / rect.width,
+                                isErase: vm.brushErase
+                            ))
+                            currentStroke = []
+                        }
+                    }
+            )
+            .onContinuousHover { phase in
+                if case .active(let p) = phase { cursor = p } else { cursor = nil }
+            }
+        }
+    }
+
+    private func drawStroke(_ pts: [CGPoint], radius: CGFloat, isErase: Bool,
+                            in ctx: GraphicsContext, rect: CGRect) {
+        guard !pts.isEmpty else { return }
+        var ctx = ctx
+        ctx.blendMode = isErase ? .destinationOut : .normal
+        let lineWidth = max(1, radius * rect.width * 2)
+        let screenPts = pts.map { CGPoint(x: $0.x * rect.width, y: $0.y * rect.height) }
+        let color = Color.white.opacity(0.5)
+        if screenPts.count == 1 {
+            let r = lineWidth / 2
+            let dot = Path(ellipseIn: CGRect(x: screenPts[0].x - r, y: screenPts[0].y - r,
+                                             width: lineWidth, height: lineWidth))
+            ctx.fill(dot, with: .color(isErase ? .white : color))
+        } else {
+            var path = Path()
+            path.move(to: screenPts[0])
+            for p in screenPts.dropFirst() { path.addLine(to: p) }
+            ctx.stroke(path, with: .color(isErase ? .white : color),
+                       style: StrokeStyle(lineWidth: lineWidth, lineCap: .round, lineJoin: .round))
+        }
+    }
+
+    private func normalize(_ p: CGPoint, in rect: CGRect) -> CGPoint {
+        CGPoint(
+            x: min(1, max(0, (p.x - rect.minX) / rect.width)),
+            y: min(1, max(0, (p.y - rect.minY) / rect.height))
+        )
+    }
+
+    private func aspectFit(_ imageSize: CGSize, in avail: CGSize) -> CGRect {
+        guard imageSize.width > 0, imageSize.height > 0, avail.width > 0, avail.height > 0 else { return .zero }
+        let scale = min(avail.width / imageSize.width, avail.height / imageSize.height)
+        let w = imageSize.width * scale, h = imageSize.height * scale
+        return CGRect(x: (avail.width - w) / 2, y: (avail.height - h) / 2, width: w, height: h)
     }
 }
 

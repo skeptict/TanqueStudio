@@ -39,6 +39,39 @@ final class GenerateViewModel {
     // MARK: — img2img source
     var sourceImage: NSImage?
 
+    // MARK: — Canvas editing (inpainting)
+
+    enum CanvasMode { case view, paint }
+
+    /// A single brush stroke in normalized image coordinates (0...1), so it maps
+    /// cleanly to both the on-screen fit rect and the full-resolution mask bitmap.
+    struct MaskStroke {
+        var points: [CGPoint]   // normalized 0...1 within the image
+        var radius: CGFloat     // normalized to image width
+        var isErase: Bool
+    }
+
+    var canvasMode: CanvasMode = .view
+    var maskStrokes: [MaskStroke] = []
+    /// Brush diameter in on-screen points; converted to normalized radius at draw time.
+    var brushSize: CGFloat = 40
+    var brushErase: Bool = false
+
+    var hasMask: Bool { maskStrokes.contains { !$0.points.isEmpty && !$0.isErase } }
+
+    func enterPaintMode() {
+        guard generatedImage != nil else { return }
+        canvasMode = .paint
+    }
+
+    func exitPaintMode() {
+        canvasMode = .view
+        maskStrokes.removeAll()
+        brushErase = false
+    }
+
+    func clearMask() { maskStrokes.removeAll() }
+
     // MARK: — Moodboard
 
     struct MoodboardEntry: Identifiable {
@@ -221,6 +254,132 @@ final class GenerateViewModel {
         generationTask?.cancel()
         isGenerating = false
         progress = .complete
+    }
+
+    // MARK: — Inpaint
+
+    /// Regenerate only the painted region of the current image: send it as the
+    /// img2img source plus a binary mask built from the brush strokes.
+    func generateInpaint(in context: ModelContext) {
+        guard !isGenerating else { return }
+        guard let source = generatedImage else { return }
+        guard hasMask else { errorMessage = "Paint a region to inpaint first."; return }
+        guard !config.model.trimmingCharacters(in: .whitespaces).isEmpty else {
+            errorMessage = "Select a model first."
+            return
+        }
+        if !models.isEmpty,
+           !models.contains(where: { $0.filename == config.model || $0.name == config.model }) {
+            errorMessage = "Model '\(config.model)' isn't in Draw Things' model list. Choose an installed model."
+            return
+        }
+        guard let mask = rasterizeMask(for: source) else {
+            errorMessage = "Could not build the mask."
+            return
+        }
+
+        errorMessage = nil
+        isGenerating = true
+        progress = .starting
+
+        let client = AppSettings.shared.createDrawThingsClient()
+        var cfg = config
+        cfg.negativePrompt = negativePrompt
+        cfg.applyRDSShiftIfNeeded()
+        if randomizeSeed {
+            let newSeed = Int(UInt32.random(in: 0...UInt32.max))
+            config.seed = newSeed
+            cfg.seed = newSeed
+        }
+        cfg.batchCount = 1
+
+        let capturedPrompt = prompt
+        let capturedMoodboard = moodboardEntries.map { ($0.image, $0.weight) }
+        if !capturedMoodboard.isEmpty, let grpcClient = client as? DrawThingsGRPCClient {
+            grpcClient.setMoodboard(capturedMoodboard)
+        }
+        let resolved = cfg
+
+        generationTask = Task {
+            do {
+                let images = try await client.generateImage(
+                    prompt: capturedPrompt,
+                    sourceImage: source,
+                    mask: mask,
+                    config: resolved,
+                    onProgress: { [weak self] p in
+                        Task { @MainActor [weak self] in self?.progress = p }
+                    }
+                )
+                guard let image = images.first else {
+                    self.errorMessage = "Draw Things returned no image. Possible causes: the model isn't downloaded in Draw Things, the sampler isn't supported by this model, or the server's shared secret doesn't match (Settings → Draw Things)."
+                    self.isGenerating = false
+                    self.progress = .complete
+                    return
+                }
+                self.generatedImage = image
+                self.currentMetadata = resolved.asPNGMetadata(prompt: capturedPrompt)
+                self.currentImageSource = .generated
+                self.selectedRightTab = .metadata
+                if AppSettings.shared.autoSaveGenerated {
+                    saveCurrentImage(in: context, source: .generated, resolvedConfig: resolved)
+                }
+                self.exitPaintMode()
+                self.isGenerating = false
+                self.progress = .complete
+            } catch is CancellationError {
+                self.isGenerating = false
+                self.progress = .complete
+            } catch {
+                self.errorMessage = error.localizedDescription
+                self.isGenerating = false
+                self.progress = .failed(error.localizedDescription)
+            }
+        }
+    }
+
+    /// Rasterizes the brush strokes into a black/white mask at the source image's
+    /// pixel size. White = painted (region to regenerate), black = preserve.
+    /// NOTE: DT mask polarity is unverified — if results are inverted, flip the
+    /// paint/erase gray values below (confirm live via request_log.txt).
+    private func rasterizeMask(for image: NSImage) -> NSImage? {
+        guard let cg = image.cgImage(forProposedRect: nil, context: nil, hints: nil) else { return nil }
+        let w = cg.width, h = cg.height
+        guard w > 0, h > 0 else { return nil }
+
+        guard let ctx = CGContext(
+            data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: 0,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else { return nil }
+
+        ctx.setFillColor(gray: 0, alpha: 1)          // black background = preserve
+        ctx.fill(CGRect(x: 0, y: 0, width: w, height: h))
+        ctx.setLineCap(CGLineCap.round)
+        ctx.setLineJoin(CGLineJoin.round)
+
+        let fw = CGFloat(w), fh = CGFloat(h)
+        for stroke in maskStrokes where !stroke.points.isEmpty {
+            let gray: CGFloat = stroke.isErase ? 0 : 1
+            ctx.setStrokeColor(gray: gray, alpha: 1)
+            ctx.setFillColor(gray: gray, alpha: 1)
+            let lineWidth = max(1, stroke.radius * fw * 2)
+            ctx.setLineWidth(lineWidth)
+            // Normalized points have y=0 at top; CGContext is bottom-left, so flip y.
+            let pts = stroke.points.map { CGPoint(x: $0.x * fw, y: (1 - $0.y) * fh) }
+            if pts.count == 1 {
+                let r = lineWidth / 2
+                ctx.fillEllipse(in: CGRect(x: pts[0].x - r, y: pts[0].y - r, width: lineWidth, height: lineWidth))
+            } else {
+                ctx.beginPath()
+                ctx.move(to: pts[0])
+                for p in pts.dropFirst() { ctx.addLine(to: p) }
+                ctx.strokePath()
+            }
+        }
+
+        guard let out = ctx.makeImage() else { return nil }
+        return NSImage(cgImage: out, size: NSSize(width: w, height: h))
     }
 
     // MARK: — Save to SwiftData
