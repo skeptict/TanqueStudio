@@ -97,6 +97,33 @@ final class DrawThingsGRPCClient: DrawThingsProvider {
             // Generate the image - pass source image, mask, and moodboard hints if set
             let hints = moodboardHints
             moodboardHints = []   // clear before await so concurrent calls don't double-use
+
+            // Inpainting: the high-level client encodes the mask with the image-tensor
+            // format (imageToDTTensor), which is the wrong shape for a mask and crashes
+            // Draw Things in isInpainting(). Route masked renders through the low-level
+            // service with the correct createMaskFromAlpha encoding (1 byte/pixel,
+            // alpha<255 = inpaint, alpha=255 = preserve).
+            if let mask = mask, let source = sourceImage {
+                guard let service = service else {
+                    throw DrawThingsError.connectionFailed("No gRPC service available for inpainting")
+                }
+                let configData = try grpcConfig.toFlatBufferData()
+                let imageData = try ImageHelpers.imageToDTTensor(source, forceRGB: true)
+                let maskData = try ImageHelpers.createMaskFromAlpha(mask)
+                let resultData = try await service.generateImage(
+                    prompt: prompt,
+                    negativePrompt: config.negativePrompt,
+                    configuration: configData,
+                    image: imageData,
+                    mask: maskData,
+                    hints: hints,
+                    sharedSecret: sharedSecret
+                )
+                onProgress?(.complete)
+                RequestLogger.shared.logGRPCResponse(imageCount: resultData.count)
+                return try resultData.map { try ImageHelpers.dtTensorToImage($0) }
+            }
+
             let images = try await client.generateImage(
                 prompt: prompt,
                 negativePrompt: config.negativePrompt,

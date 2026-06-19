@@ -9,6 +9,7 @@ enum OutputFormat { case svg, png }
 
 struct GenerateView: View {
     let vm: GenerateViewModel
+    var sidebarCollapsed: Bool = false
     @Query(sort: \TSImage.createdAt, order: .reverse) private var savedImages: [TSImage]
 
     @State private var toastMessage: String? = nil
@@ -30,7 +31,7 @@ struct GenerateView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            GenerateTopBar(vm: vm, outputFormat: $outputFormat)
+            GenerateTopBar(vm: vm, outputFormat: $outputFormat, sidebarCollapsed: sidebarCollapsed)
 
             ZStack {
                 HStack(spacing: 0) {
@@ -156,6 +157,7 @@ private struct GenerateCenterPanel: View {
     @Binding var canvasScale: CGFloat
     @Binding var canvasOffset: CGSize
     @Binding var canvasSize: CGSize
+    @Environment(\.modelContext) private var modelContext
 
     @State private var isDropTargeted = false
     @State private var lastScale: CGFloat = 1.0
@@ -190,37 +192,43 @@ private struct GenerateCenterPanel: View {
             Color.black
 
             if let image = vm.generatedImage {
-                Image(nsImage: image)
-                    .resizable()
-                    .aspectRatio(contentMode: .fit)
-                    .padding(16)
-                    .scaleEffect(canvasScale)
-                    .offset(canvasOffset)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .contentShape(Rectangle())
-                    .onTapGesture(count: 2) {
-                        withAnimation(.spring(response: 0.3)) {
-                            canvasScale  = 1.0
-                            canvasOffset = .zero
-                            lastScale    = 1.0
-                            lastOffset   = .zero
-                        }
-                    }
-                    .onTapGesture(count: 1) {
-                        vm.showImmersive = true
-                    }
-                    .simultaneousGesture(magnificationGesture)
-                    .simultaneousGesture(
-                        DragGesture()
-                            .onChanged { value in
-                                guard canvasScale > 1.05 else { return }
-                                canvasOffset = CGSize(
-                                    width:  lastOffset.width  + value.translation.width,
-                                    height: lastOffset.height + value.translation.height
-                                )
+                if vm.canvasMode == .paint {
+                    InpaintLayer(vm: vm, image: image)
+                } else if vm.canvasMode == .crop {
+                    CropLayer(vm: vm, image: image)
+                } else {
+                    Image(nsImage: image)
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .padding(16)
+                        .scaleEffect(canvasScale)
+                        .offset(canvasOffset)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .contentShape(Rectangle())
+                        .onTapGesture(count: 2) {
+                            withAnimation(.spring(response: 0.3)) {
+                                canvasScale  = 1.0
+                                canvasOffset = .zero
+                                lastScale    = 1.0
+                                lastOffset   = .zero
                             }
-                            .onEnded { _ in lastOffset = canvasOffset }
-                    )
+                        }
+                        .onTapGesture(count: 1) {
+                            vm.showImmersive = true
+                        }
+                        .simultaneousGesture(magnificationGesture)
+                        .simultaneousGesture(
+                            DragGesture()
+                                .onChanged { value in
+                                    guard canvasScale > 1.05 else { return }
+                                    canvasOffset = CGSize(
+                                        width:  lastOffset.width  + value.translation.width,
+                                        height: lastOffset.height + value.translation.height
+                                    )
+                                }
+                                .onEnded { _ in lastOffset = canvasOffset }
+                        )
+                }
             } else {
                 emptyState
             }
@@ -240,19 +248,36 @@ private struct GenerateCenterPanel: View {
                     .allowsHitTesting(false)
             }
 
-            // Zoom indicator
-            VStack {
-                Spacer()
-                Text("\(Int(canvasScale * 100))%")
-                    .font(.caption)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 6))
-                    .padding(.bottom, 10)
-                    .opacity(abs(canvasScale - 1.0) < 0.01 ? 0 : 1)
-                    .animation(.easeInOut(duration: 0.2), value: canvasScale)
+            // Zoom indicator (view mode only)
+            if vm.canvasMode == .view {
+                VStack {
+                    Spacer()
+                    Text("\(Int(canvasScale * 100))%")
+                        .font(.caption)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 6))
+                        .padding(.bottom, 10)
+                        .opacity(abs(canvasScale - 1.0) < 0.01 ? 0 : 1)
+                        .animation(.easeInOut(duration: 0.2), value: canvasScale)
+                }
+                .allowsHitTesting(false)
             }
-            .allowsHitTesting(false)
+
+            // Canvas mode toolbar (only with an image loaded)
+            if vm.generatedImage != nil {
+                canvasModeToolbar
+            }
+
+            // Paint controls + inpaint action bar
+            if vm.canvasMode == .paint {
+                paintControls
+            }
+
+            // Crop action bar
+            if vm.canvasMode == .crop {
+                cropControls
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .contentShape(Rectangle())
@@ -264,7 +289,10 @@ private struct GenerateCenterPanel: View {
             vm.handleDroppedImageURL(url)
             return true
         } isTargeted: { isDropTargeted = $0 }
-        .onChange(of: vm.generatedImage) { _, _ in resetZoom() }
+        .onChange(of: vm.generatedImage) { _, _ in
+            resetZoom()
+            vm.exitEditMode()
+        }
         .background(
             GeometryReader { geo in
                 Color.clear
@@ -272,6 +300,135 @@ private struct GenerateCenterPanel: View {
                     .onChange(of: geo.size) { _, newSize in canvasSize = newSize }
             }
         )
+    }
+
+    // Top-right toggle between View, Paint, and Crop modes.
+    private var canvasModeToolbar: some View {
+        VStack {
+            HStack {
+                Spacer()
+                HStack(spacing: 2) {
+                    modeButton(.view, system: "hand.draw", help: "View — zoom & pan")
+                    modeButton(.paint, system: "paintbrush.pointed", help: "Paint a mask to inpaint")
+                    modeButton(.crop, system: "crop", help: "Crop a region")
+                }
+                .padding(4)
+                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+                .padding(12)
+            }
+            Spacer()
+        }
+    }
+
+    private func modeButton(_ mode: GenerateViewModel.CanvasMode, system: String, help: String) -> some View {
+        Button {
+            switch mode {
+            case .paint: vm.enterPaintMode()
+            case .crop:  vm.enterCropMode()
+            case .view:  vm.exitEditMode()
+            }
+        } label: {
+            Image(systemName: system)
+                .font(.system(size: 13, weight: .medium))
+                .frame(width: 30, height: 26)
+                .background(vm.canvasMode == mode ? Color.accentColor.opacity(0.85) : Color.clear,
+                           in: RoundedRectangle(cornerRadius: 6))
+                .foregroundStyle(vm.canvasMode == mode ? Color.white : TanqueDS.Color.textSecondary)
+        }
+        .buttonStyle(.plain)
+        .help(help)
+    }
+
+    // Bottom overlay: brush size, eraser, clear, and the inpaint/cancel actions.
+    private var paintControls: some View {
+        VStack {
+            Spacer()
+            VStack(spacing: 10) {
+                HStack(spacing: 12) {
+                    Image(systemName: "paintbrush.pointed").font(.caption)
+                    Slider(value: $vm.brushSize, in: 10...200)
+                        .frame(width: 140)
+                    Text("\(Int(vm.brushSize))pt")
+                        .font(.caption.monospacedDigit())
+                        .frame(width: 38, alignment: .leading)
+                    Divider().frame(height: 18)
+                    Button { vm.brushErase.toggle() } label: {
+                        Label("Erase", systemImage: "eraser")
+                            .font(.caption)
+                            .foregroundStyle(vm.brushErase ? Color.accentColor : TanqueDS.Color.textSecondary)
+                    }
+                    .buttonStyle(.plain)
+                    Divider().frame(height: 18)
+                    Button { vm.undoStroke() } label: {
+                        Image(systemName: "arrow.uturn.backward").font(.caption)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(!vm.canUndoStroke)
+                    .keyboardShortcut("z", modifiers: .command)
+                    .help("Undo stroke")
+                    Button { vm.redoStroke() } label: {
+                        Image(systemName: "arrow.uturn.forward").font(.caption)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(!vm.canRedoStroke)
+                    .keyboardShortcut("z", modifiers: [.command, .shift])
+                    .help("Redo stroke")
+                    Button { vm.clearMask() } label: {
+                        Label("Clear", systemImage: "trash").font(.caption)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(vm.maskStrokes.isEmpty)
+                }
+                HStack(spacing: 10) {
+                    Button {
+                        vm.generateInpaint(in: modelContext)
+                    } label: {
+                        Label("Generate (inpaint)", systemImage: "wand.and.stars")
+                            .font(.callout.weight(.medium))
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(!vm.hasMask || vm.isGenerating)
+                    Button("Done") { vm.exitEditMode() }
+                        .buttonStyle(.bordered)
+                }
+            }
+            .padding(12)
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 10))
+            .padding(.bottom, 16)
+        }
+    }
+
+    // Bottom overlay: crop actions.
+    private var cropControls: some View {
+        VStack {
+            Spacer()
+            HStack(spacing: 10) {
+                Text(vm.hasCrop ? "Drag to adjust the region" : "Drag to select a region")
+                    .font(.caption)
+                    .foregroundStyle(TanqueDS.Color.textSecondary)
+                Divider().frame(height: 18)
+                Button {
+                    vm.cropToImg2img()
+                } label: {
+                    Label("Use as img2img", systemImage: "photo.on.rectangle.angled")
+                        .font(.callout.weight(.medium))
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(!vm.hasCrop)
+                Button {
+                    vm.saveCrop(in: modelContext)
+                } label: {
+                    Label("Save crop", systemImage: "square.and.arrow.down").font(.callout)
+                }
+                .buttonStyle(.bordered)
+                .disabled(!vm.hasCrop)
+                Button("Done") { vm.exitEditMode() }
+                    .buttonStyle(.bordered)
+            }
+            .padding(12)
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 10))
+            .padding(.bottom, 16)
+        }
     }
 
     private var emptyState: some View {
@@ -327,6 +484,205 @@ private struct GenerateCenterPanel: View {
             .padding()
             Spacer()
         }
+    }
+}
+
+// MARK: - Inpaint Paint Layer
+
+/// Renders the image at fit-scale with a live mask overlay and captures brush
+/// strokes in normalized image coordinates. Zoom/pan are intentionally disabled
+/// while painting so strokes map through a single known transform.
+private struct InpaintLayer: View {
+    @Bindable var vm: GenerateViewModel
+    let image: NSImage
+
+    @State private var currentStroke: [CGPoint] = []
+    @State private var cursor: CGPoint? = nil
+
+    var body: some View {
+        GeometryReader { geo in
+            let pad: CGFloat = 16
+            let avail = CGSize(width: max(0, geo.size.width - pad * 2),
+                               height: max(0, geo.size.height - pad * 2))
+            let fit = aspectFit(image.size, in: avail)
+            let rect = CGRect(x: pad + fit.minX, y: pad + fit.minY, width: fit.width, height: fit.height)
+
+            ZStack(alignment: .topLeading) {
+                Image(nsImage: image)
+                    .resizable()
+                    .frame(width: rect.width, height: rect.height)
+                    .position(x: rect.midX, y: rect.midY)
+
+                Canvas { ctx, size in
+                    let local = CGRect(origin: .zero, size: size)
+                    for stroke in vm.maskStrokes {
+                        drawStroke(stroke.points,
+                                   radius: stroke.radius,
+                                   isErase: stroke.isErase,
+                                   in: ctx, rect: local)
+                    }
+                    if !currentStroke.isEmpty {
+                        drawStroke(currentStroke,
+                                   radius: (vm.brushSize / 2) / rect.width,
+                                   isErase: vm.brushErase,
+                                   in: ctx, rect: local)
+                    }
+                }
+                .frame(width: rect.width, height: rect.height)
+                .position(x: rect.midX, y: rect.midY)
+                .allowsHitTesting(false)
+
+                // Brush cursor preview
+                if let c = cursor {
+                    Circle()
+                        .strokeBorder(Color.white.opacity(0.9), lineWidth: 1)
+                        .frame(width: vm.brushSize, height: vm.brushSize)
+                        .position(c)
+                        .allowsHitTesting(false)
+                }
+            }
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { v in
+                        guard rect.width > 0, rect.height > 0 else { return }
+                        cursor = v.location
+                        currentStroke.append(normalize(v.location, in: rect))
+                    }
+                    .onEnded { _ in
+                        if !currentStroke.isEmpty {
+                            vm.addMaskStroke(.init(
+                                points: currentStroke,
+                                radius: (vm.brushSize / 2) / rect.width,
+                                isErase: vm.brushErase
+                            ))
+                            currentStroke = []
+                        }
+                    }
+            )
+            .onContinuousHover { phase in
+                if case .active(let p) = phase { cursor = p } else { cursor = nil }
+            }
+        }
+    }
+
+    private func drawStroke(_ pts: [CGPoint], radius: CGFloat, isErase: Bool,
+                            in ctx: GraphicsContext, rect: CGRect) {
+        guard !pts.isEmpty else { return }
+        var ctx = ctx
+        ctx.blendMode = isErase ? .destinationOut : .normal
+        let lineWidth = max(1, radius * rect.width * 2)
+        let screenPts = pts.map { CGPoint(x: $0.x * rect.width, y: $0.y * rect.height) }
+        let color = Color.white.opacity(0.5)
+        if screenPts.count == 1 {
+            let r = lineWidth / 2
+            let dot = Path(ellipseIn: CGRect(x: screenPts[0].x - r, y: screenPts[0].y - r,
+                                             width: lineWidth, height: lineWidth))
+            ctx.fill(dot, with: .color(isErase ? .white : color))
+        } else {
+            var path = Path()
+            path.move(to: screenPts[0])
+            for p in screenPts.dropFirst() { path.addLine(to: p) }
+            ctx.stroke(path, with: .color(isErase ? .white : color),
+                       style: StrokeStyle(lineWidth: lineWidth, lineCap: .round, lineJoin: .round))
+        }
+    }
+
+    private func normalize(_ p: CGPoint, in rect: CGRect) -> CGPoint {
+        CGPoint(
+            x: min(1, max(0, (p.x - rect.minX) / rect.width)),
+            y: min(1, max(0, (p.y - rect.minY) / rect.height))
+        )
+    }
+
+    private func aspectFit(_ imageSize: CGSize, in avail: CGSize) -> CGRect {
+        guard imageSize.width > 0, imageSize.height > 0, avail.width > 0, avail.height > 0 else { return .zero }
+        let scale = min(avail.width / imageSize.width, avail.height / imageSize.height)
+        let w = imageSize.width * scale, h = imageSize.height * scale
+        return CGRect(x: (avail.width - w) / 2, y: (avail.height - h) / 2, width: w, height: h)
+    }
+}
+
+// MARK: - Crop Layer
+
+/// Renders the image at fit-scale and lets the user drag a crop rectangle.
+/// Selection is stored on the VM in normalized image coordinates. Zoom/pan are
+/// disabled while cropping (same rationale as painting).
+private struct CropLayer: View {
+    @Bindable var vm: GenerateViewModel
+    let image: NSImage
+
+    @State private var dragStart: CGPoint? = nil
+
+    var body: some View {
+        GeometryReader { geo in
+            let pad: CGFloat = 16
+            let avail = CGSize(width: max(0, geo.size.width - pad * 2),
+                               height: max(0, geo.size.height - pad * 2))
+            let fit = aspectFit(image.size, in: avail)
+            let rect = CGRect(x: pad + fit.minX, y: pad + fit.minY, width: fit.width, height: fit.height)
+            // Current selection in screen coords (from normalized).
+            let sel = vm.cropRect.map { screenRect($0, in: rect) }
+
+            ZStack(alignment: .topLeading) {
+                Image(nsImage: image)
+                    .resizable()
+                    .frame(width: rect.width, height: rect.height)
+                    .position(x: rect.midX, y: rect.midY)
+
+                // Dim everything outside the selection.
+                if let sel {
+                    Canvas { ctx, size in
+                        var outside = Path(CGRect(origin: .zero, size: size))
+                        outside.addRect(sel)
+                        ctx.fill(outside, with: .color(.black.opacity(0.5)), style: FillStyle(eoFill: true))
+                        ctx.stroke(Path(sel), with: .color(.white.opacity(0.9)),
+                                   style: StrokeStyle(lineWidth: 1.5, dash: [5, 4]))
+                    }
+                    .allowsHitTesting(false)
+                }
+            }
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture(minimumDistance: 1)
+                    .onChanged { v in
+                        guard rect.width > 0, rect.height > 0 else { return }
+                        if dragStart == nil { dragStart = clamp(v.startLocation, to: rect) }
+                        let a = dragStart!
+                        let b = clamp(v.location, to: rect)
+                        let screenSel = CGRect(x: min(a.x, b.x), y: min(a.y, b.y),
+                                               width: abs(b.x - a.x), height: abs(b.y - a.y))
+                        vm.cropRect = normalizeRect(screenSel, in: rect)
+                    }
+                    .onEnded { _ in dragStart = nil }
+            )
+        }
+    }
+
+    private func screenRect(_ norm: CGRect, in rect: CGRect) -> CGRect {
+        CGRect(x: rect.minX + norm.minX * rect.width,
+               y: rect.minY + norm.minY * rect.height,
+               width: norm.width * rect.width,
+               height: norm.height * rect.height)
+    }
+
+    private func normalizeRect(_ screen: CGRect, in rect: CGRect) -> CGRect {
+        CGRect(x: (screen.minX - rect.minX) / rect.width,
+               y: (screen.minY - rect.minY) / rect.height,
+               width: screen.width / rect.width,
+               height: screen.height / rect.height)
+    }
+
+    private func clamp(_ p: CGPoint, to rect: CGRect) -> CGPoint {
+        CGPoint(x: min(rect.maxX, max(rect.minX, p.x)),
+                y: min(rect.maxY, max(rect.minY, p.y)))
+    }
+
+    private func aspectFit(_ imageSize: CGSize, in avail: CGSize) -> CGRect {
+        guard imageSize.width > 0, imageSize.height > 0, avail.width > 0, avail.height > 0 else { return .zero }
+        let scale = min(avail.width / imageSize.width, avail.height / imageSize.height)
+        let w = imageSize.width * scale, h = imageSize.height * scale
+        return CGRect(x: (avail.width - w) / 2, y: (avail.height - h) / 2, width: w, height: h)
     }
 }
 
@@ -559,6 +915,7 @@ struct PanelDragHandle: View {
 private struct GenerateTopBar: View {
     let vm: GenerateViewModel
     @Binding var outputFormat: OutputFormat
+    var sidebarCollapsed: Bool = false
 
     private var isConnected: Bool { !vm.models.isEmpty }
 
@@ -573,9 +930,10 @@ private struct GenerateTopBar: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            // Left: icon + wordmark — leading spacer clears traffic lights
+            // Left: icon + wordmark — leading spacer clears the window traffic
+            // lights when the navigation sidebar is hidden (detail sits at the edge).
             HStack(spacing: 6) {
-                Spacer().frame(width: vm.leftPanelCollapsed ? 80 : 16)
+                Spacer().frame(width: sidebarCollapsed ? 78 : 16)
                 Image(nsImage: NSApp.applicationIconImage)
                     .resizable()
                     .frame(width: 28, height: 28)

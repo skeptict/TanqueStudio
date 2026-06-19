@@ -32,9 +32,10 @@ enum SidebarItem: String, CaseIterable, Identifiable {
 struct ContentView: View {
     @State private var selectedItem: SidebarItem? = .generate
     @State private var generateVM = GenerateViewModel()
+    @State private var columnVisibility: NavigationSplitViewVisibility = .all
 
     var body: some View {
-        NavigationSplitView {
+        NavigationSplitView(columnVisibility: $columnVisibility) {
             List(SidebarItem.allCases, selection: $selectedItem) { item in
                 let isSelected = selectedItem == item
                 HStack(spacing: 8) {
@@ -79,7 +80,7 @@ struct ContentView: View {
     private func detailView(for item: SidebarItem?) -> some View {
         switch item {
         case .generate:
-            GenerateView(vm: generateVM)
+            GenerateView(vm: generateVM, sidebarCollapsed: columnVisibility == .detailOnly)
                 .onReceive(NotificationCenter.default.publisher(for: .tanqueNavigateToSettings)) { _ in
                     selectedItem = .settings
                 }
