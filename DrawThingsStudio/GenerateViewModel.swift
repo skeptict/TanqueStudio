@@ -41,7 +41,7 @@ final class GenerateViewModel {
 
     // MARK: — Canvas editing (inpainting)
 
-    enum CanvasMode { case view, paint }
+    enum CanvasMode { case view, paint, crop }
 
     /// A single brush stroke in normalized image coordinates (0...1), so it maps
     /// cleanly to both the on-screen fit rect and the full-resolution mask bitmap.
@@ -56,21 +56,75 @@ final class GenerateViewModel {
     /// Brush diameter in on-screen points; converted to normalized radius at draw time.
     var brushSize: CGFloat = 40
     var brushErase: Bool = false
+    /// Crop selection in normalized image coordinates (0...1), nil until dragged.
+    var cropRect: CGRect?
 
     var hasMask: Bool { maskStrokes.contains { !$0.points.isEmpty && !$0.isErase } }
+    var hasCrop: Bool {
+        guard let r = cropRect else { return false }
+        return r.width > 0.01 && r.height > 0.01
+    }
 
     func enterPaintMode() {
         guard generatedImage != nil else { return }
+        maskStrokes.removeAll()
+        cropRect = nil
         canvasMode = .paint
     }
 
-    func exitPaintMode() {
+    func enterCropMode() {
+        guard generatedImage != nil else { return }
+        maskStrokes.removeAll()
+        cropRect = nil
+        canvasMode = .crop
+    }
+
+    /// Returns to view mode and clears all transient edit state.
+    func exitEditMode() {
         canvasMode = .view
         maskStrokes.removeAll()
+        cropRect = nil
         brushErase = false
     }
 
     func clearMask() { maskStrokes.removeAll() }
+
+    // MARK: — Crop
+
+    /// Crops an image to a normalized rect (0...1, y=0 at top).
+    func cropImage(_ image: NSImage, to rect: CGRect) -> NSImage? {
+        guard let cg = image.cgImage(forProposedRect: nil, context: nil, hints: nil) else { return nil }
+        let w = CGFloat(cg.width), h = CGFloat(cg.height)
+        let px = CGRect(x: rect.minX * w, y: rect.minY * h, width: rect.width * w, height: rect.height * h)
+            .integral.intersection(CGRect(x: 0, y: 0, width: w, height: h))
+        guard px.width >= 1, px.height >= 1, let cropped = cg.cropping(to: px) else { return nil }
+        return NSImage(cgImage: cropped, size: NSSize(width: px.width, height: px.height))
+    }
+
+    /// Sets the cropped region as the img2img source (does not alter the canvas).
+    func cropToImg2img() {
+        guard let img = generatedImage, let r = cropRect, hasCrop,
+              let cropped = cropImage(img, to: r) else { return }
+        sourceImage = cropped
+        transientWarning = "Crop set as img2img source."
+        exitEditMode()
+    }
+
+    /// Saves the cropped region to the gallery without disturbing the canvas.
+    func saveCrop(in context: ModelContext) {
+        guard let img = generatedImage, let r = cropRect, hasCrop,
+              let cropped = cropImage(img, to: r) else { return }
+        do {
+            try ImageStorageManager.createAndInsert(
+                image: cropped, source: .generated, config: config, prompt: prompt, in: context
+            )
+            try context.save()
+            transientWarning = "Crop saved to gallery."
+            exitEditMode()
+        } catch {
+            errorMessage = "Save failed: \(error.localizedDescription)"
+        }
+    }
 
     // MARK: — Moodboard
 
@@ -324,7 +378,7 @@ final class GenerateViewModel {
                 if AppSettings.shared.autoSaveGenerated {
                     saveCurrentImage(in: context, source: .generated, resolvedConfig: resolved)
                 }
-                self.exitPaintMode()
+                self.exitEditMode()
                 self.isGenerating = false
                 self.progress = .complete
             } catch is CancellationError {

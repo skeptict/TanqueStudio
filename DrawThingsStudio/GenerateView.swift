@@ -193,6 +193,8 @@ private struct GenerateCenterPanel: View {
             if let image = vm.generatedImage {
                 if vm.canvasMode == .paint {
                     InpaintLayer(vm: vm, image: image)
+                } else if vm.canvasMode == .crop {
+                    CropLayer(vm: vm, image: image)
                 } else {
                     Image(nsImage: image)
                         .resizable()
@@ -270,6 +272,11 @@ private struct GenerateCenterPanel: View {
             if vm.canvasMode == .paint {
                 paintControls
             }
+
+            // Crop action bar
+            if vm.canvasMode == .crop {
+                cropControls
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .contentShape(Rectangle())
@@ -283,7 +290,7 @@ private struct GenerateCenterPanel: View {
         } isTargeted: { isDropTargeted = $0 }
         .onChange(of: vm.generatedImage) { _, _ in
             resetZoom()
-            vm.exitPaintMode()
+            vm.exitEditMode()
         }
         .background(
             GeometryReader { geo in
@@ -294,7 +301,7 @@ private struct GenerateCenterPanel: View {
         )
     }
 
-    // Top-right toggle between View and Paint modes.
+    // Top-right toggle between View, Paint, and Crop modes.
     private var canvasModeToolbar: some View {
         VStack {
             HStack {
@@ -302,6 +309,7 @@ private struct GenerateCenterPanel: View {
                 HStack(spacing: 2) {
                     modeButton(.view, system: "hand.draw", help: "View — zoom & pan")
                     modeButton(.paint, system: "paintbrush.pointed", help: "Paint a mask to inpaint")
+                    modeButton(.crop, system: "crop", help: "Crop a region")
                 }
                 .padding(4)
                 .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
@@ -313,7 +321,11 @@ private struct GenerateCenterPanel: View {
 
     private func modeButton(_ mode: GenerateViewModel.CanvasMode, system: String, help: String) -> some View {
         Button {
-            if mode == .paint { vm.enterPaintMode() } else { vm.exitPaintMode() }
+            switch mode {
+            case .paint: vm.enterPaintMode()
+            case .crop:  vm.enterCropMode()
+            case .view:  vm.exitEditMode()
+            }
         } label: {
             Image(systemName: system)
                 .font(.system(size: 13, weight: .medium))
@@ -360,9 +372,42 @@ private struct GenerateCenterPanel: View {
                     }
                     .buttonStyle(.borderedProminent)
                     .disabled(!vm.hasMask || vm.isGenerating)
-                    Button("Done") { vm.exitPaintMode() }
+                    Button("Done") { vm.exitEditMode() }
                         .buttonStyle(.bordered)
                 }
+            }
+            .padding(12)
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 10))
+            .padding(.bottom, 16)
+        }
+    }
+
+    // Bottom overlay: crop actions.
+    private var cropControls: some View {
+        VStack {
+            Spacer()
+            HStack(spacing: 10) {
+                Text(vm.hasCrop ? "Drag to adjust the region" : "Drag to select a region")
+                    .font(.caption)
+                    .foregroundStyle(TanqueDS.Color.textSecondary)
+                Divider().frame(height: 18)
+                Button {
+                    vm.cropToImg2img()
+                } label: {
+                    Label("Use as img2img", systemImage: "photo.on.rectangle.angled")
+                        .font(.callout.weight(.medium))
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(!vm.hasCrop)
+                Button {
+                    vm.saveCrop(in: modelContext)
+                } label: {
+                    Label("Save crop", systemImage: "square.and.arrow.down").font(.callout)
+                }
+                .buttonStyle(.bordered)
+                .disabled(!vm.hasCrop)
+                Button("Done") { vm.exitEditMode() }
+                    .buttonStyle(.bordered)
             }
             .padding(12)
             .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 10))
@@ -531,6 +576,88 @@ private struct InpaintLayer: View {
             x: min(1, max(0, (p.x - rect.minX) / rect.width)),
             y: min(1, max(0, (p.y - rect.minY) / rect.height))
         )
+    }
+
+    private func aspectFit(_ imageSize: CGSize, in avail: CGSize) -> CGRect {
+        guard imageSize.width > 0, imageSize.height > 0, avail.width > 0, avail.height > 0 else { return .zero }
+        let scale = min(avail.width / imageSize.width, avail.height / imageSize.height)
+        let w = imageSize.width * scale, h = imageSize.height * scale
+        return CGRect(x: (avail.width - w) / 2, y: (avail.height - h) / 2, width: w, height: h)
+    }
+}
+
+// MARK: - Crop Layer
+
+/// Renders the image at fit-scale and lets the user drag a crop rectangle.
+/// Selection is stored on the VM in normalized image coordinates. Zoom/pan are
+/// disabled while cropping (same rationale as painting).
+private struct CropLayer: View {
+    @Bindable var vm: GenerateViewModel
+    let image: NSImage
+
+    @State private var dragStart: CGPoint? = nil
+
+    var body: some View {
+        GeometryReader { geo in
+            let pad: CGFloat = 16
+            let avail = CGSize(width: max(0, geo.size.width - pad * 2),
+                               height: max(0, geo.size.height - pad * 2))
+            let fit = aspectFit(image.size, in: avail)
+            let rect = CGRect(x: pad + fit.minX, y: pad + fit.minY, width: fit.width, height: fit.height)
+            // Current selection in screen coords (from normalized).
+            let sel = vm.cropRect.map { screenRect($0, in: rect) }
+
+            ZStack(alignment: .topLeading) {
+                Image(nsImage: image)
+                    .resizable()
+                    .frame(width: rect.width, height: rect.height)
+                    .position(x: rect.midX, y: rect.midY)
+
+                // Dim everything outside the selection.
+                if let sel {
+                    Canvas { ctx, size in
+                        var outside = Path(CGRect(origin: .zero, size: size))
+                        outside.addRect(sel)
+                        ctx.fill(outside, with: .color(.black.opacity(0.5)), style: FillStyle(eoFill: true))
+                        ctx.stroke(Path(sel), with: .color(.white.opacity(0.9)),
+                                   style: StrokeStyle(lineWidth: 1.5, dash: [5, 4]))
+                    }
+                    .allowsHitTesting(false)
+                }
+            }
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture(minimumDistance: 1)
+                    .onChanged { v in
+                        if dragStart == nil { dragStart = clamp(v.startLocation, to: rect) }
+                        let a = dragStart!
+                        let b = clamp(v.location, to: rect)
+                        let screenSel = CGRect(x: min(a.x, b.x), y: min(a.y, b.y),
+                                               width: abs(b.x - a.x), height: abs(b.y - a.y))
+                        vm.cropRect = normalizeRect(screenSel, in: rect)
+                    }
+                    .onEnded { _ in dragStart = nil }
+            )
+        }
+    }
+
+    private func screenRect(_ norm: CGRect, in rect: CGRect) -> CGRect {
+        CGRect(x: rect.minX + norm.minX * rect.width,
+               y: rect.minY + norm.minY * rect.height,
+               width: norm.width * rect.width,
+               height: norm.height * rect.height)
+    }
+
+    private func normalizeRect(_ screen: CGRect, in rect: CGRect) -> CGRect {
+        CGRect(x: (screen.minX - rect.minX) / rect.width,
+               y: (screen.minY - rect.minY) / rect.height,
+               width: screen.width / rect.width,
+               height: screen.height / rect.height)
+    }
+
+    private func clamp(_ p: CGPoint, to rect: CGRect) -> CGPoint {
+        CGPoint(x: min(rect.maxX, max(rect.minX, p.x)),
+                y: min(rect.maxY, max(rect.minY, p.y)))
     }
 
     private func aspectFit(_ imageSize: CGSize, in avail: CGSize) -> CGRect {
