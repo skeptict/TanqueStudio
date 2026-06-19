@@ -338,10 +338,9 @@ final class GenerateViewModel {
         }
     }
 
-    /// Rasterizes the brush strokes into a black/white mask at the source image's
-    /// pixel size. White = painted (region to regenerate), black = preserve.
-    /// NOTE: DT mask polarity is unverified — if results are inverted, flip the
-    /// paint/erase gray values below (confirm live via request_log.txt).
+    /// Rasterizes the brush strokes into an alpha-based mask at the source image's
+    /// pixel size, matching what `ImageHelpers.createMaskFromAlpha` expects:
+    /// painted = transparent (alpha 0 = inpaint), unpainted = opaque (alpha 255 = preserve).
     private func rasterizeMask(for image: NSImage) -> NSImage? {
         guard let cg = image.cgImage(forProposedRect: nil, context: nil, hints: nil) else { return nil }
         let w = cg.width, h = cg.height
@@ -353,16 +352,18 @@ final class GenerateViewModel {
             bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
         ) else { return nil }
 
-        ctx.setFillColor(gray: 0, alpha: 1)          // black background = preserve
+        // Opaque background = preserve. Painted strokes punch holes (alpha 0 = inpaint).
+        ctx.setFillColor(red: 0, green: 0, blue: 0, alpha: 1)
         ctx.fill(CGRect(x: 0, y: 0, width: w, height: h))
         ctx.setLineCap(CGLineCap.round)
         ctx.setLineJoin(CGLineJoin.round)
 
         let fw = CGFloat(w), fh = CGFloat(h)
         for stroke in maskStrokes where !stroke.points.isEmpty {
-            let gray: CGFloat = stroke.isErase ? 0 : 1
-            ctx.setStrokeColor(gray: gray, alpha: 1)
-            ctx.setFillColor(gray: gray, alpha: 1)
+            // Paint = clear (carve inpaint hole); erase = restore opacity (preserve).
+            ctx.setBlendMode(stroke.isErase ? .copy : .clear)
+            ctx.setStrokeColor(red: 0, green: 0, blue: 0, alpha: stroke.isErase ? 1 : 0)
+            ctx.setFillColor(red: 0, green: 0, blue: 0, alpha: stroke.isErase ? 1 : 0)
             let lineWidth = max(1, stroke.radius * fw * 2)
             ctx.setLineWidth(lineWidth)
             // Normalized points have y=0 at top; CGContext is bottom-left, so flip y.
