@@ -913,20 +913,7 @@ private struct ModelPickerSheet: View {
 
             Divider()
 
-            HStack {
-                TextField("Manual filename…", text: $manualEntry)
-                Button("Use") {
-                    guard !manualEntry.isEmpty else { return }
-                    vm.config.model = manualEntry
-                    dismiss()
-                }
-                .disabled(manualEntry.isEmpty)
-            }
-            .padding()
-
             if !allModels.isEmpty {
-                Divider()
-
                 HStack {
                     Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
                     TextField("Search models", text: $searchText)
@@ -956,6 +943,21 @@ private struct ModelPickerSheet: View {
                 )
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
+
+            Divider()
+
+            HStack {
+                TextField("Or enter a filename manually…", text: $manualEntry)
+                    .font(.caption)
+                Button("Use") {
+                    guard !manualEntry.isEmpty else { return }
+                    vm.config.model = manualEntry
+                    dismiss()
+                }
+                .disabled(manualEntry.isEmpty)
+            }
+            .padding(.horizontal)
+            .padding(.vertical, 8)
         }
         .frame(minWidth: 400, minHeight: 360)
         .onAppear { allModels = vm.models }

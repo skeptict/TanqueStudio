@@ -307,13 +307,13 @@ private struct GenerateCenterPanel: View {
 
     private func errorBanner(_ message: String) -> some View {
         VStack {
-            HStack(spacing: 8) {
+            HStack(alignment: .top, spacing: 8) {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .foregroundStyle(.yellow)
                 Text(message)
                     .font(.caption)
-                    .lineLimit(3)
-                Spacer()
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 8)
                 Button {
                     vm.errorMessage = nil
                 } label: {
@@ -322,6 +322,7 @@ private struct GenerateCenterPanel: View {
                 .buttonStyle(.plain)
             }
             .padding(12)
+            .frame(maxWidth: 420)
             .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
             .padding()
             Spacer()
