@@ -189,4 +189,6 @@ struct LLMService {
 
 extension Notification.Name {
     static let tanqueNavigateToSettings = Notification.Name("tanqueStudio.navigateToSettings")
+    /// Posted after a successful Settings → Test Connection so views can refresh DT inventory.
+    static let tanqueDTConnectionVerified = Notification.Name("tanqueStudio.dtConnectionVerified")
 }

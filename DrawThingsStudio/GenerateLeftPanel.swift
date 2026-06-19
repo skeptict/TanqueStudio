@@ -106,6 +106,19 @@ struct GenerateLeftPanel: View {
                         .font(TanqueDS.Font.body)
                         .foregroundStyle(TanqueDS.Color.textPrimary)
                         .truncationMode(.middle)
+                    if vm.models.isEmpty {
+                        Button {
+                            vm.loadAssets()
+                        } label: {
+                            Image(systemName: "arrow.clockwise")
+                                .font(.caption)
+                                .foregroundStyle(TanqueDS.Color.textSecondary)
+                        }
+                        .buttonStyle(.borderless)
+                        .frame(width: 20)
+                        .disabled(vm.isLoadingAssets)
+                        .help("No models — check the Draw Things connection, then refresh.")
+                    }
                     Button {
                         vm.showModelPicker = true
                     } label: {
@@ -116,6 +129,7 @@ struct GenerateLeftPanel: View {
                     .buttonStyle(.borderless)
                     .frame(width: 20)
                     .disabled(vm.models.isEmpty)
+                    .help(vm.models.isEmpty ? "No models — check the Draw Things connection, then refresh." : "Choose a model")
                 }
             }
 

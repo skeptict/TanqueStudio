@@ -133,6 +133,15 @@ struct GenerateView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .onAppear { vm.loadAssets() }
+            .onChange(of: vm.transientWarning) { _, warning in
+                if let warning {
+                    showToast(warning)
+                    vm.transientWarning = nil
+                }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .tanqueDTConnectionVerified)) { _ in
+                if vm.models.isEmpty { vm.loadAssets() }
+            }
 
             GenerateStatusBar(vm: vm)
         }

@@ -161,7 +161,11 @@ enum ImageStorageManager {
 
         if let cfg = config,
            let jsonStr = buildDTMetadataJSON(config: cfg, prompt: prompt) {
-            let promptText = prompt ?? ""
+            // Mirror Draw Things: prompt followed by a human-readable parameter
+            // summary, so Finder's Get Info "Description" shows the same details.
+            let summary = buildParamSummary(config: cfg)
+            let basePrompt = prompt ?? ""
+            let promptText = basePrompt.isEmpty ? summary : basePrompt + "\n" + summary
 
             // EXIF UserComment — Draw Things' primary metadata location,
             // readable by PNGMetadataParser and external tools (exiftool, etc.)
@@ -184,6 +188,16 @@ enum ImageStorageManager {
         guard CGImageDestinationFinalize(dest) else {
             throw StorageError.encodingFailed
         }
+    }
+
+    /// Human-readable parameter summary matching Draw Things' Description format and
+    /// field order: Steps, Sampler, Guidance Scale, Seed, Size, Model, Strength,
+    /// Seed Mode, Shift.
+    private static func buildParamSummary(config c: DrawThingsGenerationConfig) -> String {
+        let samplerName = DrawThingsSampler.builtIn.first { $0.name == c.sampler }?.displayName ?? c.sampler
+        return "Steps: \(c.steps), Sampler: \(samplerName), Guidance Scale: \(c.guidanceScale), "
+            + "Seed: \(c.seed), Size: \(c.width)x\(c.height), Model: \(c.model), "
+            + "Strength: \(c.strength), Seed Mode: \(c.seedMode), Shift: \(c.shift)"
     }
 
     // MARK: — Private: metadata JSON
