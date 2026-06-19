@@ -901,6 +901,12 @@ private struct ModelPickerSheet: View {
         }
     }
 
+    /// Unique filenames, order preserved — DT may list duplicates.
+    private func dedupedFilenames(_ models: [DrawThingsModel]) -> [String] {
+        var seen = Set<String>()
+        return models.compactMap { seen.insert($0.filename).inserted ? $0.filename : nil }
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             HStack {
@@ -923,11 +929,14 @@ private struct ModelPickerSheet: View {
 
                 Divider()
 
+                // Draw Things can report two models with the same filename; keep the
+                // first and dedupe so the dict init and List(id:) don't choke.
                 let names = Dictionary(
-                    uniqueKeysWithValues: filteredModels.map { ($0.filename, $0.name) }
+                    filteredModels.map { ($0.filename, $0.name) },
+                    uniquingKeysWith: { first, _ in first }
                 )
                 ModelRowList(
-                    filenames: filteredModels.map { $0.filename },
+                    filenames: dedupedFilenames(filteredModels),
                     nameForFilename: names,
                     selectedFilename: vm.config.model,
                     onSelect: { filename in
