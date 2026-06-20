@@ -933,7 +933,7 @@ private struct GenerateTopBar: View {
             // Left: icon + wordmark — leading spacer clears the window traffic
             // lights when the navigation sidebar is hidden (detail sits at the edge).
             HStack(spacing: 6) {
-                Spacer().frame(width: sidebarCollapsed ? 78 : 16)
+                Spacer().frame(width: sidebarCollapsed ? 94 : 16)
                 Image(nsImage: NSApp.applicationIconImage)
                     .resizable()
                     .frame(width: 28, height: 28)
