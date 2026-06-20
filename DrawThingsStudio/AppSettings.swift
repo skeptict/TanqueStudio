@@ -31,6 +31,13 @@ final class AppSettings {
     var imageFolderBookmarks: [Data] {
         didSet { UserDefaults.standard.set(imageFolderBookmarks, forKey: "tanqueStudio.imageFolderBookmarks") }
     }
+    /// Custom LLM Operations folder (empty = use the default in-container location).
+    var llmOperationsFolder: String {
+        didSet { UserDefaults.standard.set(llmOperationsFolder, forKey: "tanqueStudio.llmOperationsFolder") }
+    }
+    var llmOperationsFolderBookmark: Data? {
+        didSet { UserDefaults.standard.set(llmOperationsFolderBookmark, forKey: "tanqueStudio.llmOperationsFolderBookmark") }
+    }
 
     // MARK: - Host History
 
@@ -128,6 +135,8 @@ final class AppSettings {
         llmAPIKey    = d.string(forKey: "tanqueStudio.llmAPIKey")    ?? ""
         selectedCollection = d.string(forKey: "tanqueStudio.selectedCollection")
         dtConfigsBookmark  = d.data(forKey: "tanqueStudio.dtConfigsBookmark")
+        llmOperationsFolder         = d.string(forKey: "tanqueStudio.llmOperationsFolder") ?? ""
+        llmOperationsFolderBookmark = d.data(forKey: "tanqueStudio.llmOperationsFolderBookmark")
         dtHostHistory  = d.stringArray(forKey: "tanqueStudio.dtHostHistory")  ?? []
         llmHostHistory = d.stringArray(forKey: "tanqueStudio.llmHostHistory") ?? []
     }

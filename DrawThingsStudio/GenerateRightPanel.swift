@@ -417,6 +417,10 @@ private struct AssistTabView: View {
         .onChange(of: localModelName) { _, newValue in
             AppSettings.shared.llmModelName = newValue
         }
+        .onReceive(NotificationCenter.default.publisher(for: .tanqueLLMOperationsFolderChanged)) { _ in
+            operations = LLMOperationLoader.loadAll()
+            selectedOperation = operations.first(where: { $0.id == selectedOperation?.id }) ?? operations.first
+        }
         .onChange(of: vm.pendingLLMTrigger) { _, pending in
             if pending { checkPendingTrigger() }
         }

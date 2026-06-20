@@ -260,6 +260,50 @@ struct SettingsView: View {
                         .strokeBorder(TanqueDS.Color.surfaceBorder, lineWidth: 1))
                 }
 
+                // MARK: LLM Operations Folder
+                VStack(alignment: .leading, spacing: TanqueDS.Spacing.sm) {
+                    Text("LLM OPERATIONS FOLDER").tanqueSectionLabel()
+                    VStack(spacing: 0) {
+                        HStack {
+                            Text(settings.llmOperationsFolder.isEmpty
+                                 ? "Default (App Support/TanqueStudio/LLMOperations)"
+                                 : settings.llmOperationsFolder)
+                                .font(TanqueDS.Font.body)
+                                .foregroundStyle(TanqueDS.Color.textSecondary)
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                            Spacer()
+                            if !settings.llmOperationsFolder.isEmpty {
+                                Button("Reset to Default") {
+                                    settings.llmOperationsFolder = ""
+                                    settings.llmOperationsFolderBookmark = nil
+                                    NotificationCenter.default.post(name: .tanqueLLMOperationsFolderChanged, object: nil)
+                                }
+                                .font(TanqueDS.Font.body)
+                                .foregroundStyle(TanqueDS.Color.textSecondary)
+                            }
+                            Button("Browse…") { browseForLLMOperationsFolder() }
+                                .font(TanqueDS.Font.body)
+                        }
+                        .padding(.horizontal, TanqueDS.Spacing.md)
+                        .padding(.vertical, TanqueDS.Spacing.sm)
+                        .background(TanqueDS.Color.surface1)
+
+                        Rectangle().fill(TanqueDS.Color.surfaceBorder).frame(height: 1)
+
+                        Text("Markdown operation files (.md) load from this folder. Choose a synced or shared folder to use the same operations across machines. Built-in defaults are seeded into an empty folder.")
+                            .font(TanqueDS.Font.bodySmall)
+                            .foregroundStyle(TanqueDS.Color.textMuted)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, TanqueDS.Spacing.md)
+                            .padding(.vertical, TanqueDS.Spacing.sm)
+                            .background(TanqueDS.Color.surface1)
+                    }
+                    .clipShape(RoundedRectangle(cornerRadius: TanqueDS.Layout.panelCornerRadius))
+                    .overlay(RoundedRectangle(cornerRadius: TanqueDS.Layout.panelCornerRadius)
+                        .strokeBorder(TanqueDS.Color.surfaceBorder, lineWidth: 1))
+                }
+
                 // MARK: Generation
                 VStack(alignment: .leading, spacing: TanqueDS.Spacing.sm) {
                     Text("GENERATION").tanqueSectionLabel()
@@ -399,6 +443,19 @@ struct SettingsView: View {
             settings.defaultImageFolder = url.path
             settings.defaultImageFolderBookmark = bm
             if let bm { settings.addImageFolderBookmark(bm) }
+        }
+    }
+
+    private func browseForLLMOperationsFolder() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.prompt = "Select Folder"
+        if panel.runModal() == .OK, let url = panel.url {
+            settings.llmOperationsFolder = url.path
+            settings.llmOperationsFolderBookmark = try? url.bookmarkData(options: .withSecurityScope)
+            NotificationCenter.default.post(name: .tanqueLLMOperationsFolderChanged, object: nil)
         }
     }
 }

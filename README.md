@@ -230,7 +230,7 @@ In priority order:
 
 1. [ ] **Connection & inventory UX** *(in progress)* — secret normalization + reveal toggle, model-list refresh (echo with shared secret), connection-cause banner, unknown-model toast
 2. [ ] **Inspector modes** — Review / Edit / Browse tool palette rail, with **canvas inpainting** as Edit mode (paint masks on canvas, send masked region via gRPC)
-3. [ ] **Path handling** — image save/load bug (spaces in path, intermittent folder availability) + LLMOperations directory on a remote volume; shared security-scoped-bookmark infrastructure
+3. [ ] **LLMOperations on a remote/custom volume** — configurable operations folder with a security-scoped bookmark (image save/load + spaces/after-restart path handling already fixed in v0.9.17)
 4. [ ] **Resolution Dependent Shift** — surface the existing `resolutionDependentShift` config field as a Generate toggle (auto-computed shift for rectified-flow models)
 5. [ ] **Story Studio** — multi-scene narrative system with character consistency (v2 port)
 6. [ ] **README polish** — screenshots, demo GIF
