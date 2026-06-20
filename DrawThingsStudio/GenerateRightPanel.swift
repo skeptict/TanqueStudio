@@ -354,6 +354,7 @@ private struct AssistTabView: View {
     @State private var localModelName: String = AppSettings.shared.llmModelName
     @State private var availableModels: [String] = []
     @State private var isFetchingModels: Bool = false
+    @State private var modelFetchHint: String? = nil
 
     private var currentOp: LLMOperation? { selectedOperation ?? operations.first }
 
@@ -693,6 +694,12 @@ private struct AssistTabView: View {
                 .pickerStyle(.menu)
                 .frame(maxWidth: .infinity)
             }
+            if let hint = modelFetchHint, !isFetchingModels {
+                Text(hint)
+                    .font(.system(size: 9))
+                    .foregroundStyle(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
     }
 
@@ -732,11 +739,20 @@ private struct AssistTabView: View {
         let apiKey = AppSettings.shared.llmAPIKey
         Task { @MainActor in
             defer { isFetchingModels = false }
-            availableModels = (try? await LLMService.fetchModels(
-                baseURL: baseURL, provider: provider, apiKey: apiKey
-            )) ?? []
-            if !availableModels.isEmpty && !availableModels.contains(localModelName) {
-                localModelName = availableModels[0]
+            do {
+                let models = try await LLMService.fetchModels(
+                    baseURL: baseURL, provider: provider, apiKey: apiKey
+                )
+                availableModels = models
+                if models.isEmpty {
+                    modelFetchHint = "No \(provider.displayName) models found — pull one (e.g. `ollama pull llama3`), then refresh."
+                } else {
+                    modelFetchHint = nil
+                    if !models.contains(localModelName) { localModelName = models[0] }
+                }
+            } catch {
+                availableModels = []
+                modelFetchHint = "Couldn't reach \(provider.displayName) at \(baseURL). Make sure it's running and the host is correct in Settings, then refresh."
             }
         }
     }
