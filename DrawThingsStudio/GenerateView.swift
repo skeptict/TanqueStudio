@@ -166,7 +166,9 @@ private struct GenerateCenterPanel: View {
     private var magnificationGesture: some Gesture {
         MagnificationGesture()
             .onChanged { value in
-                canvasScale = min(6.0, max(0.5, lastScale * value))
+                let scaled = lastScale * value
+                guard scaled.isFinite else { return }
+                canvasScale = min(6.0, max(0.5, scaled))
             }
             .onEnded { _ in
                 if abs(canvasScale - 1.0) < 0.05 {

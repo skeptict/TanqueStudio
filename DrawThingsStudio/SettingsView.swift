@@ -432,13 +432,22 @@ struct SettingsView: View {
         .frame(minWidth: 260)
     }
 
-    private func browseForFolder() {
+    /// Non-blocking folder chooser. `begin` runs without blocking the run loop,
+    /// avoiding the hung-app/hidden-modal behavior that `runModal()` can cause.
+    private func chooseFolder(_ onPick: @escaping (URL) -> Void) {
         let panel = NSOpenPanel()
         panel.canChooseFiles = false
         panel.canChooseDirectories = true
         panel.allowsMultipleSelection = false
         panel.prompt = "Select Folder"
-        if panel.runModal() == .OK, let url = panel.url {
+        panel.begin { response in
+            guard response == .OK, let url = panel.url else { return }
+            onPick(url)
+        }
+    }
+
+    private func browseForFolder() {
+        chooseFolder { url in
             let bm = try? url.bookmarkData(options: .withSecurityScope)
             settings.defaultImageFolder = url.path
             settings.defaultImageFolderBookmark = bm
@@ -447,12 +456,7 @@ struct SettingsView: View {
     }
 
     private func browseForLLMOperationsFolder() {
-        let panel = NSOpenPanel()
-        panel.canChooseFiles = false
-        panel.canChooseDirectories = true
-        panel.allowsMultipleSelection = false
-        panel.prompt = "Select Folder"
-        if panel.runModal() == .OK, let url = panel.url {
+        chooseFolder { url in
             settings.llmOperationsFolder = url.path
             settings.llmOperationsFolderBookmark = try? url.bookmarkData(options: .withSecurityScope)
             NotificationCenter.default.post(name: .tanqueLLMOperationsFolderChanged, object: nil)
