@@ -146,6 +146,12 @@ enum StoryFlowProjectCodec {
             step = WorkflowStep(type: .addToMoodboard)
             step.parameters["imageVar"] = item.value.stringValue ?? ""
 
+        case "generate", "pipeline":
+            // "generate" is the TS marker for a render step (emitted by itemsFromStep(.generate)).
+            // "pipeline" is the legacy DT key that the old codec produced and may appear
+            // in project files saved before this mapping was corrected.
+            step = WorkflowStep(type: .generate)
+
         case "loop":
             step = WorkflowStep(type: .loop)
             step.parameters["count"] = item.value.stringValue ?? "1"
@@ -244,7 +250,10 @@ enum StoryFlowProjectCodec {
                 .split(separator: ",")
                 .map { $0.trimmingCharacters(in: .whitespaces) }
                 .filter { !$0.isEmpty }
-            return names.map { StoryFlowItem(type: "config", value: .string("#\($0)")) }
+            return names.map { name in
+                let clean = name.hasPrefix("#") ? String(name.dropFirst()) : name
+                return StoryFlowItem(type: "config", value: .string("#\(clean)"))
+            }
 
         case .configInline:
             return [StoryFlowItem(type: "config", value: .string(step.parameters["json"] ?? "{}"))]
@@ -284,13 +293,14 @@ enum StoryFlowProjectCodec {
             return [StoryFlowItem(type: "loopEnd", value: .bool(true))]
 
         case .clearPrompt:
-            // TanqueStudio-native; no editor equivalent — emit as a note marker
-            return [StoryFlowItem(type: "note", value: .string("[TanqueStudio: clearPrompt]"))]
+            // No DT pipeline equivalent; drop rather than emit a misleading note
+            return []
 
         case .generate:
-            // TanqueStudio-native; no editor equivalent
-            let name = step.parameters["outputName"].map { " → \($0)" } ?? ""
-            return [StoryFlowItem(type: "note", value: .string("[TanqueStudio: generate\(name)]"))]
+            // In DT's pipeline the "prompt" instruction IS the render trigger —
+            // there is no separate "generate" key. Emit a marker so toPipelineArray
+            // can re-issue the last accumulated prompt when it hits this step.
+            return [StoryFlowItem(type: "generate", value: .bool(true))]
 
         case .passthrough:
             // Re-emit the original item verbatim
@@ -345,8 +355,24 @@ enum StoryFlowProjectCodec {
     ///   Note: $wildcard tokens are left unexpanded (non-deterministic).
     static func toPipelineArray(_ project: StoryFlowProject) -> [[String: Any]] {
         var result: [[String: Any]] = []
+        // In DT's pipeline the "prompt" instruction both sets the text AND calls
+        // pipeline.run(). TS separates these: promptInstruction sets the text,
+        // .generate fires the render.
+        //
+        // Export rules:
+        //  • TS prompt  → DT prompt (fires render immediately)
+        //  • TS generate immediately after a TS prompt → DROP (render already fired)
+        //  • TS generate after non-prompt (e.g. config swap) → re-emit last prompt
+        var lastPrompt: String? = nil
+        var prevWasPrompt = false
 
         for item in project.items {
+            // Reset the "previous item was a prompt" flag for everything except
+            // generate/pipeline, which consume it and set it to false themselves.
+            if item.type != "generate" && item.type != "pipeline" && item.type != "prompt" {
+                prevWasPrompt = false
+            }
+
             switch item.type {
 
             case "note":
@@ -364,6 +390,22 @@ enum StoryFlowProjectCodec {
             case "canvasLoad":
                 result.append(["canvasLoad": item.value.stringValue ?? ""])
 
+            case "generate", "pipeline":
+                // "generate" is the TS marker; "pipeline" is the legacy key from
+                // old project imports stored as passthrough steps.
+                //
+                // If this generate immediately follows a prompt, the render already
+                // fired (DT's prompt IS the render). Drop it to avoid a duplicate.
+                // Otherwise re-emit the last accumulated prompt so DT fires again.
+                if prevWasPrompt {
+                    // render already triggered by the preceding prompt — skip
+                } else if let p = lastPrompt {
+                    result.append(["prompt": p])
+                } else {
+                    result.append(["note": "⚠️ generate step has no prior prompt — render will not fire"])
+                }
+                prevWasPrompt = false
+
             case "prompt":
                 let raw = item.value.stringValue ?? ""
                 if raw.contains("$") {
@@ -371,19 +413,23 @@ enum StoryFlowProjectCodec {
                     print("[StoryFlowProjectCodec] WARNING: prompt contains $wildcard tokens — left unexpanded in pipeline export")
                 }
                 let expanded = expandPromptTokens(raw, promptTriggers: project.promptTriggers)
+                lastPrompt = expanded
+                prevWasPrompt = true
                 result.append(["prompt": expanded])
 
             case "config":
                 let v = item.value.stringValue ?? ""
                 if v.hasPrefix("#") {
                     // Config shortcut: look up and expand to full JSON object
-                    if let json = project.configShortcuts[v],
+                    if let json = project.configShortcuts[v], !json.isEmpty,
                        let data = json.data(using: .utf8),
                        let obj = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] {
                         result.append(["config": obj])
                     } else {
-                        // Shortcut not found — emit reference as-is
-                        result.append(["config": v])
+                        // Shortcut not found or empty — skip and emit a note so the
+                        // DT pipeline shows what's missing rather than silently failing.
+                        print("[StoryFlowProjectCodec] WARNING: config shortcut '\(v)' has no JSON — skipped in pipeline export")
+                        result.append(["note": "⚠️ config shortcut \(v) has no JSON — populate this variable in TS Variables panel"])
                     }
                 } else if let data = v.data(using: .utf8),
                           let obj = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] {
@@ -403,10 +449,23 @@ enum StoryFlowProjectCodec {
                 }
 
             case "loop":
-                result.append(["loop": item.value.stringValue ?? "1"])
+                // DT pipeline expects loop value as an object: {loop: N, start: N}.
+                // TS stores the count as a plain string; start defaults to 0.
+                let countStr = item.value.stringValue ?? "1"
+                let loopCount = Int(countStr) ?? 1
+                result.append(["loop": ["loop": loopCount, "start": 0] as [String: Any]])
 
             case "loopEnd":
                 result.append(["loopEnd": true])
+
+            case "moodboardCanvas", "moodboardLoad":
+                // DT expects a flag (bool true). TS stores a weight string for
+                // moodboardCanvas, but DT's pipeline has no per-item weight param —
+                // weights are a separate moodboardWeights instruction. Emit the flag.
+                result.append([item.type: true])
+
+            case "moodboardClear":
+                result.append(["moodboardClear": true])
 
             default:
                 // Unknown / passthrough: emit {type: value} verbatim

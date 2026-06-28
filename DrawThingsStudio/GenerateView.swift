@@ -3,13 +3,10 @@ import AppKit
 import Combine
 import SwiftData
 
-enum OutputFormat { case svg, png }
-
 // MARK: - Root View
 
 struct GenerateView: View {
     let vm: GenerateViewModel
-    var sidebarCollapsed: Bool = false
     @Query(sort: \TSImage.createdAt, order: .reverse) private var savedImages: [TSImage]
 
     @State private var toastMessage: String? = nil
@@ -18,7 +15,6 @@ struct GenerateView: View {
     @State private var canvasScale: CGFloat  = 1.0
     @State private var canvasOffset: CGSize  = .zero
     @State private var canvasSize: CGSize    = .zero
-    @State private var outputFormat: OutputFormat = .png
 
     private func showToast(_ message: String) {
         toastTask?.cancel()
@@ -31,8 +27,6 @@ struct GenerateView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            GenerateTopBar(vm: vm, outputFormat: $outputFormat, sidebarCollapsed: sidebarCollapsed)
-
             ZStack {
                 HStack(spacing: 0) {
                     // Left panel — fixed 260pt, collapses to 0
@@ -146,7 +140,6 @@ struct GenerateView: View {
 
             GenerateStatusBar(vm: vm)
         }
-        .ignoresSafeArea(edges: .top)
     }
 }
 
@@ -239,10 +232,6 @@ private struct GenerateCenterPanel: View {
                 progressOverlay
             }
 
-            if let error = vm.errorMessage {
-                errorBanner(error)
-            }
-
             if isDropTargeted {
                 RoundedRectangle(cornerRadius: 8)
                     .strokeBorder(Color.accentColor, lineWidth: 2)
@@ -280,6 +269,11 @@ private struct GenerateCenterPanel: View {
             if vm.canvasMode == .crop {
                 cropControls
             }
+
+            // Error banner always on top so its X button is never occluded
+            if let error = vm.errorMessage {
+                errorBanner(error)
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .contentShape(Rectangle())
@@ -294,6 +288,12 @@ private struct GenerateCenterPanel: View {
         .onChange(of: vm.generatedImage) { _, _ in
             resetZoom()
             vm.exitEditMode()
+        }
+        .onChange(of: vm.errorMessage) { _, newError in
+            if newError != nil {
+                resetZoom()
+                vm.exitEditMode()
+            }
         }
         .background(
             GeometryReader { geo in
@@ -908,101 +908,6 @@ struct PanelDragHandle: View {
                 .fill(Color.white.opacity(isHovered ? 0.15 : 0.0))
                 .frame(width: 1)
                 .allowsHitTesting(false)
-        }
-    }
-}
-
-// MARK: - Top Bar
-
-private struct GenerateTopBar: View {
-    let vm: GenerateViewModel
-    @Binding var outputFormat: OutputFormat
-    var sidebarCollapsed: Bool = false
-
-    private var isConnected: Bool { !vm.models.isEmpty }
-
-    private var modelDisplayName: String {
-        guard !vm.config.model.isEmpty else { return "—" }
-        let base = URL(fileURLWithPath: vm.config.model)
-            .deletingPathExtension()
-            .lastPathComponent
-        guard base.count > 20 else { return base }
-        return String(base.prefix(20)) + "…"
-    }
-
-    var body: some View {
-        HStack(spacing: 0) {
-            // Left: icon + wordmark — leading spacer clears the window traffic
-            // lights when the navigation sidebar is hidden (detail sits at the edge).
-            HStack(spacing: 6) {
-                Spacer().frame(width: sidebarCollapsed ? 94 : 16)
-                Image(nsImage: NSApp.applicationIconImage)
-                    .resizable()
-                    .frame(width: 28, height: 28)
-                    .clipShape(RoundedRectangle(cornerRadius: 6))
-                HStack(spacing: 4) {
-                    Text("TANQUE")
-                        .font(TanqueDS.Font.monoSemiBold(14))
-                        .foregroundStyle(TanqueDS.Color.textPrimary)
-                    Text("STUDIO")
-                        .font(TanqueDS.Font.mono(11))
-                        .foregroundStyle(TanqueDS.Color.textMuted)
-                }
-            }
-
-            Spacer()
-
-            // Center: active model + sampler
-            HStack(spacing: 6) {
-                Text(modelDisplayName)
-                    .font(TanqueDS.Font.body)
-                    .foregroundStyle(TanqueDS.Color.textSecondary)
-                Text("·")
-                    .font(TanqueDS.Font.body)
-                    .foregroundStyle(TanqueDS.Color.textMuted)
-                Text(vm.config.sampler)
-                    .font(TanqueDS.Font.body)
-                    .foregroundStyle(TanqueDS.Color.textSecondary)
-            }
-
-            Spacer()
-
-            // Right: connection status + format toggle
-            HStack(spacing: 12) {
-                HStack(spacing: 6) {
-                    Circle()
-                        .fill(isConnected ? TanqueDS.Color.connected : TanqueDS.Color.textMuted)
-                        .frame(width: 6, height: 6)
-                    Text(isConnected ? "connected" : "disconnected")
-                        .font(TanqueDS.Font.body)
-                        .foregroundStyle(isConnected ? TanqueDS.Color.connected : TanqueDS.Color.textMuted)
-                }
-                HStack(spacing: 4) {
-                    ForEach([OutputFormat.svg, OutputFormat.png], id: \.self) { format in
-                        let isActive = outputFormat == format
-                        Button {
-                            outputFormat = format
-                        } label: {
-                            Text(format == .svg ? "SVG" : "PNG")
-                                .font(TanqueDS.Font.bodyMedium)
-                                .foregroundStyle(isActive ? TanqueDS.Color.surface0 : TanqueDS.Color.textMuted)
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 5)
-                                .background(isActive ? TanqueDS.Color.brass : TanqueDS.Color.surface2)
-                                .clipShape(RoundedRectangle(cornerRadius: TanqueDS.Layout.inputCornerRadius))
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-            }
-            .padding(.trailing, TanqueDS.Spacing.md)
-        }
-        .frame(height: TanqueDS.Layout.topBarHeight)
-        .background(TanqueDS.Color.surface1)
-        .overlay(alignment: .bottom) {
-            Rectangle()
-                .fill(TanqueDS.Color.surfaceBorder)
-                .frame(height: 1)
         }
     }
 }

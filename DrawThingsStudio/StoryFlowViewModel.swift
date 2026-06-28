@@ -22,6 +22,7 @@ final class StoryFlowViewModel {
 
     private let storage = StoryFlowStorage.shared
     private var modelContext: ModelContext?
+    private var hasLoaded = false
 
     private let encoder: JSONEncoder = {
         let e = JSONEncoder()
@@ -105,8 +106,13 @@ final class StoryFlowViewModel {
     // MARK: — Load
 
     func loadAll() {
+        // Always run migrations (idempotent), but only reload data once.
+        // If the VM persists across pane switches, re-running loadAll would
+        // overwrite in-memory edits (workflow steps, variable renames, etc.).
         storage.migrateBuiltInsIfNeeded()
         storage.seedBuiltInsIfNeeded()
+        guard !hasLoaded else { return }
+        hasLoaded = true
         variables = storage.loadVariables()
         workflows = storage.loadWorkflows()
         if selectedWorkflow == nil {

@@ -4,7 +4,7 @@ import SwiftData
 // MARK: - StoryFlow Root View
 
 struct StoryFlowView: View {
-    @State private var vm = StoryFlowViewModel()
+    let vm: StoryFlowViewModel
     @Environment(\.modelContext) private var modelContext
 
     var body: some View {
@@ -19,6 +19,8 @@ struct StoryFlowView: View {
                 .frame(minWidth: 260, maxWidth: 400)
         }
         .onAppear {
+            // configure is idempotent; loadAll guards itself with hasLoaded
+            // so switching back to this pane won't reload from disk and clear state
             vm.configure(modelContext: modelContext)
             vm.loadAll()
         }

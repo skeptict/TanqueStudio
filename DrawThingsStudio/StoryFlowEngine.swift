@@ -330,8 +330,8 @@ final class StoryFlowEngine {
         let prompt = currentPrompt
         if prompt.isEmpty { log("  ⚠ No prompt set — accumulated prompt is empty") }
 
-        // img2img source: check savedCanvases["__img2img__"] (set by loadCanvas)
-        let sourceImage: NSImage? = savedCanvases["__img2img__"]
+        // img2img source: explicit loadCanvas takes priority; fall back to currentCanvasImage
+        let sourceImage: NSImage? = savedCanvases["__img2img__"] ?? currentCanvasImage
 
         // Moodboard
         if !activeMoodboard.isEmpty {

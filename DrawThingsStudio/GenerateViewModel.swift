@@ -244,14 +244,13 @@ final class GenerateViewModel {
             errorMessage = "Select a model first."
             return
         }
-        // Model not in a loaded inventory → DT runs a nonexistent model and returns
-        // a bogus image (and we'd write the fake name into metadata). Don't waste the
-        // render. Only enforced when the inventory is populated — an empty list means
-        // we couldn't fetch it (e.g. a secret-protected server), so we can't validate.
+        // Model not in loaded inventory — warn but don't block. DT+ bridge can run
+        // cloud models that aren't in the local model list, so a hard block here
+        // would prevent all StoryFlow → Generate cross-pane workflows. DT returns
+        // its own error if the model is genuinely absent.
         if !models.isEmpty,
            !models.contains(where: { $0.filename == config.model || $0.name == config.model }) {
-            errorMessage = "Model '\(config.model)' isn't in Draw Things' model list. Choose an installed model."
-            return
+            transientWarning = "'\(config.model)' isn't in the local model list — generating anyway (may be a DT+ cloud model)."
         }
         errorMessage = nil
         isGenerating = true
@@ -350,6 +349,9 @@ final class GenerateViewModel {
         if !models.isEmpty,
            !models.contains(where: { $0.filename == config.model || $0.name == config.model }) {
             errorMessage = "Model '\(config.model)' isn't in Draw Things' model list. Choose an installed model."
+            isGenerating = false
+            progress = .complete
+            generationTask = nil
             return
         }
         guard let mask = rasterizeMask(for: source) else {
@@ -544,6 +546,9 @@ final class GenerateViewModel {
         if let h       = meta.height                     { config.height  = h }
         if let shift   = meta.shift                      { config.shift   = shift }
         if let str     = meta.strength                   { config.strength = str }
+        // Warn (non-blocking) if the loaded model isn't in the local inventory —
+        // common when the image was generated via DT+ bridge (cloud model).
+        if let model = meta.model { warnIfModelUnknown(model) }
     }
 
     func loadAssets() {
