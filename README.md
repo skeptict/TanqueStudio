@@ -230,14 +230,15 @@ DrawThingsStudio/
 - [x] StoryFlow pipeline fixes, pane-switch state persistence, DT+ bridge compatibility (v0.9.21)
 - [x] Color draw canvas mode — paint colored strokes on an image or blank canvas, flatten to img2img source for edit models (Qwen Image Edit, FLUX.1 Fill) or save to gallery
 - [x] Canvas-edit lifecycle fixes — mid-render gallery navigation no longer overwrites the selection; fully-erased masks can't trigger a no-op inpaint
+- [x] Zoom while painting — pinch zoom + ⌥-drag pan in paint/crop/color-draw modes, screen-constant brush, shared zoom state with view mode
+- [x] Left panel tightening — collapsible sections with persisted state, basic/advanced config split
 
 ### Upcoming
 
 In priority order:
 
-1. [ ] **Story Studio** — multi-scene narrative system with character consistency (v2 port)
-2. [ ] **Zoom while painting** — inpaint/draw modes currently lock the canvas to fit-scale
-3. [ ] **README polish** — screenshots, demo GIF
+1. [ ] **Story Studio** — multi-scene narrative system with character consistency, built on the StoryFlow engine (spec: `Docs/story-studio-v2-spec.md`)
+2. [ ] **README polish** — screenshots, demo GIF
 
 ### Backlog
 
