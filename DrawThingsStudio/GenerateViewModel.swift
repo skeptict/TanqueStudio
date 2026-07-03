@@ -399,6 +399,7 @@ final class GenerateViewModel {
 
         let capturedPrompt = prompt
         let capturedSource = sourceImage
+        let capturedSelection = selectedGalleryID
         let count = cfg.batchCount  // how many sequential renders were requested
         cfg.batchCount = 1          // send one at a time so each result arrives individually
         let baseSeed = UInt32(truncatingIfNeeded: max(0, cfg.seed))
@@ -431,6 +432,18 @@ final class GenerateViewModel {
                         // DT completed the request but produced nothing (e.g. model/sampler
                         // mismatch). Surface it — don't silently clear the canvas.
                         self.errorMessage = "Draw Things returned no image. Possible causes: the model isn't downloaded in Draw Things, the sampler isn't supported by this model, or the server's shared secret doesn't match (Settings → Draw Things)."
+                        continue
+                    }
+                    if self.selectedGalleryID != capturedSelection {
+                        // User navigated the gallery mid-render — don't clobber their
+                        // selection. Save the result straight to the gallery instead
+                        // (even with auto-save off; it's unreachable otherwise).
+                        try? ImageStorageManager.createAndInsert(
+                            image: image, source: .generated, config: iterCfg,
+                            prompt: capturedPrompt, in: context
+                        )
+                        try? context.save()
+                        self.transientWarning = "Render finished — saved to gallery."
                         continue
                     }
                     self.generatedImage = image
@@ -487,6 +500,12 @@ final class GenerateViewModel {
             errorMessage = "Could not build the mask."
             return
         }
+        // hasMask only tracks stroke bookkeeping — erase strokes can cancel out every
+        // painted region. Check the rasterized result so we don't send a no-op inpaint.
+        guard maskHasInpaintRegion(mask) else {
+            errorMessage = "The painted region was fully erased — paint a region to inpaint."
+            return
+        }
 
         errorMessage = nil
         isGenerating = true
@@ -504,6 +523,7 @@ final class GenerateViewModel {
         cfg.batchCount = 1
 
         let capturedPrompt = prompt
+        let capturedSelection = selectedGalleryID
         let capturedMoodboard = moodboardEntries.map { ($0.image, $0.weight) }
         if !capturedMoodboard.isEmpty, let grpcClient = client as? DrawThingsGRPCClient {
             grpcClient.setMoodboard(capturedMoodboard)
@@ -523,6 +543,20 @@ final class GenerateViewModel {
                 )
                 guard let image = images.first else {
                     self.errorMessage = "Draw Things returned no image. Possible causes: the model isn't downloaded in Draw Things, the sampler isn't supported by this model, or the server's shared secret doesn't match (Settings → Draw Things)."
+                    self.isGenerating = false
+                    self.progress = .complete
+                    return
+                }
+                if self.selectedGalleryID != capturedSelection {
+                    // User navigated the gallery mid-inpaint — don't clobber their
+                    // selection; save the result straight to the gallery instead.
+                    try? ImageStorageManager.createAndInsert(
+                        image: image, source: .generated, config: resolved,
+                        prompt: capturedPrompt, in: context
+                    )
+                    try? context.save()
+                    self.transientWarning = "Inpaint finished — saved to gallery."
+                    self.exitEditMode()
                     self.isGenerating = false
                     self.progress = .complete
                     return
@@ -591,6 +625,23 @@ final class GenerateViewModel {
 
         guard let out = ctx.makeImage() else { return nil }
         return NSImage(cgImage: out, size: NSSize(width: w, height: h))
+    }
+
+    /// True if the rasterized mask has at least one non-opaque pixel (alpha < 255 =
+    /// inpaint). Fails open on unexpected pixel formats so a legit inpaint is never blocked.
+    private func maskHasInpaintRegion(_ mask: NSImage) -> Bool {
+        guard let cg = mask.cgImage(forProposedRect: nil, context: nil, hints: nil),
+              cg.bitsPerPixel == 32,
+              let data = cg.dataProvider?.data as Data? else { return true }
+        let bytesPerRow = cg.bytesPerRow
+        let alphaOffset = 3  // premultipliedLast = RGBA
+        for y in 0..<cg.height {
+            let row = y * bytesPerRow
+            for x in 0..<cg.width where data[row + x * 4 + alphaOffset] < 255 {
+                return true
+            }
+        }
+        return false
     }
 
     // MARK: — Save to SwiftData
