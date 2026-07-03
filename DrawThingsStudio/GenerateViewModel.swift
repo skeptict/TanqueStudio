@@ -39,9 +39,9 @@ final class GenerateViewModel {
     // MARK: — img2img source
     var sourceImage: NSImage?
 
-    // MARK: — Canvas editing (inpainting)
+    // MARK: — Canvas editing (inpainting / color draw)
 
-    enum CanvasMode { case view, paint, crop }
+    enum CanvasMode { case view, paint, crop, colorDraw }
 
     /// A single brush stroke in normalized image coordinates (0...1), so it maps
     /// cleanly to both the on-screen fit rect and the full-resolution mask bitmap.
@@ -51,7 +51,16 @@ final class GenerateViewModel {
         var isErase: Bool
     }
 
+    /// A single color brush stroke in normalized image coordinates.
+    struct ColorStroke {
+        var color: CGColor      // stored as CGColor for rendering at pixel resolution
+        var points: [CGPoint]   // normalized 0...1 (y=0 at top, same as screen)
+        var radius: CGFloat     // normalized to canvas width
+    }
+
     var canvasMode: CanvasMode = .view
+
+    // — Inpaint state
     var maskStrokes: [MaskStroke] = []
     /// Redo stack — strokes removed by undo, cleared when a new stroke is added.
     private var redoStrokes: [MaskStroke] = []
@@ -61,9 +70,18 @@ final class GenerateViewModel {
     /// Crop selection in normalized image coordinates (0...1), nil until dragged.
     var cropRect: CGRect?
 
+    // — Color draw state
+    var colorStrokes: [ColorStroke] = []
+    private var redoColorStrokes: [ColorStroke] = []
+    /// Currently selected drawing color (SwiftUI Color; converted to CGColor when stroke is committed).
+    var selectedDrawColor: Color = .red
+    var drawBrushSize: CGFloat = 40
+
     var hasMask: Bool { maskStrokes.contains { !$0.points.isEmpty && !$0.isErase } }
     var canUndoStroke: Bool { !maskStrokes.isEmpty }
     var canRedoStroke: Bool { !redoStrokes.isEmpty }
+    var canUndoColorStroke: Bool { !colorStrokes.isEmpty }
+    var canRedoColorStroke: Bool { !redoColorStrokes.isEmpty }
 
     func addMaskStroke(_ stroke: MaskStroke) {
         maskStrokes.append(stroke)
@@ -79,6 +97,27 @@ final class GenerateViewModel {
         guard let s = redoStrokes.popLast() else { return }
         maskStrokes.append(s)
     }
+
+    func addColorStroke(_ stroke: ColorStroke) {
+        colorStrokes.append(stroke)
+        redoColorStrokes.removeAll()
+    }
+
+    func undoColorStroke() {
+        guard let last = colorStrokes.popLast() else { return }
+        redoColorStrokes.append(last)
+    }
+
+    func redoColorStroke() {
+        guard let s = redoColorStrokes.popLast() else { return }
+        colorStrokes.append(s)
+    }
+
+    func clearColorStrokes() {
+        colorStrokes.removeAll()
+        redoColorStrokes.removeAll()
+    }
+
     var hasCrop: Bool {
         guard let r = cropRect else { return false }
         return r.width > 0.01 && r.height > 0.01
@@ -88,6 +127,8 @@ final class GenerateViewModel {
         guard generatedImage != nil, !isGenerating else { return }
         maskStrokes.removeAll()
         redoStrokes.removeAll()
+        colorStrokes.removeAll()
+        redoColorStrokes.removeAll()
         cropRect = nil
         canvasMode = .paint
     }
@@ -96,8 +137,22 @@ final class GenerateViewModel {
         guard generatedImage != nil, !isGenerating else { return }
         maskStrokes.removeAll()
         redoStrokes.removeAll()
+        colorStrokes.removeAll()
+        redoColorStrokes.removeAll()
         cropRect = nil
         canvasMode = .crop
+    }
+
+    /// Enters color-draw mode. Works on an existing image or a blank canvas.
+    func enterColorDrawMode() {
+        guard !isGenerating else { return }
+        maskStrokes.removeAll()
+        redoStrokes.removeAll()
+        colorStrokes.removeAll()
+        redoColorStrokes.removeAll()
+        cropRect = nil
+        brushErase = false
+        canvasMode = .colorDraw
     }
 
     /// Returns to view mode and clears all transient edit state.
@@ -105,6 +160,8 @@ final class GenerateViewModel {
         canvasMode = .view
         maskStrokes.removeAll()
         redoStrokes.removeAll()
+        colorStrokes.removeAll()
+        redoColorStrokes.removeAll()
         cropRect = nil
         brushErase = false
     }
@@ -112,6 +169,78 @@ final class GenerateViewModel {
     func clearMask() {
         maskStrokes.removeAll()
         redoStrokes.removeAll()
+    }
+
+    // MARK: — Color draw flatten
+
+    /// Composites colorStrokes onto `base` (or a white canvas of config dimensions if nil).
+    /// Returns the merged NSImage, or nil on failure.
+    func flattenColorDrawing(onto base: NSImage?) -> NSImage? {
+        let w: Int
+        let h: Int
+        if let cg = base?.cgImage(forProposedRect: nil, context: nil, hints: nil) {
+            w = cg.width; h = cg.height
+        } else {
+            w = max(1, config.width); h = max(1, config.height)
+        }
+        guard let ctx = CGContext(
+            data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: 0,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else { return nil }
+
+        let fw = CGFloat(w), fh = CGFloat(h)
+
+        // Draw base image or white fill
+        if let base, let cg = base.cgImage(forProposedRect: nil, context: nil, hints: nil) {
+            ctx.draw(cg, in: CGRect(x: 0, y: 0, width: fw, height: fh))
+        } else {
+            ctx.setFillColor(CGColor(red: 1, green: 1, blue: 1, alpha: 1))
+            ctx.fill(CGRect(x: 0, y: 0, width: fw, height: fh))
+        }
+
+        // Draw color strokes. Normalized y=0 is top; CGContext y=0 is bottom → flip.
+        ctx.setLineCap(.round)
+        ctx.setLineJoin(.round)
+        for stroke in colorStrokes where !stroke.points.isEmpty {
+            ctx.setStrokeColor(stroke.color)
+            ctx.setFillColor(stroke.color)
+            let lineWidth = max(1, stroke.radius * fw * 2)
+            ctx.setLineWidth(lineWidth)
+            let pts = stroke.points.map { CGPoint(x: $0.x * fw, y: (1 - $0.y) * fh) }
+            if pts.count == 1 {
+                let r = lineWidth / 2
+                ctx.fillEllipse(in: CGRect(x: pts[0].x - r, y: pts[0].y - r, width: lineWidth, height: lineWidth))
+            } else {
+                ctx.beginPath()
+                ctx.move(to: pts[0])
+                for p in pts.dropFirst() { ctx.addLine(to: p) }
+                ctx.strokePath()
+            }
+        }
+
+        guard let out = ctx.makeImage() else { return nil }
+        return NSImage(cgImage: out, size: NSSize(width: fw, height: fh))
+    }
+
+    /// Flattens the color drawing and sets it as the img2img source, then exits draw mode.
+    func flattenColorDrawToImg2img() {
+        guard let result = flattenColorDrawing(onto: generatedImage) else { return }
+        sourceImage = result
+        transientWarning = "Color drawing set as img2img source."
+        exitEditMode()
+    }
+
+    /// Flattens the color drawing, replaces the canvas image, saves to gallery, then exits.
+    func flattenColorDrawToCanvas(in context: ModelContext) {
+        guard let result = flattenColorDrawing(onto: generatedImage) else { return }
+        generatedImage = result
+        currentImageSource = .imported
+        exitEditMode()
+        try? ImageStorageManager.createAndInsert(
+            image: result, source: .imported, config: config, prompt: prompt, in: context
+        )
+        try? context.save()
     }
 
     // MARK: — Crop
