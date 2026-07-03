@@ -1,5 +1,61 @@
 import SwiftUI
 
+// MARK: - Collapsible Section
+
+/// Section shell for the left panel: clickable header (chevron + label) with an
+/// optional trailing accessory, content shown when expanded. Expansion state is
+/// persisted per section under `tanqueStudio.generate.section.<key>`.
+private struct CollapsibleSection<Accessory: View, Content: View>: View {
+    let title: String
+    @ViewBuilder let accessory: () -> Accessory
+    @ViewBuilder let content: () -> Content
+    @AppStorage private var isExpanded: Bool
+
+    init(_ title: String, key: String, defaultExpanded: Bool = true,
+         @ViewBuilder accessory: @escaping () -> Accessory,
+         @ViewBuilder content: @escaping () -> Content) {
+        self.title = title
+        self.accessory = accessory
+        self.content = content
+        self._isExpanded = AppStorage(wrappedValue: defaultExpanded,
+                                      "tanqueStudio.generate.section.\(key)")
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
+                Button {
+                    withAnimation(.easeOut(duration: 0.15)) { isExpanded.toggle() }
+                } label: {
+                    HStack(spacing: 5) {
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 9, weight: .semibold))
+                            .rotationEffect(.degrees(isExpanded ? 90 : 0))
+                            .foregroundStyle(TanqueDS.Color.textMuted)
+                        Text(title)
+                            .tanqueSectionLabel()
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                Spacer()
+                accessory()
+            }
+            if isExpanded {
+                content()
+            }
+        }
+    }
+}
+
+extension CollapsibleSection where Accessory == EmptyView {
+    init(_ title: String, key: String, defaultExpanded: Bool = true,
+         @ViewBuilder content: @escaping () -> Content) {
+        self.init(title, key: key, defaultExpanded: defaultExpanded,
+                  accessory: { EmptyView() }, content: content)
+    }
+}
+
 // MARK: - Left Config Panel
 
 struct GenerateLeftPanel: View {
@@ -186,32 +242,6 @@ struct GenerateLeftPanel: View {
                 }
             }
 
-            // Resolution Dependent Shift toggle
-            ConfigRow("Res. Shift") {
-                Toggle("", isOn: Binding(
-                    get: { vm.config.resolutionDependentShift ?? false },
-                    set: { vm.config.resolutionDependentShift = $0 }
-                ))
-                .labelsHidden()
-                .tint(TanqueDS.Color.brass)
-            }
-
-            // Shift (disabled + shows computed value when RDS is on)
-            let rdsOn = vm.config.resolutionDependentShift == true
-            SliderConfigRow(
-                label: "Shift",
-                range: 0...10,
-                step: 0.1,
-                increment: 0.1,
-                displayFormat: "%.2f",
-                value: $vm.config.shift,
-                disabled: rdsOn,
-                overrideDisplayValue: rdsOn
-                    ? DrawThingsGenerationConfig.rdsComputedShift(
-                        width: vm.config.width, height: vm.config.height)
-                    : nil
-            )
-
             // Seed
             ConfigRow("Seed") {
                 HStack(spacing: 6) {
@@ -238,28 +268,6 @@ struct GenerateLeftPanel: View {
                     .tint(TanqueDS.Color.brass)
             }
 
-            // Seed Mode
-            ConfigRow("Mode") {
-                Picker("", selection: $vm.config.seedMode) {
-                    ForEach(GenerateLeftPanel.seedModes, id: \.self) { Text($0) }
-                }
-                .labelsHidden()
-                .pickerStyle(.menu)
-            }
-
-            // SSS
-            SliderConfigRow(
-                label: "SSS",
-                range: 0...1,
-                step: 0.01,
-                increment: 0.01,
-                displayFormat: "%.2f",
-                value: Binding(
-                    get: { vm.config.stochasticSamplingGamma },
-                    set: { vm.config.stochasticSamplingGamma = $0 }
-                )
-            )
-
             // Renders
             ConfigRow("Renders") {
                 Stepper(
@@ -272,28 +280,80 @@ struct GenerateLeftPanel: View {
                         .frame(width: 20)
                 }
             }
+
+            // Less-frequently-touched params live behind Advanced (collapsed by default).
+            CollapsibleSection("Advanced", key: "advancedConfig", defaultExpanded: false) {
+                advancedConfigRows
+            }
+            .padding(.top, 2)
         }
+    }
+
+    @ViewBuilder
+    private var advancedConfigRows: some View {
+        // Resolution Dependent Shift toggle
+        ConfigRow("Res. Shift") {
+            Toggle("", isOn: Binding(
+                get: { vm.config.resolutionDependentShift ?? false },
+                set: { vm.config.resolutionDependentShift = $0 }
+            ))
+            .labelsHidden()
+            .tint(TanqueDS.Color.brass)
+        }
+
+        // Shift (disabled + shows computed value when RDS is on)
+        let rdsOn = vm.config.resolutionDependentShift == true
+        SliderConfigRow(
+            label: "Shift",
+            range: 0...10,
+            step: 0.1,
+            increment: 0.1,
+            displayFormat: "%.2f",
+            value: $vm.config.shift,
+            disabled: rdsOn,
+            overrideDisplayValue: rdsOn
+                ? DrawThingsGenerationConfig.rdsComputedShift(
+                    width: vm.config.width, height: vm.config.height)
+                : nil
+        )
+
+        // Seed Mode
+        ConfigRow("Mode") {
+            Picker("", selection: $vm.config.seedMode) {
+                ForEach(GenerateLeftPanel.seedModes, id: \.self) { Text($0) }
+            }
+            .labelsHidden()
+            .pickerStyle(.menu)
+        }
+
+        // SSS
+        SliderConfigRow(
+            label: "SSS",
+            range: 0...1,
+            step: 0.01,
+            increment: 0.01,
+            displayFormat: "%.2f",
+            value: Binding(
+                get: { vm.config.stochasticSamplingGamma },
+                set: { vm.config.stochasticSamplingGamma = $0 }
+            )
+        )
     }
 
     // MARK: — Saved Configs
 
     private var savedConfigsSection: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack {
-                Text("Saved Configs")
-                    .tanqueSectionLabel()
-                Spacer()
-                Button {
-                    vm.showConfigPicker = true
-                } label: {
-                    Image(systemName: "square.and.arrow.down")
-                        .font(.caption)
-                        .foregroundStyle(TanqueDS.Color.textSecondary)
-                }
-                .buttonStyle(.plain)
-                .help("Import from DT custom_configs.json")
+        CollapsibleSection("Saved Configs", key: "savedConfigs") {
+            Button {
+                vm.showConfigPicker = true
+            } label: {
+                Image(systemName: "square.and.arrow.down")
+                    .font(.caption)
+                    .foregroundStyle(TanqueDS.Color.textSecondary)
             }
-
+            .buttonStyle(.plain)
+            .help("Import from DT custom_configs.json")
+        } content: {
             if AppSettings.shared.dtConfigsBookmark == nil {
                 Text("No config file selected")
                     .font(TanqueDS.Font.bodySmall)
@@ -340,10 +400,7 @@ struct GenerateLeftPanel: View {
     }
 
     private var sizeTierSection: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("Canvas Size")
-                .tanqueSectionLabel()
-
+        CollapsibleSection("Canvas Size", key: "canvasSize") {
             HStack(spacing: 6) {
                 ForEach(Self.sizeTiers, id: \.label) { tier in
                     let isActive = currentSizeTier == tier.label
@@ -374,10 +431,7 @@ struct GenerateLeftPanel: View {
     // MARK: — Aspect Ratio Grid
 
     private var aspectRatioSection: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("Aspect Ratio")
-                .tanqueSectionLabel()
-
+        CollapsibleSection("Aspect Ratio", key: "aspectRatio") {
             LazyVGrid(
                 columns: [GridItem(.adaptive(minimum: 40, maximum: 52))],
                 spacing: 6
@@ -398,19 +452,14 @@ struct GenerateLeftPanel: View {
     // MARK: — LoRA Section
 
     private var loraSection: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack {
-                Text("LoRAs")
-                    .tanqueSectionLabel()
-                Spacer()
-                Button { vm.showLoRAPicker = true } label: {
-                    Image(systemName: "plus.circle")
-                        .font(.caption)
-                        .foregroundStyle(TanqueDS.Color.textSecondary)
-                }
-                .buttonStyle(.plain)
+        CollapsibleSection("LoRAs", key: "loras") {
+            Button { vm.showLoRAPicker = true } label: {
+                Image(systemName: "plus.circle")
+                    .font(.caption)
+                    .foregroundStyle(TanqueDS.Color.textSecondary)
             }
-
+            .buttonStyle(.plain)
+        } content: {
             if vm.config.loras.isEmpty {
                 Text("No LoRAs added")
                     .font(TanqueDS.Font.bodySmall)
@@ -442,10 +491,7 @@ struct GenerateLeftPanel: View {
     // MARK: — img2img
 
     private var img2imgSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("img2img")
-                .tanqueSectionLabel()
-
+        CollapsibleSection("img2img", key: "img2img") {
             // Strength slider
             SliderConfigRow(
                 label: "Strength",
@@ -507,19 +553,14 @@ struct GenerateLeftPanel: View {
     // MARK: — Moodboard
 
     private var moodboardSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text("Moodboard")
-                    .tanqueSectionLabel()
-                Spacer()
-                if !vm.moodboardEntries.isEmpty {
-                    Button("Clear") { vm.clearMoodboard() }
-                        .buttonStyle(.borderless)
-                        .font(TanqueDS.Font.body)
-                        .foregroundStyle(TanqueDS.Color.textSecondary)
-                }
+        CollapsibleSection("Moodboard", key: "moodboard") {
+            if !vm.moodboardEntries.isEmpty {
+                Button("Clear") { vm.clearMoodboard() }
+                    .buttonStyle(.borderless)
+                    .font(TanqueDS.Font.body)
+                    .foregroundStyle(TanqueDS.Color.textSecondary)
             }
-
+        } content: {
             if vm.moodboardEntries.isEmpty {
                 moodboardDropZone(label: "Drop reference images", height: 64)
             } else {
