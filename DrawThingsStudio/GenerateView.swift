@@ -188,12 +188,15 @@ private struct GenerateCenterPanel: View {
 
             // Color draw mode works with or without a base image (blank canvas).
             if vm.canvasMode == .colorDraw {
-                ColorDrawLayer(vm: vm, baseImage: vm.generatedImage)
+                ColorDrawLayer(vm: vm, baseImage: vm.generatedImage,
+                               canvasScale: $canvasScale, canvasOffset: $canvasOffset)
             } else if let image = vm.generatedImage {
                 if vm.canvasMode == .paint {
-                    InpaintLayer(vm: vm, image: image)
+                    InpaintLayer(vm: vm, image: image,
+                                 canvasScale: $canvasScale, canvasOffset: $canvasOffset)
                 } else if vm.canvasMode == .crop {
-                    CropLayer(vm: vm, image: image)
+                    CropLayer(vm: vm, image: image,
+                              canvasScale: $canvasScale, canvasOffset: $canvasOffset)
                 } else {
                     Image(nsImage: image)
                         .resizable()
@@ -242,7 +245,7 @@ private struct GenerateCenterPanel: View {
                     .allowsHitTesting(false)
             }
 
-            // Zoom indicator (view mode only)
+            // Zoom indicator (view mode only — edit modes show a reset chip instead)
             if vm.canvasMode == .view {
                 VStack {
                     Spacer()
@@ -591,12 +594,137 @@ private struct GenerateCenterPanel: View {
 
 // MARK: - Inpaint Paint Layer
 
-/// Renders the image at fit-scale with a live mask overlay and captures brush
-/// strokes in normalized image coordinates. Zoom/pan are intentionally disabled
-/// while painting so strokes map through a single known transform.
+/// Renders the image with a live mask overlay and captures brush strokes in
+/// normalized image coordinates. Zoom (pinch) and pan (⌥-drag) run through
+/// ZoomableEditSurface, which inverse-transforms pointer input into the fit
+/// rect's space so strokes stay correct at any zoom.
+// MARK: - Zoomable Edit Surface
+
+/// Shared zoom/pan shell for the edit layers (paint / crop / color draw).
+/// The layer's content renders in "content space" — the untransformed
+/// GeometryReader space its fit `rect` is computed in — and this wrapper
+/// applies the canvas scale/offset for display, inverse-transforms pointer
+/// input back into content space, and owns the view-conflicting gestures:
+/// plain drag → `onDragChanged` (paint/crop), ⌥-drag → pan, pinch → zoom.
+/// `screenOverlay` renders unscaled (brush cursors stay screen-sized).
+private struct ZoomableEditSurface<Content: View, Overlay: View>: View {
+    @Binding var scale: CGFloat
+    @Binding var offset: CGSize
+    let geoSize: CGSize
+    var minDragDistance: CGFloat = 0
+    let onDragChanged: (_ content: CGPoint, _ screen: CGPoint) -> Void
+    let onDragEnded: () -> Void
+    var onHoverScreen: ((CGPoint?) -> Void)? = nil
+    @ViewBuilder let content: () -> Content
+    @ViewBuilder let screenOverlay: () -> Overlay
+
+    @State private var lastScale: CGFloat = 1.0
+    @State private var lastOffset: CGSize = .zero
+    private enum DragMode { case undecided, paint, pan }
+    @State private var dragMode: DragMode = .undecided
+
+    /// Screen point → content-space point. Display transform is
+    /// `content.scaleEffect(scale, anchor: .center).offset(offset)` over the
+    /// full geo area, so the inverse is: undo offset, unscale about geo center.
+    private func toContent(_ p: CGPoint) -> CGPoint {
+        let cx = geoSize.width / 2, cy = geoSize.height / 2
+        return CGPoint(x: (p.x - offset.width - cx) / scale + cx,
+                       y: (p.y - offset.height - cy) / scale + cy)
+    }
+
+    var body: some View {
+        ZStack(alignment: .topLeading) {
+            ZStack(alignment: .topLeading) { content() }
+                .scaleEffect(scale)
+                .offset(offset)
+            screenOverlay()
+        }
+        .frame(width: geoSize.width, height: geoSize.height)
+        .contentShape(Rectangle())
+        .gesture(dragGesture)
+        .simultaneousGesture(pinchGesture)
+        .onContinuousHover { phase in
+            if case .active(let p) = phase { onHoverScreen?(p) } else { onHoverScreen?(nil) }
+        }
+        .overlay(alignment: .bottomTrailing) {
+            if abs(scale - 1.0) > 0.01 {
+                Button {
+                    withAnimation(.easeOut(duration: 0.15)) {
+                        scale = 1.0
+                        offset = .zero
+                        lastScale = 1.0
+                        lastOffset = .zero
+                    }
+                } label: {
+                    Text("\(Int(scale * 100))%")
+                        .font(.caption.monospacedDigit())
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 6))
+                }
+                .buttonStyle(.plain)
+                .help("Reset zoom to 100% (⌥-drag pans, pinch zooms)")
+                .padding([.bottom, .trailing], 12)
+            }
+        }
+        .onAppear {
+            lastScale = scale
+            lastOffset = offset
+        }
+    }
+
+    private var dragGesture: some Gesture {
+        DragGesture(minimumDistance: minDragDistance)
+            .onChanged { v in
+                if dragMode == .undecided {
+                    dragMode = NSEvent.modifierFlags.contains(.option) ? .pan : .paint
+                    if dragMode == .pan { lastOffset = offset }
+                }
+                switch dragMode {
+                case .pan:
+                    offset = CGSize(width: lastOffset.width + v.translation.width,
+                                    height: lastOffset.height + v.translation.height)
+                case .paint:
+                    onDragChanged(toContent(v.location), v.location)
+                case .undecided:
+                    break
+                }
+            }
+            .onEnded { _ in
+                if dragMode == .pan {
+                    lastOffset = offset
+                } else {
+                    onDragEnded()
+                }
+                dragMode = .undecided
+            }
+    }
+
+    private var pinchGesture: some Gesture {
+        MagnificationGesture()
+            .onChanged { value in
+                let scaled = lastScale * value
+                guard scaled.isFinite else { return }
+                scale = min(6.0, max(0.5, scaled))
+            }
+            .onEnded { _ in
+                if abs(scale - 1.0) < 0.05 {
+                    withAnimation(.easeOut(duration: 0.15)) {
+                        scale = 1.0
+                        offset = .zero
+                        lastOffset = .zero
+                    }
+                }
+                lastScale = scale
+            }
+    }
+}
+
 private struct InpaintLayer: View {
     @Bindable var vm: GenerateViewModel
     let image: NSImage
+    @Binding var canvasScale: CGFloat
+    @Binding var canvasOffset: CGSize
 
     @State private var currentStroke: [CGPoint] = []
     @State private var cursor: CGPoint? = nil
@@ -608,63 +736,64 @@ private struct InpaintLayer: View {
                                height: max(0, geo.size.height - pad * 2))
             let fit = aspectFit(image.size, in: avail)
             let rect = CGRect(x: pad + fit.minX, y: pad + fit.minY, width: fit.width, height: fit.height)
+            // Brush is screen-constant: zooming in paints finer image-space strokes.
+            let strokeRadius = (vm.brushSize / 2) / max(1, rect.width * canvasScale)
 
-            ZStack(alignment: .topLeading) {
-                Image(nsImage: image)
-                    .resizable()
-                    .frame(width: rect.width, height: rect.height)
-                    .position(x: rect.midX, y: rect.midY)
-
-                Canvas { ctx, size in
-                    let local = CGRect(origin: .zero, size: size)
-                    for stroke in vm.maskStrokes {
-                        drawStroke(stroke.points,
-                                   radius: stroke.radius,
-                                   isErase: stroke.isErase,
-                                   in: ctx, rect: local)
-                    }
+            ZoomableEditSurface(
+                scale: $canvasScale,
+                offset: $canvasOffset,
+                geoSize: geo.size,
+                onDragChanged: { content, screen in
+                    guard rect.width > 0, rect.height > 0 else { return }
+                    cursor = screen
+                    currentStroke.append(normalize(content, in: rect))
+                },
+                onDragEnded: {
                     if !currentStroke.isEmpty {
-                        drawStroke(currentStroke,
-                                   radius: (vm.brushSize / 2) / rect.width,
-                                   isErase: vm.brushErase,
-                                   in: ctx, rect: local)
+                        vm.addMaskStroke(.init(
+                            points: currentStroke,
+                            radius: strokeRadius,
+                            isErase: vm.brushErase
+                        ))
+                        currentStroke = []
                     }
-                }
-                .frame(width: rect.width, height: rect.height)
-                .position(x: rect.midX, y: rect.midY)
-                .allowsHitTesting(false)
+                },
+                onHoverScreen: { cursor = $0 },
+                content: {
+                    Image(nsImage: image)
+                        .resizable()
+                        .frame(width: rect.width, height: rect.height)
+                        .position(x: rect.midX, y: rect.midY)
 
-                // Brush cursor preview
-                if let c = cursor {
-                    Circle()
-                        .strokeBorder(Color.white.opacity(0.9), lineWidth: 1)
-                        .frame(width: vm.brushSize, height: vm.brushSize)
-                        .position(c)
-                        .allowsHitTesting(false)
-                }
-            }
-            .contentShape(Rectangle())
-            .gesture(
-                DragGesture(minimumDistance: 0)
-                    .onChanged { v in
-                        guard rect.width > 0, rect.height > 0 else { return }
-                        cursor = v.location
-                        currentStroke.append(normalize(v.location, in: rect))
-                    }
-                    .onEnded { _ in
+                    Canvas { ctx, size in
+                        let local = CGRect(origin: .zero, size: size)
+                        for stroke in vm.maskStrokes {
+                            drawStroke(stroke.points,
+                                       radius: stroke.radius,
+                                       isErase: stroke.isErase,
+                                       in: ctx, rect: local)
+                        }
                         if !currentStroke.isEmpty {
-                            vm.addMaskStroke(.init(
-                                points: currentStroke,
-                                radius: (vm.brushSize / 2) / rect.width,
-                                isErase: vm.brushErase
-                            ))
-                            currentStroke = []
+                            drawStroke(currentStroke,
+                                       radius: strokeRadius,
+                                       isErase: vm.brushErase,
+                                       in: ctx, rect: local)
                         }
                     }
+                    .frame(width: rect.width, height: rect.height)
+                    .position(x: rect.midX, y: rect.midY)
+                    .allowsHitTesting(false)
+                },
+                screenOverlay: {
+                    if let c = cursor {
+                        Circle()
+                            .strokeBorder(Color.white.opacity(0.9), lineWidth: 1)
+                            .frame(width: vm.brushSize, height: vm.brushSize)
+                            .position(c)
+                            .allowsHitTesting(false)
+                    }
+                }
             )
-            .onContinuousHover { phase in
-                if case .active(let p) = phase { cursor = p } else { cursor = nil }
-            }
         }
     }
 
@@ -707,12 +836,13 @@ private struct InpaintLayer: View {
 
 // MARK: - Crop Layer
 
-/// Renders the image at fit-scale and lets the user drag a crop rectangle.
-/// Selection is stored on the VM in normalized image coordinates. Zoom/pan are
-/// disabled while cropping (same rationale as painting).
+/// Lets the user drag a crop rectangle over the image. Selection is stored on
+/// the VM in normalized image coordinates; zoom/pan via ZoomableEditSurface.
 private struct CropLayer: View {
     @Bindable var vm: GenerateViewModel
     let image: NSImage
+    @Binding var canvasScale: CGFloat
+    @Binding var canvasOffset: CGSize
 
     @State private var dragStart: CGPoint? = nil
 
@@ -723,40 +853,43 @@ private struct CropLayer: View {
                                height: max(0, geo.size.height - pad * 2))
             let fit = aspectFit(image.size, in: avail)
             let rect = CGRect(x: pad + fit.minX, y: pad + fit.minY, width: fit.width, height: fit.height)
-            // Current selection in screen coords (from normalized).
+            // Current selection in content-space coords (from normalized).
             let sel = vm.cropRect.map { screenRect($0, in: rect) }
 
-            ZStack(alignment: .topLeading) {
-                Image(nsImage: image)
-                    .resizable()
-                    .frame(width: rect.width, height: rect.height)
-                    .position(x: rect.midX, y: rect.midY)
+            ZoomableEditSurface(
+                scale: $canvasScale,
+                offset: $canvasOffset,
+                geoSize: geo.size,
+                minDragDistance: 1,
+                onDragChanged: { content, _ in
+                    guard rect.width > 0, rect.height > 0 else { return }
+                    if dragStart == nil { dragStart = clamp(content, to: rect) }
+                    let a = dragStart!
+                    let b = clamp(content, to: rect)
+                    let contentSel = CGRect(x: min(a.x, b.x), y: min(a.y, b.y),
+                                            width: abs(b.x - a.x), height: abs(b.y - a.y))
+                    vm.cropRect = normalizeRect(contentSel, in: rect)
+                },
+                onDragEnded: { dragStart = nil },
+                content: {
+                    Image(nsImage: image)
+                        .resizable()
+                        .frame(width: rect.width, height: rect.height)
+                        .position(x: rect.midX, y: rect.midY)
 
-                // Dim everything outside the selection.
-                if let sel {
-                    Canvas { ctx, size in
-                        var outside = Path(CGRect(origin: .zero, size: size))
-                        outside.addRect(sel)
-                        ctx.fill(outside, with: .color(.black.opacity(0.5)), style: FillStyle(eoFill: true))
-                        ctx.stroke(Path(sel), with: .color(.white.opacity(0.9)),
-                                   style: StrokeStyle(lineWidth: 1.5, dash: [5, 4]))
+                    // Dim everything outside the selection.
+                    if let sel {
+                        Canvas { ctx, size in
+                            var outside = Path(CGRect(origin: .zero, size: size))
+                            outside.addRect(sel)
+                            ctx.fill(outside, with: .color(.black.opacity(0.5)), style: FillStyle(eoFill: true))
+                            ctx.stroke(Path(sel), with: .color(.white.opacity(0.9)),
+                                       style: StrokeStyle(lineWidth: 1.5, dash: [5, 4]))
+                        }
+                        .allowsHitTesting(false)
                     }
-                    .allowsHitTesting(false)
-                }
-            }
-            .contentShape(Rectangle())
-            .gesture(
-                DragGesture(minimumDistance: 1)
-                    .onChanged { v in
-                        guard rect.width > 0, rect.height > 0 else { return }
-                        if dragStart == nil { dragStart = clamp(v.startLocation, to: rect) }
-                        let a = dragStart!
-                        let b = clamp(v.location, to: rect)
-                        let screenSel = CGRect(x: min(a.x, b.x), y: min(a.y, b.y),
-                                               width: abs(b.x - a.x), height: abs(b.y - a.y))
-                        vm.cropRect = normalizeRect(screenSel, in: rect)
-                    }
-                    .onEnded { _ in dragStart = nil }
+                },
+                screenOverlay: { EmptyView() }
             )
         }
     }
@@ -797,6 +930,8 @@ private struct CropLayer: View {
 private struct ColorDrawLayer: View {
     @Bindable var vm: GenerateViewModel
     let baseImage: NSImage?
+    @Binding var canvasScale: CGFloat
+    @Binding var canvasOffset: CGSize
 
     @State private var currentStroke: [CGPoint] = []
     @State private var cursor: CGPoint? = nil
@@ -815,75 +950,76 @@ private struct ColorDrawLayer: View {
                                height: max(0, geo.size.height - pad * 2))
             let fit = aspectFit(canvasSize, in: avail)
             let rect = CGRect(x: pad + fit.minX, y: pad + fit.minY, width: fit.width, height: fit.height)
+            // Brush is screen-constant: zooming in paints finer image-space strokes.
+            let strokeRadius = (vm.drawBrushSize / 2) / max(1, rect.width * canvasScale)
 
-            ZStack(alignment: .topLeading) {
-                // Background: image or white canvas
-                if let img = baseImage {
-                    Image(nsImage: img)
-                        .resizable()
-                        .frame(width: rect.width, height: rect.height)
-                        .position(x: rect.midX, y: rect.midY)
-                } else {
-                    Rectangle()
-                        .fill(Color.white)
-                        .frame(width: rect.width, height: rect.height)
-                        .position(x: rect.midX, y: rect.midY)
-                }
-
-                // Committed strokes
-                Canvas { ctx, size in
-                    let local = CGRect(origin: .zero, size: size)
-                    for stroke in vm.colorStrokes {
-                        drawColorStroke(stroke.points,
-                                        radius: stroke.radius,
-                                        color: Color(cgColor: stroke.color),
-                                        in: ctx, rect: local)
-                    }
+            ZoomableEditSurface(
+                scale: $canvasScale,
+                offset: $canvasOffset,
+                geoSize: geo.size,
+                onDragChanged: { content, screen in
+                    guard rect.width > 0, rect.height > 0 else { return }
+                    cursor = screen
+                    currentStroke.append(normalize(content, in: rect))
+                },
+                onDragEnded: {
                     if !currentStroke.isEmpty {
-                        let normRadius = (vm.drawBrushSize / 2) / rect.width
-                        drawColorStroke(currentStroke,
-                                        radius: normRadius,
-                                        color: vm.selectedDrawColor,
-                                        in: ctx, rect: local)
+                        let cgColor = NSColor(vm.selectedDrawColor).cgColor
+                        vm.addColorStroke(.init(
+                            color: cgColor,
+                            points: currentStroke,
+                            radius: strokeRadius
+                        ))
+                        currentStroke = []
                     }
-                }
-                .frame(width: rect.width, height: rect.height)
-                .position(x: rect.midX, y: rect.midY)
-                .allowsHitTesting(false)
+                },
+                onHoverScreen: { cursor = $0 },
+                content: {
+                    // Background: image or white canvas
+                    if let img = baseImage {
+                        Image(nsImage: img)
+                            .resizable()
+                            .frame(width: rect.width, height: rect.height)
+                            .position(x: rect.midX, y: rect.midY)
+                    } else {
+                        Rectangle()
+                            .fill(Color.white)
+                            .frame(width: rect.width, height: rect.height)
+                            .position(x: rect.midX, y: rect.midY)
+                    }
 
-                // Brush cursor preview — filled circle in selected color
-                if let c = cursor {
-                    Circle()
-                        .fill(vm.selectedDrawColor.opacity(0.6))
-                        .overlay(Circle().strokeBorder(Color.white.opacity(0.8), lineWidth: 1))
-                        .frame(width: vm.drawBrushSize, height: vm.drawBrushSize)
-                        .position(c)
-                        .allowsHitTesting(false)
-                }
-            }
-            .contentShape(Rectangle())
-            .gesture(
-                DragGesture(minimumDistance: 0)
-                    .onChanged { v in
-                        guard rect.width > 0, rect.height > 0 else { return }
-                        cursor = v.location
-                        currentStroke.append(normalize(v.location, in: rect))
-                    }
-                    .onEnded { _ in
+                    // Committed strokes
+                    Canvas { ctx, size in
+                        let local = CGRect(origin: .zero, size: size)
+                        for stroke in vm.colorStrokes {
+                            drawColorStroke(stroke.points,
+                                            radius: stroke.radius,
+                                            color: Color(cgColor: stroke.color),
+                                            in: ctx, rect: local)
+                        }
                         if !currentStroke.isEmpty {
-                            let cgColor = NSColor(vm.selectedDrawColor).cgColor
-                            vm.addColorStroke(.init(
-                                color: cgColor,
-                                points: currentStroke,
-                                radius: (vm.drawBrushSize / 2) / rect.width
-                            ))
-                            currentStroke = []
+                            drawColorStroke(currentStroke,
+                                            radius: strokeRadius,
+                                            color: vm.selectedDrawColor,
+                                            in: ctx, rect: local)
                         }
                     }
+                    .frame(width: rect.width, height: rect.height)
+                    .position(x: rect.midX, y: rect.midY)
+                    .allowsHitTesting(false)
+                },
+                screenOverlay: {
+                    // Brush cursor preview — filled circle in selected color
+                    if let c = cursor {
+                        Circle()
+                            .fill(vm.selectedDrawColor.opacity(0.6))
+                            .overlay(Circle().strokeBorder(Color.white.opacity(0.8), lineWidth: 1))
+                            .frame(width: vm.drawBrushSize, height: vm.drawBrushSize)
+                            .position(c)
+                            .allowsHitTesting(false)
+                    }
+                }
             )
-            .onContinuousHover { phase in
-                if case .active(let p) = phase { cursor = p } else { cursor = nil }
-            }
         }
     }
 
