@@ -72,11 +72,19 @@ struct TanqueStudioApp: App {
         // Schema versioning:
         // currentSchemaVersion — bump on every schema change
         // lastDestructiveVersion — bump only when a store wipe is required
-        let currentSchemaVersion = 1
+        let currentSchemaVersion = 2
         let lastDestructiveVersion = 1
         let schemaVersionKey = "tanqueStudio.schemaVersion"
 
-        let schema = Schema([TSImage.self])
+        let schema = Schema([
+            TSImage.self,
+            StoryProject.self,
+            StoryCharacter.self,
+            StorySetting.self,
+            StoryChapter.self,
+            StoryScene.self,
+            SceneCharacterPresence.self,
+        ])
         let modelConfiguration = ModelConfiguration(
             "TanqueStudio", schema: schema, isStoredInMemoryOnly: false)
 
