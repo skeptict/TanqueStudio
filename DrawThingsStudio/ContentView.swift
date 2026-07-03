@@ -97,6 +97,8 @@ struct ContentView: View {
             DTProjectBrowserView(vm: generateVM, onNavigateToGenerate: { selectedItem = .generate })
         case .storyFlow:
             StoryFlowView(vm: storyFlowVM)
+        case .storyStudio:
+            StoryStudioLibraryView()
         case .settings:
             SettingsView()
         default:
