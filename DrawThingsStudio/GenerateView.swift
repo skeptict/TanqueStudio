@@ -3,13 +3,10 @@ import AppKit
 import Combine
 import SwiftData
 
-enum OutputFormat { case svg, png }
-
 // MARK: - Root View
 
 struct GenerateView: View {
     let vm: GenerateViewModel
-    var sidebarCollapsed: Bool = false
     @Query(sort: \TSImage.createdAt, order: .reverse) private var savedImages: [TSImage]
 
     @State private var toastMessage: String? = nil
@@ -18,7 +15,6 @@ struct GenerateView: View {
     @State private var canvasScale: CGFloat  = 1.0
     @State private var canvasOffset: CGSize  = .zero
     @State private var canvasSize: CGSize    = .zero
-    @State private var outputFormat: OutputFormat = .png
 
     private func showToast(_ message: String) {
         toastTask?.cancel()
@@ -31,8 +27,6 @@ struct GenerateView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            GenerateTopBar(vm: vm, outputFormat: $outputFormat, sidebarCollapsed: sidebarCollapsed)
-
             ZStack {
                 HStack(spacing: 0) {
                     // Left panel — fixed 260pt, collapses to 0
@@ -146,7 +140,6 @@ struct GenerateView: View {
 
             GenerateStatusBar(vm: vm)
         }
-        .ignoresSafeArea(edges: .top)
     }
 }
 
@@ -166,7 +159,9 @@ private struct GenerateCenterPanel: View {
     private var magnificationGesture: some Gesture {
         MagnificationGesture()
             .onChanged { value in
-                canvasScale = min(6.0, max(0.5, lastScale * value))
+                let scaled = lastScale * value
+                guard scaled.isFinite else { return }
+                canvasScale = min(6.0, max(0.5, scaled))
             }
             .onEnded { _ in
                 if abs(canvasScale - 1.0) < 0.05 {
@@ -191,7 +186,10 @@ private struct GenerateCenterPanel: View {
         ZStack {
             Color.black
 
-            if let image = vm.generatedImage {
+            // Color draw mode works with or without a base image (blank canvas).
+            if vm.canvasMode == .colorDraw {
+                ColorDrawLayer(vm: vm, baseImage: vm.generatedImage)
+            } else if let image = vm.generatedImage {
                 if vm.canvasMode == .paint {
                     InpaintLayer(vm: vm, image: image)
                 } else if vm.canvasMode == .crop {
@@ -206,7 +204,7 @@ private struct GenerateCenterPanel: View {
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                         .contentShape(Rectangle())
                         .onTapGesture(count: 2) {
-                            withAnimation(.spring(response: 0.3)) {
+                            withAnimation(.easeOut(duration: 0.15)) {
                                 canvasScale  = 1.0
                                 canvasOffset = .zero
                                 lastScale    = 1.0
@@ -237,10 +235,6 @@ private struct GenerateCenterPanel: View {
                 progressOverlay
             }
 
-            if let error = vm.errorMessage {
-                errorBanner(error)
-            }
-
             if isDropTargeted {
                 RoundedRectangle(cornerRadius: 8)
                     .strokeBorder(Color.accentColor, lineWidth: 2)
@@ -264,10 +258,8 @@ private struct GenerateCenterPanel: View {
                 .allowsHitTesting(false)
             }
 
-            // Canvas mode toolbar (only with an image loaded)
-            if vm.generatedImage != nil {
-                canvasModeToolbar
-            }
+            // Canvas mode toolbar — always visible so color draw is accessible from blank canvas
+            canvasModeToolbar
 
             // Paint controls + inpaint action bar
             if vm.canvasMode == .paint {
@@ -277,6 +269,16 @@ private struct GenerateCenterPanel: View {
             // Crop action bar
             if vm.canvasMode == .crop {
                 cropControls
+            }
+
+            // Color draw palette + action bar
+            if vm.canvasMode == .colorDraw {
+                colorDrawControls
+            }
+
+            // Error banner always on top so its X button is never occluded
+            if let error = vm.errorMessage {
+                errorBanner(error)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -293,6 +295,12 @@ private struct GenerateCenterPanel: View {
             resetZoom()
             vm.exitEditMode()
         }
+        .onChange(of: vm.errorMessage) { _, newError in
+            if newError != nil {
+                resetZoom()
+                vm.exitEditMode()
+            }
+        }
         .background(
             GeometryReader { geo in
                 Color.clear
@@ -302,15 +310,16 @@ private struct GenerateCenterPanel: View {
         )
     }
 
-    // Top-right toggle between View, Paint, and Crop modes.
+    // Top-right toggle between View, Paint, Crop, and Color Draw modes.
     private var canvasModeToolbar: some View {
         VStack {
             HStack {
                 Spacer()
                 HStack(spacing: 2) {
-                    modeButton(.view, system: "hand.draw", help: "View — zoom & pan")
-                    modeButton(.paint, system: "paintbrush.pointed", help: "Paint a mask to inpaint")
-                    modeButton(.crop, system: "crop", help: "Crop a region")
+                    modeButton(.view,      system: "hand.draw",          help: "View — zoom & pan")
+                    modeButton(.paint,     system: "paintbrush.pointed", help: "Paint a mask to inpaint")
+                    modeButton(.crop,      system: "crop",               help: "Crop a region")
+                    modeButton(.colorDraw, system: "paintpalette",       help: "Color draw — paint on image or blank canvas, then send to an edit model")
                 }
                 .padding(4)
                 .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
@@ -321,11 +330,15 @@ private struct GenerateCenterPanel: View {
     }
 
     private func modeButton(_ mode: GenerateViewModel.CanvasMode, system: String, help: String) -> some View {
-        Button {
+        // Paint and crop need a base image; view and color draw work on a blank canvas.
+        let needsImage = mode == .paint || mode == .crop
+        let unavailable = needsImage && vm.generatedImage == nil
+        return Button {
             switch mode {
-            case .paint: vm.enterPaintMode()
-            case .crop:  vm.enterCropMode()
-            case .view:  vm.exitEditMode()
+            case .paint:     vm.enterPaintMode()
+            case .crop:      vm.enterCropMode()
+            case .colorDraw: vm.enterColorDrawMode()
+            case .view:      vm.exitEditMode()
             }
         } label: {
             Image(systemName: system)
@@ -336,6 +349,8 @@ private struct GenerateCenterPanel: View {
                 .foregroundStyle(vm.canvasMode == mode ? Color.white : TanqueDS.Color.textSecondary)
         }
         .buttonStyle(.plain)
+        .disabled(unavailable)
+        .opacity(unavailable ? 0.35 : 1)
         .help(help)
     }
 
@@ -424,6 +439,93 @@ private struct GenerateCenterPanel: View {
                 .disabled(!vm.hasCrop)
                 Button("Done") { vm.exitEditMode() }
                     .buttonStyle(.bordered)
+            }
+            .padding(12)
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 10))
+            .padding(.bottom, 16)
+        }
+    }
+
+    // Bottom overlay: color palette, brush controls, and export actions.
+    private var colorDrawControls: some View {
+        VStack {
+            Spacer()
+            VStack(spacing: 10) {
+                // Color swatches + picker
+                HStack(spacing: 8) {
+                    Text("Color")
+                        .font(.caption)
+                        .foregroundStyle(TanqueDS.Color.textSecondary)
+                    let presets: [(Color, String)] = [
+                        (.red, "Red"), (.orange, "Orange"), (.yellow, "Yellow"),
+                        (.green, "Green"), (.blue, "Blue"), (.purple, "Purple"),
+                        (.pink, "Pink"), (.white, "White"), (.black, "Black")
+                    ]
+                    ForEach(presets, id: \.1) { color, name in
+                        Circle()
+                            .fill(color)
+                            .frame(width: 22, height: 22)
+                            .overlay(Circle().strokeBorder(Color.white, lineWidth: 2)
+                                .opacity(vm.selectedDrawColor == color ? 1 : 0))
+                            .overlay(Circle().strokeBorder(Color.gray.opacity(0.4), lineWidth: 0.5))
+                            .onTapGesture { vm.selectedDrawColor = color }
+                            .help(name)
+                    }
+                    Divider().frame(height: 20)
+                    ColorPicker("Custom", selection: $vm.selectedDrawColor)
+                        .labelsHidden()
+                        .frame(width: 26, height: 26)
+                        .help("Pick a custom color")
+                }
+                // Brush size + undo/clear
+                HStack(spacing: 12) {
+                    Image(systemName: "paintbrush").font(.caption)
+                    Slider(value: $vm.drawBrushSize, in: 5...200)
+                        .frame(width: 130)
+                    Text("\(Int(vm.drawBrushSize))pt")
+                        .font(.caption.monospacedDigit())
+                        .frame(width: 38, alignment: .leading)
+                    Divider().frame(height: 18)
+                    Button { vm.undoColorStroke() } label: {
+                        Image(systemName: "arrow.uturn.backward").font(.caption)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(!vm.canUndoColorStroke)
+                    .keyboardShortcut("z", modifiers: .command)
+                    .help("Undo stroke")
+                    Button { vm.redoColorStroke() } label: {
+                        Image(systemName: "arrow.uturn.forward").font(.caption)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(!vm.canRedoColorStroke)
+                    .keyboardShortcut("z", modifiers: [.command, .shift])
+                    .help("Redo stroke")
+                    Button { vm.clearColorStrokes() } label: {
+                        Label("Clear", systemImage: "trash").font(.caption)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(vm.colorStrokes.isEmpty)
+                }
+                // Actions
+                HStack(spacing: 10) {
+                    Button {
+                        vm.flattenColorDrawToImg2img()
+                    } label: {
+                        Label("Send to img2img", systemImage: "photo.on.rectangle.angled")
+                            .font(.callout.weight(.medium))
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .help("Flatten drawing onto base and set as img2img source — use with Qwen Image Edit, FLUX.1 Fill, etc.")
+                    Button {
+                        vm.flattenColorDrawToCanvas(in: modelContext)
+                    } label: {
+                        Label("Save to canvas", systemImage: "square.and.arrow.down").font(.callout)
+                    }
+                    .buttonStyle(.bordered)
+                    .help("Flatten and replace the canvas image")
+                    Button("Done") { vm.exitEditMode() }
+                        .buttonStyle(.bordered)
+                }
             }
             .padding(12)
             .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 10))
@@ -686,6 +788,139 @@ private struct CropLayer: View {
     }
 }
 
+// MARK: - Color Draw Layer
+
+/// Full-canvas painting layer. Works with or without a base image.
+/// When `baseImage` is nil a white canvas is shown at config dimensions.
+/// Strokes are stored as normalized `ColorStroke` values on the VM and
+/// later rasterized via `flattenColorDrawing(onto:)`.
+private struct ColorDrawLayer: View {
+    @Bindable var vm: GenerateViewModel
+    let baseImage: NSImage?
+
+    @State private var currentStroke: [CGPoint] = []
+    @State private var cursor: CGPoint? = nil
+
+    private var canvasSize: CGSize {
+        if let img = baseImage { return img.size }
+        let w = CGFloat(max(1, vm.config.width))
+        let h = CGFloat(max(1, vm.config.height))
+        return CGSize(width: w, height: h)
+    }
+
+    var body: some View {
+        GeometryReader { geo in
+            let pad: CGFloat = 16
+            let avail = CGSize(width: max(0, geo.size.width - pad * 2),
+                               height: max(0, geo.size.height - pad * 2))
+            let fit = aspectFit(canvasSize, in: avail)
+            let rect = CGRect(x: pad + fit.minX, y: pad + fit.minY, width: fit.width, height: fit.height)
+
+            ZStack(alignment: .topLeading) {
+                // Background: image or white canvas
+                if let img = baseImage {
+                    Image(nsImage: img)
+                        .resizable()
+                        .frame(width: rect.width, height: rect.height)
+                        .position(x: rect.midX, y: rect.midY)
+                } else {
+                    Rectangle()
+                        .fill(Color.white)
+                        .frame(width: rect.width, height: rect.height)
+                        .position(x: rect.midX, y: rect.midY)
+                }
+
+                // Committed strokes
+                Canvas { ctx, size in
+                    let local = CGRect(origin: .zero, size: size)
+                    for stroke in vm.colorStrokes {
+                        drawColorStroke(stroke.points,
+                                        radius: stroke.radius,
+                                        color: Color(cgColor: stroke.color),
+                                        in: ctx, rect: local)
+                    }
+                    if !currentStroke.isEmpty {
+                        let normRadius = (vm.drawBrushSize / 2) / rect.width
+                        drawColorStroke(currentStroke,
+                                        radius: normRadius,
+                                        color: vm.selectedDrawColor,
+                                        in: ctx, rect: local)
+                    }
+                }
+                .frame(width: rect.width, height: rect.height)
+                .position(x: rect.midX, y: rect.midY)
+                .allowsHitTesting(false)
+
+                // Brush cursor preview — filled circle in selected color
+                if let c = cursor {
+                    Circle()
+                        .fill(vm.selectedDrawColor.opacity(0.6))
+                        .overlay(Circle().strokeBorder(Color.white.opacity(0.8), lineWidth: 1))
+                        .frame(width: vm.drawBrushSize, height: vm.drawBrushSize)
+                        .position(c)
+                        .allowsHitTesting(false)
+                }
+            }
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { v in
+                        guard rect.width > 0, rect.height > 0 else { return }
+                        cursor = v.location
+                        currentStroke.append(normalize(v.location, in: rect))
+                    }
+                    .onEnded { _ in
+                        if !currentStroke.isEmpty {
+                            let cgColor = NSColor(vm.selectedDrawColor).cgColor
+                            vm.addColorStroke(.init(
+                                color: cgColor,
+                                points: currentStroke,
+                                radius: (vm.drawBrushSize / 2) / rect.width
+                            ))
+                            currentStroke = []
+                        }
+                    }
+            )
+            .onContinuousHover { phase in
+                if case .active(let p) = phase { cursor = p } else { cursor = nil }
+            }
+        }
+    }
+
+    private func drawColorStroke(_ pts: [CGPoint], radius: CGFloat, color: Color,
+                                 in ctx: GraphicsContext, rect: CGRect) {
+        guard !pts.isEmpty else { return }
+        let lineWidth = max(1, radius * rect.width * 2)
+        let screenPts = pts.map { CGPoint(x: $0.x * rect.width, y: $0.y * rect.height) }
+        if screenPts.count == 1 {
+            let r = lineWidth / 2
+            let dot = Path(ellipseIn: CGRect(x: screenPts[0].x - r, y: screenPts[0].y - r,
+                                             width: lineWidth, height: lineWidth))
+            ctx.fill(dot, with: .color(color))
+        } else {
+            var path = Path()
+            path.move(to: screenPts[0])
+            for p in screenPts.dropFirst() { path.addLine(to: p) }
+            ctx.stroke(path, with: .color(color),
+                       style: StrokeStyle(lineWidth: lineWidth, lineCap: .round, lineJoin: .round))
+        }
+    }
+
+    private func normalize(_ p: CGPoint, in rect: CGRect) -> CGPoint {
+        CGPoint(
+            x: min(1, max(0, (p.x - rect.minX) / rect.width)),
+            y: min(1, max(0, (p.y - rect.minY) / rect.height))
+        )
+    }
+
+    private func aspectFit(_ imageSize: CGSize, in avail: CGSize) -> CGRect {
+        guard imageSize.width > 0, imageSize.height > 0, avail.width > 0, avail.height > 0 else { return .zero }
+        let scale = min(avail.width / imageSize.width, avail.height / imageSize.height)
+        let w = imageSize.width * scale, h = imageSize.height * scale
+        return CGRect(x: (avail.width - w) / 2, y: (avail.height - h) / 2, width: w, height: h)
+    }
+}
+
 // MARK: - Key Event Monitor
 
 /// Ties NSEvent monitor lifetime to ARC — deinit always removes the monitor.
@@ -906,101 +1141,6 @@ struct PanelDragHandle: View {
                 .fill(Color.white.opacity(isHovered ? 0.15 : 0.0))
                 .frame(width: 1)
                 .allowsHitTesting(false)
-        }
-    }
-}
-
-// MARK: - Top Bar
-
-private struct GenerateTopBar: View {
-    let vm: GenerateViewModel
-    @Binding var outputFormat: OutputFormat
-    var sidebarCollapsed: Bool = false
-
-    private var isConnected: Bool { !vm.models.isEmpty }
-
-    private var modelDisplayName: String {
-        guard !vm.config.model.isEmpty else { return "—" }
-        let base = URL(fileURLWithPath: vm.config.model)
-            .deletingPathExtension()
-            .lastPathComponent
-        guard base.count > 20 else { return base }
-        return String(base.prefix(20)) + "…"
-    }
-
-    var body: some View {
-        HStack(spacing: 0) {
-            // Left: icon + wordmark — leading spacer clears the window traffic
-            // lights when the navigation sidebar is hidden (detail sits at the edge).
-            HStack(spacing: 6) {
-                Spacer().frame(width: sidebarCollapsed ? 78 : 16)
-                Image(nsImage: NSApp.applicationIconImage)
-                    .resizable()
-                    .frame(width: 28, height: 28)
-                    .clipShape(RoundedRectangle(cornerRadius: 6))
-                HStack(spacing: 4) {
-                    Text("TANQUE")
-                        .font(TanqueDS.Font.monoSemiBold(14))
-                        .foregroundStyle(TanqueDS.Color.textPrimary)
-                    Text("STUDIO")
-                        .font(TanqueDS.Font.mono(11))
-                        .foregroundStyle(TanqueDS.Color.textMuted)
-                }
-            }
-
-            Spacer()
-
-            // Center: active model + sampler
-            HStack(spacing: 6) {
-                Text(modelDisplayName)
-                    .font(TanqueDS.Font.body)
-                    .foregroundStyle(TanqueDS.Color.textSecondary)
-                Text("·")
-                    .font(TanqueDS.Font.body)
-                    .foregroundStyle(TanqueDS.Color.textMuted)
-                Text(vm.config.sampler)
-                    .font(TanqueDS.Font.body)
-                    .foregroundStyle(TanqueDS.Color.textSecondary)
-            }
-
-            Spacer()
-
-            // Right: connection status + format toggle
-            HStack(spacing: 12) {
-                HStack(spacing: 6) {
-                    Circle()
-                        .fill(isConnected ? TanqueDS.Color.connected : TanqueDS.Color.textMuted)
-                        .frame(width: 6, height: 6)
-                    Text(isConnected ? "connected" : "disconnected")
-                        .font(TanqueDS.Font.body)
-                        .foregroundStyle(isConnected ? TanqueDS.Color.connected : TanqueDS.Color.textMuted)
-                }
-                HStack(spacing: 4) {
-                    ForEach([OutputFormat.svg, OutputFormat.png], id: \.self) { format in
-                        let isActive = outputFormat == format
-                        Button {
-                            outputFormat = format
-                        } label: {
-                            Text(format == .svg ? "SVG" : "PNG")
-                                .font(TanqueDS.Font.bodyMedium)
-                                .foregroundStyle(isActive ? TanqueDS.Color.surface0 : TanqueDS.Color.textMuted)
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 5)
-                                .background(isActive ? TanqueDS.Color.brass : TanqueDS.Color.surface2)
-                                .clipShape(RoundedRectangle(cornerRadius: TanqueDS.Layout.inputCornerRadius))
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-            }
-            .padding(.trailing, TanqueDS.Spacing.md)
-        }
-        .frame(height: TanqueDS.Layout.topBarHeight)
-        .background(TanqueDS.Color.surface1)
-        .overlay(alignment: .bottom) {
-            Rectangle()
-                .fill(TanqueDS.Color.surfaceBorder)
-                .frame(height: 1)
         }
     }
 }

@@ -16,9 +16,33 @@ struct LLMOperation: Identifiable, Hashable {
 enum LLMOperationLoader {
 
     static func loadAll() -> [LLMOperation] {
-        let folder = userOperationsFolder()
-        seedFolderIfNeeded(folder)
-        return loadFromFolder(folder)
+        withOperationsFolderAccess { folder in
+            seedFolderIfNeeded(folder)
+            return loadFromFolder(folder)
+        }
+    }
+
+    /// Runs `body` with security-scoped access to the custom operations folder when
+    /// one is configured. The default in-container folder needs no bookmark/scope.
+    static func withOperationsFolderAccess<T>(_ body: (URL) -> T) -> T {
+        let settings = AppSettings.shared
+        guard !settings.llmOperationsFolder.isEmpty,
+              let data = settings.llmOperationsFolderBookmark else {
+            return body(userOperationsFolder())
+        }
+        var stale = false
+        guard let scoped = try? URL(
+                  resolvingBookmarkData: data, options: .withSecurityScope,
+                  relativeTo: nil, bookmarkDataIsStale: &stale),
+              scoped.startAccessingSecurityScopedResource() else {
+            return body(userOperationsFolder())
+        }
+        defer { scoped.stopAccessingSecurityScopedResource() }
+        if stale, let fresh = try? scoped.bookmarkData(
+            options: .withSecurityScope, includingResourceValuesForKeys: nil, relativeTo: nil) {
+            settings.llmOperationsFolderBookmark = fresh
+        }
+        return body(scoped)
     }
 
     // Copies bundle operations into the user folder on first run (when no .md files exist).
@@ -54,6 +78,10 @@ enum LLMOperationLoader {
     }
 
     static func userOperationsFolder() -> URL {
+        let custom = AppSettings.shared.llmOperationsFolder
+        if !custom.isEmpty {
+            return URL(fileURLWithPath: custom, isDirectory: true)
+        }
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
         return appSupport.appendingPathComponent("TanqueStudio/LLMOperations", isDirectory: true)
     }

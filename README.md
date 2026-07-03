@@ -223,31 +223,37 @@ DrawThingsStudio/
 - [x] DT metadata protocol parity — integer sampler/seedMode enums in v2 metadata
 - [x] Seed randomization — dice button + randomize-each-run toggle, -1 sentinel eliminated from UI
 - [x] Built-in presets — 49 bundled Draw Things community-models configs
+- [x] Resolution Dependent Shift — Generate toggle with auto-computed shift for rectified-flow models (v0.9.17)
+- [x] Connection & inventory UX — secret normalization + reveal toggle, model-list refresh, connection-cause banner, unknown-model handling, search-first model picker (v0.9.19)
+- [x] Canvas editing — View / Paint / Crop modes on the Generate canvas: inpainting (paint mask → regenerate region via gRPC), crop-to-img2img, stroke undo/redo (v0.9.20)
+- [x] LLM Operations on a remote/custom volume — configurable operations folder with a security-scoped bookmark (v0.9.21)
+- [x] StoryFlow pipeline fixes, pane-switch state persistence, DT+ bridge compatibility (v0.9.21)
+- [x] Color draw canvas mode — paint colored strokes on an image or blank canvas, flatten to img2img source for edit models (Qwen Image Edit, FLUX.1 Fill) or save to gallery
+- [x] Canvas-edit lifecycle fixes — mid-render gallery navigation no longer overwrites the selection; fully-erased masks can't trigger a no-op inpaint
 
 ### Upcoming
 
 In priority order:
 
-1. [ ] **Connection & inventory UX** *(in progress)* — secret normalization + reveal toggle, model-list refresh (echo with shared secret), connection-cause banner, unknown-model toast
-2. [ ] **Inspector modes** — Review / Edit / Browse tool palette rail, with **canvas inpainting** as Edit mode (paint masks on canvas, send masked region via gRPC)
-3. [ ] **Path handling** — image save/load bug (spaces in path, intermittent folder availability) + LLMOperations directory on a remote volume; shared security-scoped-bookmark infrastructure
-4. [ ] **Resolution Dependent Shift** — surface the existing `resolutionDependentShift` config field as a Generate toggle (auto-computed shift for rectified-flow models)
-5. [ ] **Story Studio** — multi-scene narrative system with character consistency (v2 port)
-6. [ ] **README polish** — screenshots, demo GIF
+1. [ ] **Story Studio** — multi-scene narrative system with character consistency (v2 port)
+2. [ ] **Zoom while painting** — inpaint/draw modes currently lock the canvas to fit-scale
+3. [ ] **README polish** — screenshots, demo GIF
 
 ### Backlog
 
 - [ ] StoryFlow polish — promptInstruction replace-mode toggle, image-variable drag-drop import, end-to-end UX testing
 - [ ] DT Project Browser bulk export — multi-select images in a project database and export all (or selected) at once
+- [ ] Cancel in-flight render when leaving paint mode ("Done" mid-inpaint currently lets the render finish)
 - [ ] Patterns Studio integration — WKWebView panel or PNG export feeding img2img
 - [ ] Gallery collections / organization
+- [ ] Soft-edged inpaint brush (mask transport is binary today)
 - [ ] Intel Mac launch failure (root cause unknown, low priority)
 
 ---
 
 ## Known Limitations
 
-- **Model list may be empty on a shared-secret-protected server.** When Draw Things has a shared secret configured, the model/LoRA inventory can come back empty even with the correct secret entered in Tanque Studio. The inventory is delivered by the gRPC `Echo` call, and the upstream [DT-gRPC-Swift-Client](https://github.com/euphoriacyberware-ai/DT-gRPC-Swift-Client) doesn't yet send the shared secret on `Echo` (only on image generation). Image generation still works; only the picker inventory is affected. You can type a model filename manually in the meantime. Tracked upstream; a fix is proposed.
+- **Model list may be empty on a shared-secret-protected server.** When Draw Things has a shared secret configured, the model/LoRA inventory can come back empty even with the correct secret entered in Tanque Studio. The inventory is delivered by the gRPC `Echo` call, and the upstream [DT-gRPC-Swift-Client](https://github.com/euphoriacyberware-ai/DT-gRPC-Swift-Client) doesn't yet send the shared secret on `Echo` (only on image generation). Image generation still works; only the picker inventory is affected. You can type a model filename manually in the meantime. Tracked upstream; a fix is proposed (and already implemented in the [skeptict fork](https://github.com/skeptict/DT-gRPC-Swift-Client), should this app ever switch to it).
 
 ---
 

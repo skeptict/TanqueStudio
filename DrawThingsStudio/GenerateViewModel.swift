@@ -39,9 +39,9 @@ final class GenerateViewModel {
     // MARK: — img2img source
     var sourceImage: NSImage?
 
-    // MARK: — Canvas editing (inpainting)
+    // MARK: — Canvas editing (inpainting / color draw)
 
-    enum CanvasMode { case view, paint, crop }
+    enum CanvasMode { case view, paint, crop, colorDraw }
 
     /// A single brush stroke in normalized image coordinates (0...1), so it maps
     /// cleanly to both the on-screen fit rect and the full-resolution mask bitmap.
@@ -51,7 +51,16 @@ final class GenerateViewModel {
         var isErase: Bool
     }
 
+    /// A single color brush stroke in normalized image coordinates.
+    struct ColorStroke {
+        var color: CGColor      // stored as CGColor for rendering at pixel resolution
+        var points: [CGPoint]   // normalized 0...1 (y=0 at top, same as screen)
+        var radius: CGFloat     // normalized to canvas width
+    }
+
     var canvasMode: CanvasMode = .view
+
+    // — Inpaint state
     var maskStrokes: [MaskStroke] = []
     /// Redo stack — strokes removed by undo, cleared when a new stroke is added.
     private var redoStrokes: [MaskStroke] = []
@@ -61,9 +70,18 @@ final class GenerateViewModel {
     /// Crop selection in normalized image coordinates (0...1), nil until dragged.
     var cropRect: CGRect?
 
+    // — Color draw state
+    var colorStrokes: [ColorStroke] = []
+    private var redoColorStrokes: [ColorStroke] = []
+    /// Currently selected drawing color (SwiftUI Color; converted to CGColor when stroke is committed).
+    var selectedDrawColor: Color = .red
+    var drawBrushSize: CGFloat = 40
+
     var hasMask: Bool { maskStrokes.contains { !$0.points.isEmpty && !$0.isErase } }
     var canUndoStroke: Bool { !maskStrokes.isEmpty }
     var canRedoStroke: Bool { !redoStrokes.isEmpty }
+    var canUndoColorStroke: Bool { !colorStrokes.isEmpty }
+    var canRedoColorStroke: Bool { !redoColorStrokes.isEmpty }
 
     func addMaskStroke(_ stroke: MaskStroke) {
         maskStrokes.append(stroke)
@@ -79,6 +97,27 @@ final class GenerateViewModel {
         guard let s = redoStrokes.popLast() else { return }
         maskStrokes.append(s)
     }
+
+    func addColorStroke(_ stroke: ColorStroke) {
+        colorStrokes.append(stroke)
+        redoColorStrokes.removeAll()
+    }
+
+    func undoColorStroke() {
+        guard let last = colorStrokes.popLast() else { return }
+        redoColorStrokes.append(last)
+    }
+
+    func redoColorStroke() {
+        guard let s = redoColorStrokes.popLast() else { return }
+        colorStrokes.append(s)
+    }
+
+    func clearColorStrokes() {
+        colorStrokes.removeAll()
+        redoColorStrokes.removeAll()
+    }
+
     var hasCrop: Bool {
         guard let r = cropRect else { return false }
         return r.width > 0.01 && r.height > 0.01
@@ -88,6 +127,8 @@ final class GenerateViewModel {
         guard generatedImage != nil, !isGenerating else { return }
         maskStrokes.removeAll()
         redoStrokes.removeAll()
+        colorStrokes.removeAll()
+        redoColorStrokes.removeAll()
         cropRect = nil
         canvasMode = .paint
     }
@@ -96,8 +137,22 @@ final class GenerateViewModel {
         guard generatedImage != nil, !isGenerating else { return }
         maskStrokes.removeAll()
         redoStrokes.removeAll()
+        colorStrokes.removeAll()
+        redoColorStrokes.removeAll()
         cropRect = nil
         canvasMode = .crop
+    }
+
+    /// Enters color-draw mode. Works on an existing image or a blank canvas.
+    func enterColorDrawMode() {
+        guard !isGenerating else { return }
+        maskStrokes.removeAll()
+        redoStrokes.removeAll()
+        colorStrokes.removeAll()
+        redoColorStrokes.removeAll()
+        cropRect = nil
+        brushErase = false
+        canvasMode = .colorDraw
     }
 
     /// Returns to view mode and clears all transient edit state.
@@ -105,6 +160,8 @@ final class GenerateViewModel {
         canvasMode = .view
         maskStrokes.removeAll()
         redoStrokes.removeAll()
+        colorStrokes.removeAll()
+        redoColorStrokes.removeAll()
         cropRect = nil
         brushErase = false
     }
@@ -112,6 +169,78 @@ final class GenerateViewModel {
     func clearMask() {
         maskStrokes.removeAll()
         redoStrokes.removeAll()
+    }
+
+    // MARK: — Color draw flatten
+
+    /// Composites colorStrokes onto `base` (or a white canvas of config dimensions if nil).
+    /// Returns the merged NSImage, or nil on failure.
+    func flattenColorDrawing(onto base: NSImage?) -> NSImage? {
+        let w: Int
+        let h: Int
+        if let cg = base?.cgImage(forProposedRect: nil, context: nil, hints: nil) {
+            w = cg.width; h = cg.height
+        } else {
+            w = max(1, config.width); h = max(1, config.height)
+        }
+        guard let ctx = CGContext(
+            data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: 0,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else { return nil }
+
+        let fw = CGFloat(w), fh = CGFloat(h)
+
+        // Draw base image or white fill
+        if let base, let cg = base.cgImage(forProposedRect: nil, context: nil, hints: nil) {
+            ctx.draw(cg, in: CGRect(x: 0, y: 0, width: fw, height: fh))
+        } else {
+            ctx.setFillColor(CGColor(red: 1, green: 1, blue: 1, alpha: 1))
+            ctx.fill(CGRect(x: 0, y: 0, width: fw, height: fh))
+        }
+
+        // Draw color strokes. Normalized y=0 is top; CGContext y=0 is bottom → flip.
+        ctx.setLineCap(.round)
+        ctx.setLineJoin(.round)
+        for stroke in colorStrokes where !stroke.points.isEmpty {
+            ctx.setStrokeColor(stroke.color)
+            ctx.setFillColor(stroke.color)
+            let lineWidth = max(1, stroke.radius * fw * 2)
+            ctx.setLineWidth(lineWidth)
+            let pts = stroke.points.map { CGPoint(x: $0.x * fw, y: (1 - $0.y) * fh) }
+            if pts.count == 1 {
+                let r = lineWidth / 2
+                ctx.fillEllipse(in: CGRect(x: pts[0].x - r, y: pts[0].y - r, width: lineWidth, height: lineWidth))
+            } else {
+                ctx.beginPath()
+                ctx.move(to: pts[0])
+                for p in pts.dropFirst() { ctx.addLine(to: p) }
+                ctx.strokePath()
+            }
+        }
+
+        guard let out = ctx.makeImage() else { return nil }
+        return NSImage(cgImage: out, size: NSSize(width: fw, height: fh))
+    }
+
+    /// Flattens the color drawing and sets it as the img2img source, then exits draw mode.
+    func flattenColorDrawToImg2img() {
+        guard let result = flattenColorDrawing(onto: generatedImage) else { return }
+        sourceImage = result
+        transientWarning = "Color drawing set as img2img source."
+        exitEditMode()
+    }
+
+    /// Flattens the color drawing, replaces the canvas image, saves to gallery, then exits.
+    func flattenColorDrawToCanvas(in context: ModelContext) {
+        guard let result = flattenColorDrawing(onto: generatedImage) else { return }
+        generatedImage = result
+        currentImageSource = .imported
+        exitEditMode()
+        try? ImageStorageManager.createAndInsert(
+            image: result, source: .imported, config: config, prompt: prompt, in: context
+        )
+        try? context.save()
     }
 
     // MARK: — Crop
@@ -244,14 +373,13 @@ final class GenerateViewModel {
             errorMessage = "Select a model first."
             return
         }
-        // Model not in a loaded inventory → DT runs a nonexistent model and returns
-        // a bogus image (and we'd write the fake name into metadata). Don't waste the
-        // render. Only enforced when the inventory is populated — an empty list means
-        // we couldn't fetch it (e.g. a secret-protected server), so we can't validate.
+        // Model not in loaded inventory — warn but don't block. DT+ bridge can run
+        // cloud models that aren't in the local model list, so a hard block here
+        // would prevent all StoryFlow → Generate cross-pane workflows. DT returns
+        // its own error if the model is genuinely absent.
         if !models.isEmpty,
            !models.contains(where: { $0.filename == config.model || $0.name == config.model }) {
-            errorMessage = "Model '\(config.model)' isn't in Draw Things' model list. Choose an installed model."
-            return
+            transientWarning = "'\(config.model)' isn't in the local model list — generating anyway (may be a DT+ cloud model)."
         }
         errorMessage = nil
         isGenerating = true
@@ -271,6 +399,7 @@ final class GenerateViewModel {
 
         let capturedPrompt = prompt
         let capturedSource = sourceImage
+        let capturedSelection = selectedGalleryID
         let count = cfg.batchCount  // how many sequential renders were requested
         cfg.batchCount = 1          // send one at a time so each result arrives individually
         let baseSeed = UInt32(truncatingIfNeeded: max(0, cfg.seed))
@@ -303,6 +432,18 @@ final class GenerateViewModel {
                         // DT completed the request but produced nothing (e.g. model/sampler
                         // mismatch). Surface it — don't silently clear the canvas.
                         self.errorMessage = "Draw Things returned no image. Possible causes: the model isn't downloaded in Draw Things, the sampler isn't supported by this model, or the server's shared secret doesn't match (Settings → Draw Things)."
+                        continue
+                    }
+                    if self.selectedGalleryID != capturedSelection {
+                        // User navigated the gallery mid-render — don't clobber their
+                        // selection. Save the result straight to the gallery instead
+                        // (even with auto-save off; it's unreachable otherwise).
+                        try? ImageStorageManager.createAndInsert(
+                            image: image, source: .generated, config: iterCfg,
+                            prompt: capturedPrompt, in: context
+                        )
+                        try? context.save()
+                        self.transientWarning = "Render finished — saved to gallery."
                         continue
                     }
                     self.generatedImage = image
@@ -350,10 +491,19 @@ final class GenerateViewModel {
         if !models.isEmpty,
            !models.contains(where: { $0.filename == config.model || $0.name == config.model }) {
             errorMessage = "Model '\(config.model)' isn't in Draw Things' model list. Choose an installed model."
+            isGenerating = false
+            progress = .complete
+            generationTask = nil
             return
         }
         guard let mask = rasterizeMask(for: source) else {
             errorMessage = "Could not build the mask."
+            return
+        }
+        // hasMask only tracks stroke bookkeeping — erase strokes can cancel out every
+        // painted region. Check the rasterized result so we don't send a no-op inpaint.
+        guard maskHasInpaintRegion(mask) else {
+            errorMessage = "The painted region was fully erased — paint a region to inpaint."
             return
         }
 
@@ -373,6 +523,7 @@ final class GenerateViewModel {
         cfg.batchCount = 1
 
         let capturedPrompt = prompt
+        let capturedSelection = selectedGalleryID
         let capturedMoodboard = moodboardEntries.map { ($0.image, $0.weight) }
         if !capturedMoodboard.isEmpty, let grpcClient = client as? DrawThingsGRPCClient {
             grpcClient.setMoodboard(capturedMoodboard)
@@ -392,6 +543,20 @@ final class GenerateViewModel {
                 )
                 guard let image = images.first else {
                     self.errorMessage = "Draw Things returned no image. Possible causes: the model isn't downloaded in Draw Things, the sampler isn't supported by this model, or the server's shared secret doesn't match (Settings → Draw Things)."
+                    self.isGenerating = false
+                    self.progress = .complete
+                    return
+                }
+                if self.selectedGalleryID != capturedSelection {
+                    // User navigated the gallery mid-inpaint — don't clobber their
+                    // selection; save the result straight to the gallery instead.
+                    try? ImageStorageManager.createAndInsert(
+                        image: image, source: .generated, config: resolved,
+                        prompt: capturedPrompt, in: context
+                    )
+                    try? context.save()
+                    self.transientWarning = "Inpaint finished — saved to gallery."
+                    self.exitEditMode()
                     self.isGenerating = false
                     self.progress = .complete
                     return
@@ -460,6 +625,23 @@ final class GenerateViewModel {
 
         guard let out = ctx.makeImage() else { return nil }
         return NSImage(cgImage: out, size: NSSize(width: w, height: h))
+    }
+
+    /// True if the rasterized mask has at least one non-opaque pixel (alpha < 255 =
+    /// inpaint). Fails open on unexpected pixel formats so a legit inpaint is never blocked.
+    private func maskHasInpaintRegion(_ mask: NSImage) -> Bool {
+        guard let cg = mask.cgImage(forProposedRect: nil, context: nil, hints: nil),
+              cg.bitsPerPixel == 32,
+              let data = cg.dataProvider?.data as Data? else { return true }
+        let bytesPerRow = cg.bytesPerRow
+        let alphaOffset = 3  // premultipliedLast = RGBA
+        for y in 0..<cg.height {
+            let row = y * bytesPerRow
+            for x in 0..<cg.width where data[row + x * 4 + alphaOffset] < 255 {
+                return true
+            }
+        }
+        return false
     }
 
     // MARK: — Save to SwiftData
@@ -544,6 +726,9 @@ final class GenerateViewModel {
         if let h       = meta.height                     { config.height  = h }
         if let shift   = meta.shift                      { config.shift   = shift }
         if let str     = meta.strength                   { config.strength = str }
+        // Warn (non-blocking) if the loaded model isn't in the local inventory —
+        // common when the image was generated via DT+ bridge (cloud model).
+        if let model = meta.model { warnIfModelUnknown(model) }
     }
 
     func loadAssets() {
