@@ -98,7 +98,7 @@ struct ContentView: View {
         case .storyFlow:
             StoryFlowView(vm: storyFlowVM)
         case .storyStudio:
-            StoryStudioLibraryView()
+            StoryStudioView()
         case .settings:
             SettingsView()
         default:
