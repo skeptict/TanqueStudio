@@ -301,6 +301,90 @@ final class DTProjectBrowserViewModel {
         loadNextPage()
     }
 
+    // MARK: - Selection & Bulk Export
+
+    var selectedEntryIDs: Set<Int64> = []
+    var isExporting = false
+    var exportSummary: String?
+    private nonisolated(unsafe) var exportTask: Task<Void, Never>?
+
+    enum ExportScope { case selected, all }
+
+    func toggleEntrySelection(_ entry: DTGenerationEntry) {
+        if selectedEntryIDs.contains(entry.id) {
+            selectedEntryIDs.remove(entry.id)
+        } else {
+            selectedEntryIDs.insert(entry.id)
+        }
+    }
+
+    func clearEntrySelection() {
+        selectedEntryIDs.removeAll()
+    }
+
+    /// Writes the stored full-size JPEGs to `folder`. `.selected` exports the
+    /// checked entries; `.all` pages through the entire database (including
+    /// entries not yet loaded into the grid).
+    func startExport(_ scope: ExportScope, to folder: URL) {
+        guard let project = selectedProject, !isExporting else { return }
+        let url = project.url
+        let baseName = project.name.replacingOccurrences(of: ".sqlite3", with: "")
+        let picked = scope == .selected ? entries.filter { selectedEntryIDs.contains($0.id) } : []
+        isExporting = true
+        exportSummary = nil
+
+        exportTask = Task {
+            let result = await Task.detached(priority: .userInitiated) { () -> (written: Int, skipped: Int, error: String?) in
+                guard let db = DTProjectDatabase(fileURL: url) else {
+                    return (0, 0, "Could not open database. The drive may have been ejected or the file may be corrupted.")
+                }
+                var work = picked
+                if scope == .all {
+                    work = []
+                    let total = db.entryCount()
+                    var offset = 0
+                    while offset < total, !Task.isCancelled {
+                        let page = db.fetchEntries(offset: offset, limit: 200)
+                        if page.isEmpty { break }
+                        work.append(contentsOf: page)
+                        offset += page.count
+                    }
+                }
+                var written = 0, skipped = 0
+                for entry in work {
+                    if Task.isCancelled { break }
+                    guard let data = db.fetchThumbnailJPEGData(previewId: entry.previewId) else {
+                        skipped += 1
+                        continue
+                    }
+                    let filename = "\(baseName)_\(entry.id)_seed\(entry.seed).jpg"
+                    do {
+                        try data.write(to: folder.appendingPathComponent(filename))
+                        written += 1
+                    } catch {
+                        skipped += 1
+                    }
+                }
+                return (written, skipped, nil)
+            }.value
+
+            self.isExporting = false
+            if let error = result.error {
+                self.exportSummary = error
+            } else if Task.isCancelled {
+                self.exportSummary = "Export cancelled — \(result.written) image(s) written."
+            } else {
+                self.exportSummary = result.skipped == 0
+                    ? "Exported \(result.written) image(s)."
+                    : "Exported \(result.written) image(s); \(result.skipped) skipped (no stored preview)."
+            }
+        }
+    }
+
+    func cancelExport() {
+        exportTask?.cancel()
+    }
+
     // MARK: - Delete
 
     func deleteEntry(_ entry: DTGenerationEntry) async {

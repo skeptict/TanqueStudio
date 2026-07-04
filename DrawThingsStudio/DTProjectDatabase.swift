@@ -264,6 +264,14 @@ final class DTProjectDatabase: @unchecked Sendable {
             ?? queryThumbnailByPk0(table: .full, pk0: previewId)
     }
 
+    /// Raw JPEG bytes for export. Prefers the full-size preview table (the grid
+    /// uses the half-size one) and returns the stored bytes as-is — no re-encode.
+    func fetchThumbnailJPEGData(previewId: Int64) -> Data? {
+        guard previewId > 0 else { return nil }
+        return queryThumbnailData(table: .full, pk0: previewId)
+            ?? queryThumbnailData(table: .half, pk0: previewId)
+    }
+
     // MARK: - Private
 
     private func parseEntry(rowid: Int64, lineage: Int64, logicalTime: Int64, blob: Data) -> DTGenerationEntry? {
@@ -327,6 +335,10 @@ final class DTProjectDatabase: @unchecked Sendable {
     }
 
     private func queryThumbnailByPk0(table: ThumbnailTable, pk0: Int64) -> NSImage? {
+        queryThumbnailData(table: table, pk0: pk0).flatMap { NSImage(data: $0) }
+    }
+
+    private func queryThumbnailData(table: ThumbnailTable, pk0: Int64) -> Data? {
         guard let db = db else { return nil }
         var stmt: OpaquePointer?
         defer { sqlite3_finalize(stmt) }
@@ -337,10 +349,10 @@ final class DTProjectDatabase: @unchecked Sendable {
         guard let blobPtr = sqlite3_column_blob(stmt, 0) else { return nil }
         let blobSize = Int(sqlite3_column_bytes(stmt, 0))
         guard blobSize > 0 else { return nil }
-        return extractJPEG(from: Data(bytes: blobPtr, count: blobSize))
+        return extractJPEGData(from: Data(bytes: blobPtr, count: blobSize))
     }
 
-    private func extractJPEG(from data: Data) -> NSImage? {
+    private func extractJPEGData(from data: Data) -> Data? {
         guard data.count > 4 else { return nil }
         var jpegStart: Int?
         for i in 0..<(data.count - 1) {
@@ -352,7 +364,7 @@ final class DTProjectDatabase: @unchecked Sendable {
             if data[i] == 0xD9 && data[i - 1] == 0xFF { jpegEnd = i + 1; break }
         }
         guard let end = jpegEnd, end > start else { return nil }
-        return NSImage(data: Data(data[start..<end]))
+        return Data(data[start..<end])
     }
 
     // MARK: - Enum Lookups

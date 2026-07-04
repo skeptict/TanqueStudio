@@ -236,7 +236,59 @@ struct DTProjectBrowserView: View {
         }
     }
 
+    // Selection status + export actions. ⌘-click thumbnails to multi-select.
+    private var exportToolbar: some View {
+        HStack(spacing: 8) {
+            Text(browser.selectedEntryIDs.isEmpty
+                 ? "\(browser.entryCount) image\(browser.entryCount == 1 ? "" : "s")"
+                 : "\(browser.selectedEntryIDs.count) selected")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Spacer()
+            if browser.isExporting {
+                ProgressView()
+                    .controlSize(.small)
+                Button("Cancel") { browser.cancelExport() }
+                    .buttonStyle(.borderless)
+                    .font(.caption)
+            } else {
+                if !browser.selectedEntryIDs.isEmpty {
+                    Button("Deselect") { browser.clearEntrySelection() }
+                        .buttonStyle(.borderless)
+                        .font(.caption)
+                    Button("Export Selected…") { chooseFolderAndExport(.selected) }
+                        .buttonStyle(.borderless)
+                        .font(.caption)
+                }
+                Button("Export All…") { chooseFolderAndExport(.all) }
+                    .buttonStyle(.borderless)
+                    .font(.caption)
+                    .disabled(browser.entryCount == 0)
+                    .help("Export every image in this project database (⌘-click thumbnails to export a subset)")
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .background(.bar)
+    }
+
     private var thumbnailGrid: some View {
+        VStack(spacing: 0) {
+            exportToolbar
+            Divider()
+            thumbnailScroll
+        }
+        .alert("Export", isPresented: Binding(
+            get: { browser.exportSummary != nil },
+            set: { if !$0 { browser.exportSummary = nil } }
+        )) {
+            Button("OK") { browser.exportSummary = nil }
+        } message: {
+            Text(browser.exportSummary ?? "")
+        }
+    }
+
+    private var thumbnailScroll: some View {
         ScrollView {
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 120, maximum: 160), spacing: 8)], spacing: 8) {
                 ForEach(browser.filteredEntries) { entry in
@@ -266,6 +318,7 @@ struct DTProjectBrowserView: View {
 
     private func thumbnailCell(_ entry: DTGenerationEntry) -> some View {
         let isSelected = browser.selectedEntry == entry
+        let isChecked = browser.selectedEntryIDs.contains(entry.id)
         return VStack(spacing: 4) {
             ZStack {
                 RoundedRectangle(cornerRadius: 6)
@@ -285,9 +338,23 @@ struct DTProjectBrowserView: View {
                 RoundedRectangle(cornerRadius: 6)
                     .stroke(isSelected ? Color.accentColor : Color.clear, lineWidth: 2)
             )
+            .overlay(alignment: .topLeading) {
+                if isChecked {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 16))
+                        .foregroundStyle(.white, Color.accentColor)
+                        .padding(4)
+                }
+            }
             .aspectRatio(1, contentMode: .fit)
             .contentShape(Rectangle())
-            .onTapGesture { browser.selectedEntry = entry }
+            .onTapGesture {
+                if NSEvent.modifierFlags.contains(.command) {
+                    browser.toggleEntrySelection(entry)
+                } else {
+                    browser.selectedEntry = entry
+                }
+            }
 
             Text(entry.prompt.isEmpty ? "(no prompt)" : entry.prompt)
                 .font(.caption2)
@@ -296,12 +363,30 @@ struct DTProjectBrowserView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
         .contextMenu {
+            Button(isChecked ? "Deselect" : "Select for Export") {
+                browser.toggleEntrySelection(entry)
+            }
             Button(role: .destructive) {
                 entryToDelete = entry
                 showDeleteConfirmation = true
             } label: {
                 Label("Delete", systemImage: "trash")
             }
+        }
+    }
+
+    private func chooseFolderAndExport(_ scope: DTProjectBrowserViewModel.ExportScope) {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.canCreateDirectories = true
+        panel.prompt = "Export Here"
+        panel.message = scope == .selected
+            ? "Choose a folder for the \(browser.selectedEntryIDs.count) selected image(s)"
+            : "Choose a folder for all \(browser.entryCount) image(s) in this project"
+        panel.begin { response in
+            guard response == .OK, let url = panel.url else { return }
+            browser.startExport(scope, to: url)
         }
     }
 
