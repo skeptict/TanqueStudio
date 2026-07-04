@@ -83,6 +83,7 @@ struct DrawThingsGenerationConfig: Codable {
     var batchSize: Int
     var batchCount: Int
     var numFrames: Int          // video models: number of frames to generate (0 = use model default)
+    var fps: Int                // video models: playback frame rate (0 = use model default)
     var negativePrompt: String
     var loras: [LoRAConfig]
     var resolutionDependentShift: Bool?
@@ -128,6 +129,7 @@ struct DrawThingsGenerationConfig: Codable {
         batchSize               = try c.decodeIfPresent(Int.self,    forKey: .batchSize)    ?? 1
         batchCount              = try c.decodeIfPresent(Int.self,    forKey: .batchCount)   ?? 1
         numFrames               = try c.decodeIfPresent(Int.self,    forKey: .numFrames)    ?? 0
+        fps                     = try c.decodeIfPresent(Int.self,    forKey: .fps)          ?? 0
         negativePrompt          = try c.decodeIfPresent(String.self, forKey: .negativePrompt) ?? ""
         loras                   = try c.decodeIfPresent([LoRAConfig].self, forKey: .loras) ?? []
         resolutionDependentShift = try c.decodeIfPresent(Bool.self,   forKey: .resolutionDependentShift)
@@ -151,6 +153,7 @@ struct DrawThingsGenerationConfig: Codable {
         batchSize: Int = 1,
         batchCount: Int = 1,
         numFrames: Int = 0,
+        fps: Int = 0,
         negativePrompt: String = "",
         loras: [LoRAConfig] = [],
         resolutionDependentShift: Bool? = nil,
@@ -172,6 +175,7 @@ struct DrawThingsGenerationConfig: Codable {
         self.batchSize = batchSize
         self.batchCount = batchCount
         self.numFrames = numFrames
+        self.fps = fps
         self.negativePrompt = negativePrompt
         self.loras = loras
         self.resolutionDependentShift = resolutionDependentShift
@@ -377,6 +381,10 @@ struct DrawThingsGenerationConfig: Codable {
 
         if numFrames > 0 {
             body["num_frames"] = numFrames
+        }
+
+        if fps > 0 {
+            body["fps"] = fps
         }
 
         if !refinerModel.isEmpty {
