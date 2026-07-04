@@ -244,7 +244,8 @@ In priority order:
 1. [ ] **Story Studio Phase 2** — scene/chapter editor, character & setting management, prompt assembly with live preview
 2. [ ] **Story Studio Phase 3** — compile scenes to StoryFlow workflows, render scene/chapter, variant approval
 3. [ ] **Story Studio Phase 4** — consistency extras (preferred seeds, reference moodboards), chapter export, LLM assists
-4. [ ] **README polish** — screenshots, demo GIF
+4. [ ] **Video generations** — capture DT frame series as one grouped gallery item (frames are currently discarded past the first), frame scrubber, export frames / assemble .mp4; frame count unclamped beyond DT client defaults (spec: `Docs/video-generations-spec.md`)
+5. [ ] **README polish** — screenshots, demo GIF
 
 ### Backlog
 
