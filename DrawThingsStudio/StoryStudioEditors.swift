@@ -116,6 +116,24 @@ func storyOptionalText(_ source: Binding<String?>) -> Binding<String> {
     )
 }
 
+// MARK: - Project info editor
+
+struct StoryProjectInfoEditor: View {
+    @Bindable var project: StoryProject
+
+    var body: some View {
+        StoryEditorPage(icon: "info.circle", title: "Project Info") {
+            StoryLabeledTextField("Name", placeholder: "Project name", text: $project.name)
+            StoryLabeledTextEditor("Description", text: $project.projectDescription, minHeight: 50, maxHeight: 90)
+            StoryLabeledTextField("Genre", placeholder: "e.g. noir sci-fi", text: storyOptionalText($project.genre))
+            StoryLabeledTextEditor("Art Style", text: storyOptionalText($project.artStyle), minHeight: 40, maxHeight: 80)
+            Text("The art style leads every assembled scene prompt.")
+                .font(TanqueDS.Font.bodySmall)
+                .foregroundStyle(TanqueDS.Color.textSecondary)
+        }
+    }
+}
+
 // MARK: - Chapter editor
 
 struct StoryChapterEditor: View {
