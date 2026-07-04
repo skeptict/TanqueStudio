@@ -156,7 +156,12 @@ final class GenerateViewModel {
     }
 
     /// Returns to view mode and clears all transient edit state.
+    /// Leaving paint mode abandons the inpaint — cancel any render still in
+    /// flight so its result doesn't land on the canvas after the user moved on.
     func exitEditMode() {
+        if canvasMode == .paint, isGenerating {
+            cancelGeneration()
+        }
         canvasMode = .view
         maskStrokes.removeAll()
         redoStrokes.removeAll()
@@ -541,6 +546,14 @@ final class GenerateViewModel {
                         Task { @MainActor [weak self] in self?.progress = p }
                     }
                 )
+                if Task.isCancelled {
+                    // User hit Done (or otherwise left paint mode) mid-render,
+                    // abandoning the inpaint — drop the result. The gRPC call
+                    // can't be aborted server-side, but its outcome is discarded.
+                    self.isGenerating = false
+                    self.progress = .complete
+                    return
+                }
                 guard let image = images.first else {
                     self.errorMessage = "Draw Things returned no image. Possible causes: the model isn't downloaded in Draw Things, the sampler isn't supported by this model, or the server's shared secret doesn't match (Settings → Draw Things)."
                     self.isGenerating = false
@@ -556,9 +569,9 @@ final class GenerateViewModel {
                     )
                     try? context.save()
                     self.transientWarning = "Inpaint finished — saved to gallery."
-                    self.exitEditMode()
                     self.isGenerating = false
                     self.progress = .complete
+                    self.exitEditMode()
                     return
                 }
                 self.generatedImage = image
@@ -568,9 +581,9 @@ final class GenerateViewModel {
                 if AppSettings.shared.autoSaveGenerated {
                     saveCurrentImage(in: context, source: .generated, resolvedConfig: resolved)
                 }
-                self.exitEditMode()
                 self.isGenerating = false
                 self.progress = .complete
+                self.exitEditMode()
             } catch is CancellationError {
                 self.isGenerating = false
                 self.progress = .complete
