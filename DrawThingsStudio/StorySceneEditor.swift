@@ -147,8 +147,9 @@ struct StorySceneEditor: View {
             Text("Assembled Prompt")
                 .tanqueSectionLabel()
 
+            // No accessibilityLabel here: it would replace the assembled text
+            // in the accessibility tree, hiding the preview from VoiceOver.
             promptPreviewBox(assembled.positive.isEmpty ? "(empty — fill in scene fields)" : assembled.positive)
-                .accessibilityLabel("Assembled Prompt Preview")
                 .accessibilityIdentifier("assembledPromptPreview")
 
             if !assembled.negative.isEmpty {
@@ -156,7 +157,6 @@ struct StorySceneEditor: View {
                     .font(TanqueDS.Font.body)
                     .foregroundStyle(TanqueDS.Color.textSecondary)
                 promptPreviewBox(assembled.negative)
-                    .accessibilityLabel("Assembled Negative Prompt Preview")
                     .accessibilityIdentifier("assembledNegativePromptPreview")
             }
 

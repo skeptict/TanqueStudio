@@ -33,6 +33,7 @@ struct StoryStudioView: View {
 // MARK: - Outline selection
 
 enum StoryOutlineSelection: Hashable {
+    case project
     case chapter(UUID)
     case scene(UUID)
     case character(UUID)
@@ -74,6 +75,8 @@ struct StoryStudioWorkspaceView: View {
     @ViewBuilder
     private var editorColumn: some View {
         switch selection {
+        case .project:
+            StoryProjectInfoEditor(project: project)
         case .chapter(let id):
             if let chapter = project.chapters.first(where: { $0.id == id }) {
                 StoryChapterEditor(chapter: chapter, project: project) { scene in
@@ -151,6 +154,7 @@ struct StoryOutlineColumn: View {
             projectPicker
             Rectangle().fill(TanqueDS.Color.surfaceBorder).frame(height: 1)
             outlineList
+            selectionActionBar
         }
         .background(TanqueDS.Color.surface1)
         .alert(
@@ -209,6 +213,8 @@ struct StoryOutlineColumn: View {
 
     private var outlineList: some View {
         List(selection: $selection) {
+            outlineRow(icon: "info.circle", title: "Project Info")
+                .tag(StoryOutlineSelection.project)
             chaptersSection
             charactersSection
             settingsSection
@@ -225,6 +231,7 @@ struct StoryOutlineColumn: View {
                     sceneRow(scene, in: chapter)
                 }
             }
+            addRow("Add Chapter", action: addChapter)
         } header: {
             sectionHeader("Chapters", addLabel: "Add Chapter", action: addChapter)
         }
@@ -243,6 +250,7 @@ struct StoryOutlineColumn: View {
                         }
                     }
             }
+            addRow("Add Character", action: addCharacter)
         } header: {
             sectionHeader("Characters", addLabel: "Add Character", action: addCharacter)
         }
@@ -261,6 +269,7 @@ struct StoryOutlineColumn: View {
                         }
                     }
             }
+            addRow("Add Setting", action: addSetting)
         } header: {
             sectionHeader("Settings", addLabel: "Add Setting", action: addSetting)
         }
@@ -304,6 +313,115 @@ struct StoryOutlineColumn: View {
                 .foregroundStyle(TanqueDS.Color.textPrimary)
                 .lineLimit(1)
         }
+        .listRowBackground(TanqueDS.Color.surface1)
+    }
+
+    /// Reorder/delete actions for the current selection. Context menus carry
+    /// the same actions for mouse users, but they are invisible to
+    /// accessibility — this bar is the accessible (and scriptable) path.
+    @ViewBuilder
+    private var selectionActionBar: some View {
+        if let actions = selectionActions {
+            Rectangle().fill(TanqueDS.Color.surfaceBorder).frame(height: 1)
+            HStack(spacing: TanqueDS.Spacing.sm) {
+                Button {
+                    actions.move(-1)
+                } label: {
+                    Image(systemName: "chevron.up")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(TanqueDS.Color.textSecondary)
+                }
+                .buttonStyle(.borderless)
+                .disabled(!actions.canMoveUp)
+                .accessibilityLabel("Move Up")
+                .help("Move Up")
+
+                Button {
+                    actions.move(1)
+                } label: {
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(TanqueDS.Color.textSecondary)
+                }
+                .buttonStyle(.borderless)
+                .disabled(!actions.canMoveDown)
+                .accessibilityLabel("Move Down")
+                .help("Move Down")
+
+                Spacer()
+
+                Button {
+                    requestDeletion(actions.deletion)
+                } label: {
+                    Image(systemName: "trash")
+                        .font(.system(size: 10))
+                        .foregroundStyle(TanqueDS.Color.textSecondary)
+                }
+                .buttonStyle(.borderless)
+                .accessibilityLabel("Delete Selected")
+                .help("Delete…")
+            }
+            .padding(.horizontal, TanqueDS.Spacing.md)
+            .padding(.vertical, TanqueDS.Spacing.sm)
+        }
+    }
+
+    private struct SelectionActions {
+        var canMoveUp: Bool
+        var canMoveDown: Bool
+        var move: (Int) -> Void
+        var deletion: PendingDeletion
+    }
+
+    private var selectionActions: SelectionActions? {
+        func actions<T: StorySortable>(_ item: T, _ sorted: [T], _ deletion: PendingDeletion) -> SelectionActions {
+            let index = sorted.firstIndex { $0 === item }
+            return SelectionActions(
+                canMoveUp: index.map { $0 > 0 } ?? false,
+                canMoveDown: index.map { $0 < sorted.count - 1 } ?? false,
+                move: { offset in move(item, in: sorted, offset: offset) },
+                deletion: deletion
+            )
+        }
+        switch selection {
+        case .chapter(let id):
+            guard let chapter = project.chapters.first(where: { $0.id == id }) else { return nil }
+            return actions(chapter, project.sortedChapters, .chapter(chapter))
+        case .scene(let id):
+            for chapter in project.chapters {
+                if let scene = chapter.scenes.first(where: { $0.id == id }) {
+                    return actions(scene, chapter.sortedScenes, .scene(scene))
+                }
+            }
+            return nil
+        case .character(let id):
+            guard let character = project.characters.first(where: { $0.id == id }) else { return nil }
+            return actions(character, sortedCharacters, .character(character))
+        case .setting(let id):
+            guard let setting = project.settings.first(where: { $0.id == id }) else { return nil }
+            return actions(setting, sortedSettings, .setting(setting))
+        case .project, nil:
+            return nil
+        }
+    }
+
+    /// "+ Add …" row at the end of a section. The header "+" accessory is
+    /// invisible to accessibility (List section headers flatten to an
+    /// AXHeading), so this row is the accessible path to the same action.
+    private func addRow(_ title: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 6) {
+                Image(systemName: "plus")
+                    .font(.system(size: 10, weight: .semibold))
+                    .frame(width: 14)
+                Text(title)
+                    .font(TanqueDS.Font.navItem)
+            }
+            .foregroundStyle(TanqueDS.Color.textSecondary)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.borderless)
+        .accessibilityLabel(title)
         .listRowBackground(TanqueDS.Color.surface1)
     }
 
