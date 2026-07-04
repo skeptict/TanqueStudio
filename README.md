@@ -254,7 +254,7 @@ In priority order:
 
 ## Known Limitations
 
-- **Model list may be empty on a shared-secret-protected server.** When Draw Things has a shared secret configured, the model/LoRA inventory can come back empty even with the correct secret entered in Tanque Studio. The inventory is delivered by the gRPC `Echo` call, and the upstream [DT-gRPC-Swift-Client](https://github.com/euphoriacyberware-ai/DT-gRPC-Swift-Client) doesn't yet send the shared secret on `Echo` (only on image generation). Image generation still works; only the picker inventory is affected. You can type a model filename manually in the meantime. Tracked upstream; a fix is proposed (and already implemented in the [skeptict fork](https://github.com/skeptict/DT-gRPC-Swift-Client), should this app ever switch to it).
+- ~~Model list may be empty on a shared-secret-protected server.~~ **Fixed.** The gRPC `Echo` call now sends the shared secret ([upstream PR #16](https://github.com/euphoriacyberware-ai/DT-gRPC-Swift-Client/pull/16), merged 2026-07-03), so the model/LoRA inventory loads correctly on protected servers.
 
 ---
 

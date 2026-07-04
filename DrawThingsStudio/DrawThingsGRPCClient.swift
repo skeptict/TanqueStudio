@@ -52,9 +52,9 @@ final class DrawThingsGRPCClient: DrawThingsProvider {
         do {
             let address = "\(host):\(port)"
             service = try DrawThingsService(address: address, useTLS: true)
-            _ = try await service!.echo()
+            _ = try await service!.echo(sharedSecret: sharedSecret)
             client = try DrawThingsClient(address: address, useTLS: true)
-            await client?.connect()
+            await client?.connect(sharedSecret: sharedSecret)
             return true
         } catch {
             logger.error("Connection check failed: \(error.localizedDescription)")
@@ -245,7 +245,7 @@ final class DrawThingsGRPCClient: DrawThingsProvider {
             throw DrawThingsError.connectionFailed("Failed to create gRPC service")
         }
 
-        let reply = try await service.echo()
+        let reply = try await service.echo(sharedSecret: sharedSecret)
         cachedEchoReply = reply
         logger.debug("Echo response received: files=\(reply.files.count), hasOverride=\(reply.hasOverride)")
 
