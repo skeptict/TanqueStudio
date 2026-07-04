@@ -232,13 +232,17 @@ DrawThingsStudio/
 - [x] Canvas-edit lifecycle fixes — mid-render gallery navigation no longer overwrites the selection; fully-erased masks can't trigger a no-op inpaint
 - [x] Zoom while painting — pinch zoom + ⌥-drag pan in paint/crop/color-draw modes, screen-constant brush, shared zoom state with view mode
 - [x] Left panel tightening — collapsible sections with persisted state, basic/advanced config split
+- [x] Shared secret on Echo — model/LoRA inventory loads on protected servers (upstream PRs [#16](https://github.com/euphoriacyberware-ai/DT-gRPC-Swift-Client/pull/16)/[#17](https://github.com/euphoriacyberware-ai/DT-gRPC-Swift-Client/pull/17) merged 2026-07-03, adopted + verified live)
+- [x] Story Studio Phase 1 — data models (SwiftData schema v2), project library with create/rename/duplicate/delete (spec: `Docs/story-studio-v2-spec.md`)
 
 ### Upcoming
 
 In priority order:
 
-1. [ ] **Story Studio** — multi-scene narrative system with character consistency, built on the StoryFlow engine (spec: `Docs/story-studio-v2-spec.md`)
-2. [ ] **README polish** — screenshots, demo GIF
+1. [ ] **Story Studio Phase 2** — scene/chapter editor, character & setting management, prompt assembly with live preview
+2. [ ] **Story Studio Phase 3** — compile scenes to StoryFlow workflows, render scene/chapter, variant approval
+3. [ ] **Story Studio Phase 4** — consistency extras (preferred seeds, reference moodboards), chapter export, LLM assists
+4. [ ] **README polish** — screenshots, demo GIF
 
 ### Backlog
 
