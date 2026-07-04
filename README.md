@@ -234,6 +234,8 @@ DrawThingsStudio/
 - [x] Left panel tightening — collapsible sections with persisted state, basic/advanced config split
 - [x] Shared secret on Echo — model/LoRA inventory loads on protected servers (upstream PRs [#16](https://github.com/euphoriacyberware-ai/DT-gRPC-Swift-Client/pull/16)/[#17](https://github.com/euphoriacyberware-ai/DT-gRPC-Swift-Client/pull/17) merged 2026-07-03, adopted + verified live)
 - [x] Story Studio Phase 1 — data models (SwiftData schema v2), project library with create/rename/duplicate/delete (spec: `Docs/story-studio-v2-spec.md`)
+- [x] DT Project Browser bulk export — ⌘-click multi-select, Export Selected / Export All, stored full-size JPEGs written byte-for-byte
+- [x] Leaving paint mode cancels an in-flight inpaint (closes the last v0.9.20 known-minor)
 
 ### Upcoming
 
@@ -247,8 +249,6 @@ In priority order:
 ### Backlog
 
 - [ ] StoryFlow polish — promptInstruction replace-mode toggle, image-variable drag-drop import, end-to-end UX testing
-- [ ] DT Project Browser bulk export — multi-select images in a project database and export all (or selected) at once
-- [ ] Cancel in-flight render when leaving paint mode ("Done" mid-inpaint currently lets the render finish)
 - [ ] Patterns Studio integration — WKWebView panel or PNG export feeding img2img
 - [ ] Gallery collections / organization
 - [ ] Soft-edged inpaint brush (mask transport is binary today)
