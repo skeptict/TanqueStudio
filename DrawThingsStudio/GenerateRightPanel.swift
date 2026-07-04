@@ -125,6 +125,12 @@ struct GenerateRightPanel: View {
                     if let shift = meta.shift {
                         MetadataRow(label: "SHIFT", value: String(format: "%.2f", shift))
                     }
+                    if let frames = meta.numFrames, frames > 1 {
+                        MetadataRow(label: "FRAMES", value: "\(frames)")
+                    }
+                    if let fps = meta.fps {
+                        MetadataRow(label: "FPS", value: "\(fps)")
+                    }
                     if !meta.loras.isEmpty {
                         MetadataRow(
                             label: "LoRAs",
@@ -194,6 +200,29 @@ struct GenerateRightPanel: View {
                                                canvasScale: canvasScale,
                                                canvasOffset: canvasOffset,
                                                canvasSize: canvasSize) { vm.addToMoodboard(img) }
+            }
+
+            if vm.isSeriesActive {
+                Rectangle().fill(TanqueDS.Color.surfaceBorder).frame(height: 1)
+                    .padding(.vertical, 2)
+
+                Text("VIDEO SERIES — \(vm.seriesFrames.count) FRAMES")
+                    .tanqueSectionLabel()
+                    .padding(.bottom, 2)
+
+                ActionButton(icon: "square.and.arrow.up.on.square", title: "Export Frames…",
+                             enabled: !vm.isExportingSeries) {
+                    vm.exportSeriesFrames(vm.seriesFrames)
+                }
+                ActionButton(icon: "film", title: "Export Video…",
+                             enabled: !vm.isExportingSeries) {
+                    vm.exportSeriesVideo(vm.seriesFrames)
+                }
+                if vm.isExportingSeries {
+                    ActionButton(icon: "xmark.circle", title: "Cancel Export", enabled: true) {
+                        vm.cancelSeriesExport()
+                    }
+                }
             }
 
             Rectangle().fill(TanqueDS.Color.surfaceBorder).frame(height: 1)

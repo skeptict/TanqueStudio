@@ -10,16 +10,31 @@ struct GalleryStripView: View {
     @Query(sort: \TSImage.createdAt, order: .reverse) private var savedImages: [TSImage]
 
     @State private var imageToDelete: TSImage?
+    @State private var seriesToDelete: [TSImage]?
+
+    /// One strip row: a plain image, or a video frame series collapsed into one cell.
+    private enum GalleryEntry: Identifiable {
+        case single(TSImage)
+        case series([TSImage])   // sorted by batchIndex; always ≥ 2 frames
+
+        var id: UUID {
+            switch self {
+            case .single(let image):  return image.id
+            case .series(let frames): return frames[0].batchID ?? frames[0].id
+            }
+        }
+    }
 
     var body: some View {
         let visibleImages = savedImages.filter {
             FileManager.default.fileExists(atPath: $0.filePath)
         }
+        let entries = buildEntries(visibleImages)
 
         ZStack {
             TanqueDS.Color.surface0
 
-            if visibleImages.isEmpty {
+            if entries.isEmpty {
                 VStack(spacing: 10) {
                     Image(systemName: "photo.on.rectangle.angled")
                         .font(.system(size: 28))
@@ -32,29 +47,8 @@ struct GalleryStripView: View {
             } else {
                 ScrollView {
                     LazyVStack(spacing: 6) {
-                        ForEach(visibleImages) { tsImage in
-                            GalleryStripCell(
-                                tsImage: tsImage,
-                                isSelected: tsImage.id == vm.selectedGalleryID,
-                                isMostRecent: tsImage.id == visibleImages.first?.id
-                            ) {
-                                selectImage(tsImage)
-                            }
-                            .contextMenu {
-                                Button("Reveal in Finder") {
-                                    NSWorkspace.shared.selectFile(
-                                        tsImage.filePath,
-                                        inFileViewerRootedAtPath: ""
-                                    )
-                                }
-                                Button("Copy to Clipboard") {
-                                    copyToClipboard(tsImage)
-                                }
-                                Divider()
-                                Button("Delete", role: .destructive) {
-                                    imageToDelete = tsImage
-                                }
-                            }
+                        ForEach(entries) { entry in
+                            entryCell(entry, isMostRecent: entry.id == entries.first?.id)
                         }
                     }
                     .padding(6)
@@ -77,6 +71,119 @@ struct GalleryStripView: View {
         } message: {
             Text("This image will be removed from the gallery and deleted from disk.")
         }
+        .confirmationDialog(
+            "Delete Video Series",
+            isPresented: Binding(
+                get: { seriesToDelete != nil },
+                set: { if !$0 { seriesToDelete = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("Delete \(seriesToDelete?.count ?? 0) Frames", role: .destructive) {
+                if let frames = seriesToDelete { vm.deleteSeries(frames, in: modelContext) }
+                seriesToDelete = nil
+            }
+            Button("Cancel", role: .cancel) { seriesToDelete = nil }
+        } message: {
+            Text("All frames of this video series will be removed from the gallery and deleted from disk.")
+        }
+    }
+
+    // MARK: - Cells
+
+    @ViewBuilder
+    private func entryCell(_ entry: GalleryEntry, isMostRecent: Bool) -> some View {
+        switch entry {
+        case .single(let tsImage):
+            GalleryStripCell(
+                tsImage: tsImage,
+                isSelected: tsImage.id == vm.selectedGalleryID,
+                isMostRecent: isMostRecent
+            ) {
+                vm.clearSeriesSelection()
+                selectImage(tsImage)
+            }
+            .contextMenu {
+                Button("Reveal in Finder") {
+                    NSWorkspace.shared.selectFile(
+                        tsImage.filePath,
+                        inFileViewerRootedAtPath: ""
+                    )
+                }
+                Button("Copy to Clipboard") {
+                    copyToClipboard(tsImage)
+                }
+                Divider()
+                Button("Delete", role: .destructive) {
+                    imageToDelete = tsImage
+                }
+            }
+        case .series(let frames):
+            GalleryStripCell(
+                tsImage: frames[0],
+                isSelected: frames.contains { $0.id == vm.selectedGalleryID },
+                isMostRecent: isMostRecent,
+                seriesCount: frames.count
+            ) {
+                vm.selectSeries(frames)
+            }
+            .contextMenu {
+                Button("Export Frames…") { vm.exportSeriesFrames(frames) }
+                Button("Export Video…")  { vm.exportSeriesVideo(frames) }
+                Divider()
+                Button("Reveal in Finder") {
+                    NSWorkspace.shared.selectFile(
+                        frames[0].filePath,
+                        inFileViewerRootedAtPath: ""
+                    )
+                }
+                Divider()
+                Button("Delete Series", role: .destructive) {
+                    seriesToDelete = frames
+                }
+            }
+        }
+    }
+
+    // MARK: - Grouping
+
+    /// Collapses images that share a batchID AND whose configJSON has numFrames > 1
+    /// into one series entry (sorted by batchIndex). Plain batch renders — multiple
+    /// stills from batchCount > 1 — have no shared batchID and stay ungrouped.
+    private func buildEntries(_ images: [TSImage]) -> [GalleryEntry] {
+        var framesByBatch: [UUID: [TSImage]] = [:]
+        for image in images {
+            if let batchID = image.batchID, isVideoFrame(image) {
+                framesByBatch[batchID, default: []].append(image)
+            }
+        }
+
+        var entries: [GalleryEntry] = []
+        var emitted: Set<UUID> = []
+        for image in images {
+            if let batchID = image.batchID,
+               let frames = framesByBatch[batchID],
+               frames.count > 1 {
+                if !emitted.contains(batchID) {
+                    emitted.insert(batchID)
+                    entries.append(.series(frames.sorted {
+                        ($0.batchIndex ?? 0) < ($1.batchIndex ?? 0)
+                    }))
+                }
+            } else {
+                entries.append(.single(image))
+            }
+        }
+        return entries
+    }
+
+    /// True when the image's stored config marks it as part of a video render.
+    /// Cheap substring check first — most gallery images have no numFrames key.
+    private func isVideoFrame(_ image: TSImage) -> Bool {
+        guard let json = image.configJSON, json.contains("\"numFrames\"") else { return false }
+        guard let meta = ImageStorageManager.decodeConfigJSON(json),
+              let numFrames = meta.numFrames else { return false }
+        return numFrames > 1
     }
 
     // MARK: - Helpers
@@ -124,32 +231,7 @@ struct GalleryStripView: View {
     /// Decodes a configJSON string (written by ImageStorageManager.encodeConfig) into PNGMetadata.
     /// Returns nil if the JSON is malformed; caller falls back to PNGMetadataParser.
     private func metadata(from json: String) -> PNGMetadata? {
-        guard let data = json.data(using: .utf8),
-              let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            return nil
-        }
-        var m = PNGMetadata()
-        m.prompt         = dict["prompt"]         as? String
-        m.negativePrompt = dict["negativePrompt"] as? String
-        m.model          = dict["model"]          as? String
-        m.sampler        = dict["sampler"]        as? String
-        m.steps          = (dict["steps"]         as? NSNumber)?.intValue
-        m.guidanceScale  = (dict["guidanceScale"] as? NSNumber)?.doubleValue
-        m.seed           = (dict["seed"]          as? NSNumber)?.intValue
-        m.seedMode       = dict["seedMode"]       as? String
-        m.width          = (dict["width"]         as? NSNumber)?.intValue
-        m.height         = (dict["height"]        as? NSNumber)?.intValue
-        m.shift          = (dict["shift"]         as? NSNumber)?.doubleValue
-        m.strength       = (dict["strength"]      as? NSNumber)?.doubleValue
-        if let loras = dict["loras"] as? [[String: Any]] {
-            m.loras = loras.compactMap { d in
-                guard let file   = d["file"]   as? String,
-                      let weight = (d["weight"] as? NSNumber)?.doubleValue else { return nil }
-                return PNGMetadataLoRA(file: file, weight: weight)
-            }
-        }
-        m.format = .drawThings
-        return m
+        ImageStorageManager.decodeConfigJSON(json)
     }
 
     private func copyToClipboard(_ tsImage: TSImage) {
@@ -176,6 +258,7 @@ private struct GalleryStripCell: View {
     let tsImage: TSImage
     let isSelected: Bool
     let isMostRecent: Bool
+    var seriesCount: Int? = nil   // set = video series cell (thumbnail is frame 0)
     let onTap: () -> Void
 
     var body: some View {
@@ -187,6 +270,19 @@ private struct GalleryStripCell: View {
                 .overlay {
                     RoundedRectangle(cornerRadius: 5)
                         .strokeBorder(borderColor, lineWidth: borderWidth)
+                }
+                .overlay(alignment: .topLeading) {
+                    if let count = seriesCount {
+                        Label("\(count)", systemImage: "play.fill")
+                            .font(TanqueDS.Font.bodySmall.weight(.semibold))
+                            .foregroundStyle(.white)
+                            .labelStyle(.titleAndIcon)
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 2)
+                            .background(Color.black.opacity(0.65))
+                            .clipShape(RoundedRectangle(cornerRadius: 3))
+                            .padding(4)
+                    }
                 }
                 .overlay(alignment: .bottom) {
                     Text(relativeTime(from: tsImage.createdAt))
