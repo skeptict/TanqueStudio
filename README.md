@@ -242,13 +242,13 @@ DrawThingsStudio/
 - [x] Learnability Phase 1 — first-run welcome flow, markdown-driven in-app Help (10 topics), empty-state coaching, tooltip audit
 - [x] Connection reliability — bounded timeout on gRPC asset fetches, a refresh button that always works, Test Connection that checks the real secret, an honest connected/disconnected signal instead of a cosmetic one
 - [x] Story Studio Phase 4 — Send to Generate from a rendered variant, chapter contact-sheet export (image sequence/storyboard/comic grid, PNG+PDF), per-field LLM enhance + one-shot narrative writer on scene text
+- [x] Learnability Phase 2 — TipKit tips for hidden gestures (⌥-drag pan, ⌘-click multi-select, paste-config, dice/randomize, RDS); Story Studio help topic rewritten as a numbered walkthrough
 
 ### Upcoming
 
 In priority order:
 
-1. [ ] **Learnability Phase 2** — TipKit tips for hidden gestures (⌥-drag pan, ⌘-click multi-select, paste-config, dice/randomize, RDS); expand the Story Studio help topic into a numbered walkthrough
-2. [ ] **README polish** — screenshots, demo GIF
+1. [ ] **README polish** — screenshots, demo GIF
 
 ### Backlog
 
