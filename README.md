@@ -240,15 +240,15 @@ DrawThingsStudio/
 - [x] Video generations — DT frame series captured as one grouped gallery item (previously all frames past the first were discarded), frame scrubber, export frames / assemble .mp4, frame count unclamped beyond DT client defaults
 - [x] DT Project Browser bulk export — ⌘-click multi-select, Export Selected / Export All, stored full-size JPEGs written byte-for-byte
 - [x] Learnability Phase 1 — first-run welcome flow, markdown-driven in-app Help (10 topics), empty-state coaching, tooltip audit
+- [x] Connection reliability — bounded timeout on gRPC asset fetches, a refresh button that always works, Test Connection that checks the real secret, an honest connected/disconnected signal instead of a cosmetic one
 
 ### Upcoming
 
 In priority order:
 
-1. [ ] **Connection reliability** — fix a wedged-connection bug cluster (no timeout on gRPC asset fetches, a stuck refresh button, Test Connection that doesn't check the real secret); replace the cosmetic connected/disconnected badge with a real health signal (spec: `Docs/connection-reliability-spec.md`)
-2. [ ] **Story Studio Phase 4** — consistency extras (preferred seeds, reference moodboards), chapter export, LLM assists
-3. [ ] **Learnability Phase 2** — TipKit tips for hidden gestures (⌥-drag pan, ⌘-click multi-select, paste-config, dice/randomize, RDS); expand the Story Studio help topic into a numbered walkthrough
-4. [ ] **README polish** — screenshots, demo GIF
+1. [ ] **Story Studio Phase 4** — consistency extras (preferred seeds, reference moodboards), chapter export, LLM assists
+2. [ ] **Learnability Phase 2** — TipKit tips for hidden gestures (⌥-drag pan, ⌘-click multi-select, paste-config, dice/randomize, RDS); expand the Story Studio help topic into a numbered walkthrough
+3. [ ] **README polish** — screenshots, demo GIF
 
 ### Backlog
 
