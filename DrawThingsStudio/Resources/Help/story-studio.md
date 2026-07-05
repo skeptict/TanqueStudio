@@ -15,7 +15,7 @@ Story Studio is a multi-scene narrative workspace: build a story project, popula
 
 3. **Add a chapter.** Click **Add Chapter** to start the story structure — chapters group scenes in sequence.
 
-4. **Add a scene.** Inside a chapter, click **Add Scene**. Fill in the scene's description, action, dialogue, camera angle, composition, and mood, plus any per-scene config overrides (size, steps, guidance, seed, strength).
+4. **Add a scene.** Inside a chapter, click **Add Scene**. Fill in the scene's description, action, dialogue, camera angle, composition, and mood, plus any per-scene config overrides (size, steps, guidance, seed, strength). The wand icon (🪄) next to Description, Action, and Dialogue runs a local LLM to enhance that field; the **Write Action / Dialogue / Narrator** button fills all three at once from the scene description, its characters, and setting. Both need a local LLM configured in Settings.
 
 5. **Check character presences.** In the scene editor, tick the checkbox next to each character who appears in the scene — only checked characters contribute their prompt fragment to the render. Each presence can also carry its own fragment override for that scene specifically.
 
@@ -24,5 +24,10 @@ Story Studio is a multi-scene narrative workspace: build a story project, popula
 7. **Render the scene.** Click **Render Scene** to compile the narrative data into a StoryFlow workflow — character LoRAs merge into the config, reference images become moodboard entries, preferred seeds apply — and run it. Use **Render Chapter** to render every scene in the chapter in sequence. Results land in the regular gallery *and* attach to the scene as **variants**.
 
 8. **Approve a variant.** Renders may take a few tries. Browse the variant strip, select the one that nails it, and click **Approve** — the approved variant is what represents the scene going forward. Re-render any time; variants accumulate until you clean them up.
+
+## Beyond the basics
+
+- **Send to Generate** — from a scene's preview, hand the approved (or currently displayed) variant's config to the main Generate pane to keep iterating there with the full toolset.
+- **Export Contact Sheet…** — in the Chapter editor, export every scene's image as an Image Sequence, Storyboard Strip, or Comic Grid, with optional captions, as PNG or PDF.
 
 Deleting a scene never deletes its gallery images — they're yours; only the scene's references go.
