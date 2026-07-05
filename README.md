@@ -236,17 +236,19 @@ DrawThingsStudio/
 - [x] Story Studio Phase 1 — data models (SwiftData schema v2), project library with create/rename/duplicate/delete (spec: `Docs/story-studio-v2-spec.md`)
 - [x] DT Project Browser bulk export — ⌘-click multi-select, Export Selected / Export All, stored full-size JPEGs written byte-for-byte
 - [x] Leaving paint mode cancels an in-flight inpaint (closes the last v0.9.20 known-minor)
+- [x] Story Studio — project/character/setting/chapter/scene management, live prompt assembly, compile-to-StoryFlow render pipeline with variant approval (Phases 1–3; Phase 4 extras still upcoming)
+- [x] Video generations — DT frame series captured as one grouped gallery item (previously all frames past the first were discarded), frame scrubber, export frames / assemble .mp4, frame count unclamped beyond DT client defaults
+- [x] DT Project Browser bulk export — ⌘-click multi-select, Export Selected / Export All, stored full-size JPEGs written byte-for-byte
+- [x] Learnability Phase 1 — first-run welcome flow, markdown-driven in-app Help (10 topics), empty-state coaching, tooltip audit
 
 ### Upcoming
 
 In priority order:
 
-1. [ ] **Story Studio Phase 2** — scene/chapter editor, character & setting management, prompt assembly with live preview
-2. [ ] **Story Studio Phase 3** — compile scenes to StoryFlow workflows, render scene/chapter, variant approval
-3. [ ] **Story Studio Phase 4** — consistency extras (preferred seeds, reference moodboards), chapter export, LLM assists
-4. [ ] **Video generations** — capture DT frame series as one grouped gallery item (frames are currently discarded past the first), frame scrubber, export frames / assemble .mp4; frame count unclamped beyond DT client defaults (spec: `Docs/video-generations-spec.md`)
-5. [ ] **Learnability** — first-run welcome flow, markdown-driven in-app Help, empty-state coaching, tooltip audit; TipKit tips as a follow-on (spec: `Docs/learnability-spec.md`)
-6. [ ] **README polish** — screenshots, demo GIF
+1. [ ] **Connection reliability** — fix a wedged-connection bug cluster (no timeout on gRPC asset fetches, a stuck refresh button, Test Connection that doesn't check the real secret); replace the cosmetic connected/disconnected badge with a real health signal (spec: `Docs/connection-reliability-spec.md`)
+2. [ ] **Story Studio Phase 4** — consistency extras (preferred seeds, reference moodboards), chapter export, LLM assists
+3. [ ] **Learnability Phase 2** — TipKit tips for hidden gestures (⌥-drag pan, ⌘-click multi-select, paste-config, dice/randomize, RDS); expand the Story Studio help topic into a numbered walkthrough
+4. [ ] **README polish** — screenshots, demo GIF
 
 ### Backlog
 
