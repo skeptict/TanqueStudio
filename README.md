@@ -241,14 +241,14 @@ DrawThingsStudio/
 - [x] DT Project Browser bulk export — ⌘-click multi-select, Export Selected / Export All, stored full-size JPEGs written byte-for-byte
 - [x] Learnability Phase 1 — first-run welcome flow, markdown-driven in-app Help (10 topics), empty-state coaching, tooltip audit
 - [x] Connection reliability — bounded timeout on gRPC asset fetches, a refresh button that always works, Test Connection that checks the real secret, an honest connected/disconnected signal instead of a cosmetic one
+- [x] Story Studio Phase 4 — Send to Generate from a rendered variant, chapter contact-sheet export (image sequence/storyboard/comic grid, PNG+PDF), per-field LLM enhance + one-shot narrative writer on scene text
 
 ### Upcoming
 
 In priority order:
 
-1. [ ] **Story Studio Phase 4** — consistency extras (preferred seeds, reference moodboards), chapter export, LLM assists
-2. [ ] **Learnability Phase 2** — TipKit tips for hidden gestures (⌥-drag pan, ⌘-click multi-select, paste-config, dice/randomize, RDS); expand the Story Studio help topic into a numbered walkthrough
-3. [ ] **README polish** — screenshots, demo GIF
+1. [ ] **Learnability Phase 2** — TipKit tips for hidden gestures (⌥-drag pan, ⌘-click multi-select, paste-config, dice/randomize, RDS); expand the Story Studio help topic into a numbered walkthrough
+2. [ ] **README polish** — screenshots, demo GIF
 
 ### Backlog
 
