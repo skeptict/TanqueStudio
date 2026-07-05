@@ -105,7 +105,7 @@ struct ContentView: View {
         case .storyFlow:
             StoryFlowView(vm: storyFlowVM)
         case .storyStudio:
-            StoryStudioView()
+            StoryStudioView(generateVM: generateVM, onNavigateToGenerate: { selectedItem = .generate })
         case .settings:
             SettingsView()
         default:

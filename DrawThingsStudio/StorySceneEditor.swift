@@ -15,6 +15,7 @@ struct StorySceneEditor: View {
     @Bindable var project: StoryProject
 
     @Environment(\.modelContext) private var modelContext
+    @State private var assistant = StorySceneLLMAssistant()
 
     private var sortedCharacters: [StoryCharacter] {
         project.characters.sorted { $0.sortOrder < $1.sortOrder }
@@ -26,10 +27,27 @@ struct StorySceneEditor: View {
     var body: some View {
         StoryEditorPage(icon: "film", title: "Scene") {
             StoryLabeledTextField("Title", placeholder: "Scene title", text: $scene.title)
-            StoryLabeledTextEditor("Description", text: $scene.sceneDescription, minHeight: 70)
-            StoryLabeledTextEditor("Action", text: storyOptionalText($scene.actionDescription), minHeight: 50, maxHeight: 90)
-            StoryLabeledTextEditor("Dialogue", text: storyOptionalText($scene.dialogueText), minHeight: 50, maxHeight: 90)
+            StoryLabeledTextEditor("Description", text: $scene.sceneDescription, minHeight: 70) {
+                StoryEnhanceMenu(field: "Description", text: scene.sceneDescription, assistant: assistant) {
+                    scene.sceneDescription = $0
+                    project.modifiedAt = Date()
+                }
+            }
+            StoryLabeledTextEditor("Action", text: storyOptionalText($scene.actionDescription), minHeight: 50, maxHeight: 90) {
+                StoryEnhanceMenu(field: "Action", text: scene.actionDescription ?? "", assistant: assistant) {
+                    scene.actionDescription = $0
+                    project.modifiedAt = Date()
+                }
+            }
+            StoryLabeledTextEditor("Dialogue", text: storyOptionalText($scene.dialogueText), minHeight: 50, maxHeight: 90) {
+                StoryEnhanceMenu(field: "Dialogue", text: scene.dialogueText ?? "", assistant: assistant) {
+                    scene.dialogueText = $0
+                    project.modifiedAt = Date()
+                }
+            }
             StoryLabeledTextEditor("Narrator", text: storyOptionalText($scene.narratorText), minHeight: 50, maxHeight: 90)
+
+            aiAssistBar
 
             HStack(alignment: .top, spacing: TanqueDS.Spacing.sm) {
                 StoryLabeledTextField("Camera Angle", placeholder: "e.g. low angle", text: storyOptionalText($scene.cameraAngle))
@@ -46,6 +64,43 @@ struct StorySceneEditor: View {
 
             promptSection
         }
+    }
+
+    // MARK: - AI assist bar
+
+    /// One-shot narrative writer (fills action/dialogue/narrator from the
+    /// description, characters, and setting) plus any LLM error surface.
+    private var aiAssistBar: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: TanqueDS.Spacing.md) {
+                Button {
+                    assistant.writeNarrative(for: scene, project: project)
+                } label: {
+                    Label("Write Action / Dialogue / Narrator", systemImage: "wand.and.stars")
+                        .font(TanqueDS.Font.bodyMedium)
+                }
+                .buttonStyle(.borderless)
+                .foregroundStyle(canWriteNarrative ? TanqueDS.Color.brass : TanqueDS.Color.textMuted)
+                .disabled(!canWriteNarrative)
+                .accessibilityLabel("Write Scene Narrative with LLM")
+
+                if assistant.busyField == "narrative" {
+                    ProgressView().controlSize(.small)
+                }
+                Spacer()
+            }
+            if let error = assistant.errorText {
+                Text(error)
+                    .font(TanqueDS.Font.bodySmall)
+                    .foregroundStyle(.red)
+                    .textSelection(.enabled)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    private var canWriteNarrative: Bool {
+        !assistant.isBusy && !scene.sceneDescription.trimmingCharacters(in: .whitespaces).isEmpty
     }
 
     // MARK: - Setting picker

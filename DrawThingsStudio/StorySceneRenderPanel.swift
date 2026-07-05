@@ -14,6 +14,8 @@ struct StorySceneRenderPanel: View {
     @Bindable var scene: StoryScene
     @Bindable var project: StoryProject
     let controller: StoryStudioRenderController
+    let generateVM: GenerateViewModel
+    let onNavigateToGenerate: () -> Void
 
     @Environment(\.modelContext) private var modelContext
     @State private var selectedVariantID: UUID?
@@ -27,7 +29,10 @@ struct StorySceneRenderPanel: View {
                         .tanqueSectionLabel()
                     largePreview
                     variantStrip
-                    approveButton
+                    HStack(spacing: TanqueDS.Spacing.md) {
+                        approveButton
+                        sendToGenerateButton
+                    }
                 }
                 .padding(TanqueDS.Spacing.md)
             }
@@ -174,6 +179,79 @@ struct StorySceneRenderPanel: View {
             .foregroundStyle(TanqueDS.Color.brass)
             .accessibilityLabel(isApproved ? "Unapprove Variant" : "Approve Variant")
         }
+    }
+
+    // MARK: - Send to Generate
+
+    /// Populates the main Generate pane with the displayed variant's stored
+    /// config (prompt, size, sampler, seed, LoRAs …) and navigates there, so
+    /// the user can iterate on a Story Studio render in the full editor.
+    /// Mirrors DTProjectBrowserView.sendToGenerate.
+    @ViewBuilder
+    private var sendToGenerateButton: some View {
+        if let variant = displayedVariant {
+            Button {
+                sendToGenerate(variant)
+            } label: {
+                Label("Send to Generate", systemImage: "paintbrush")
+                    .font(TanqueDS.Font.bodyMedium)
+            }
+            .buttonStyle(.borderless)
+            .foregroundStyle(TanqueDS.Color.brass)
+            .accessibilityLabel("Send to Generate")
+        }
+    }
+
+    private func sendToGenerate(_ variant: TSImage) {
+        let dict = configDict(for: variant)
+
+        func string(_ key: String) -> String? { dict[key] as? String }
+        func int(_ key: String) -> Int? {
+            if let i = dict[key] as? Int { return i }
+            if let d = dict[key] as? Double { return Int(d) }
+            return nil
+        }
+        func double(_ key: String) -> Double? {
+            if let d = dict[key] as? Double { return d }
+            if let i = dict[key] as? Int { return Double(i) }
+            return nil
+        }
+
+        if let p = string("prompt"), !p.isEmpty { generateVM.prompt = p }
+        if let n = string("negativePrompt"), !n.isEmpty { generateVM.negativePrompt = n }
+        if let w = int("width"), w > 0 { generateVM.config.width = w }
+        if let h = int("height"), h > 0 { generateVM.config.height = h }
+        if let s = int("steps"), s > 0 { generateVM.config.steps = s }
+        if let g = double("guidanceScale") { generateVM.config.guidanceScale = g }
+        if let seed = int("seed"), seed >= 0 {
+            generateVM.config.seed = seed
+            generateVM.randomizeSeed = false
+        }
+        if let sampler = string("sampler"), !sampler.isEmpty { generateVM.config.sampler = sampler }
+        if let seedMode = string("seedMode"), !seedMode.isEmpty { generateVM.config.seedMode = seedMode }
+        if let model = string("model"), !model.isEmpty { generateVM.config.model = model }
+        if let shift = double("shift") { generateVM.config.shift = shift }
+        if let strength = double("strength"), strength > 0 { generateVM.config.strength = strength }
+        if let loras = dict["loras"] as? [[String: Any]], !loras.isEmpty {
+            generateVM.config.loras = loras.compactMap { lora in
+                guard let file = lora["file"] as? String else { return nil }
+                let weight = (lora["weight"] as? Double) ?? (lora["weight"] as? Int).map(Double.init) ?? 1.0
+                return DrawThingsGenerationConfig.LoRAConfig(file: file, weight: weight, mode: "all")
+            }
+        }
+        if let image = fullImage(for: variant) { generateVM.sourceImage = image }
+
+        onNavigateToGenerate()
+    }
+
+    /// The variant's stored config JSON as a dictionary. Story Studio writes
+    /// this via StoryStudioRenderController.configJSON when routing a render.
+    private func configDict(for variant: TSImage) -> [String: Any] {
+        guard let json = variant.configJSON,
+              let data = json.data(using: .utf8),
+              let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        else { return [:] }
+        return dict
     }
 
     // MARK: - Progress + debug log
