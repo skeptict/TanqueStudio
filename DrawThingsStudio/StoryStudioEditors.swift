@@ -47,24 +47,38 @@ struct StoryLabeledTextField: View {
 }
 
 /// Labeled multi-line text editor, styled like the Generate prompt box.
-struct StoryLabeledTextEditor: View {
+/// An optional trailing accessory sits on the label row (e.g. an LLM-assist
+/// menu). Call sites that omit it get `EmptyView` and are unchanged.
+struct StoryLabeledTextEditor<Accessory: View>: View {
     let label: String
     @Binding var text: String
     var minHeight: CGFloat = 60
     var maxHeight: CGFloat = 120
+    @ViewBuilder let accessory: () -> Accessory
 
-    init(_ label: String, text: Binding<String>, minHeight: CGFloat = 60, maxHeight: CGFloat = 120) {
+    init(
+        _ label: String,
+        text: Binding<String>,
+        minHeight: CGFloat = 60,
+        maxHeight: CGFloat = 120,
+        @ViewBuilder accessory: @escaping () -> Accessory = { EmptyView() }
+    ) {
         self.label = label
         self._text = text
         self.minHeight = minHeight
         self.maxHeight = maxHeight
+        self.accessory = accessory
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {
-            Text(label)
-                .font(TanqueDS.Font.body)
-                .foregroundStyle(TanqueDS.Color.textSecondary)
+            HStack(spacing: 6) {
+                Text(label)
+                    .font(TanqueDS.Font.body)
+                    .foregroundStyle(TanqueDS.Color.textSecondary)
+                Spacer()
+                accessory()
+            }
             TextEditor(text: $text)
                 .font(TanqueDS.Font.body)
                 .foregroundStyle(TanqueDS.Color.textPrimary)
@@ -160,6 +174,7 @@ struct StoryChapterEditor: View {
     let onSceneCreated: (StoryScene) -> Void
 
     @Environment(\.modelContext) private var modelContext
+    @State private var showingExport = false
 
     var body: some View {
         StoryEditorPage(icon: "book.closed", title: "Chapter") {
@@ -169,22 +184,41 @@ struct StoryChapterEditor: View {
                 .font(TanqueDS.Font.bodySmall)
                 .foregroundStyle(TanqueDS.Color.textSecondary)
 
-            Button {
-                let scene = StoryScene(
-                    title: "New Scene",
-                    sortOrder: (chapter.scenes.map(\.sortOrder).max() ?? -1) + 1
-                )
-                modelContext.insert(scene)
-                scene.chapter = chapter
-                chapter.scenes.append(scene)
-                project.modifiedAt = Date()
-                onSceneCreated(scene)
-            } label: {
-                Label("Add Scene", systemImage: "plus")
-                    .font(TanqueDS.Font.bodyMedium)
+            HStack(spacing: TanqueDS.Spacing.lg) {
+                Button {
+                    let scene = StoryScene(
+                        title: "New Scene",
+                        sortOrder: (chapter.scenes.map(\.sortOrder).max() ?? -1) + 1
+                    )
+                    modelContext.insert(scene)
+                    scene.chapter = chapter
+                    chapter.scenes.append(scene)
+                    project.modifiedAt = Date()
+                    onSceneCreated(scene)
+                } label: {
+                    Label("Add Scene", systemImage: "plus")
+                        .font(TanqueDS.Font.bodyMedium)
+                }
+                .buttonStyle(.borderless)
+                .foregroundStyle(TanqueDS.Color.brass)
+
+                Button {
+                    showingExport = true
+                } label: {
+                    Label("Export Contact Sheet…", systemImage: "square.grid.2x2")
+                        .font(TanqueDS.Font.bodyMedium)
+                }
+                .buttonStyle(.borderless)
+                .foregroundStyle(chapter.scenes.isEmpty ? TanqueDS.Color.textMuted : TanqueDS.Color.brass)
+                .disabled(chapter.scenes.isEmpty)
+                .accessibilityLabel("Export Contact Sheet")
             }
-            .buttonStyle(.borderless)
-            .foregroundStyle(TanqueDS.Color.brass)
+        }
+        .sheet(isPresented: $showingExport) {
+            StoryExportSheet(
+                scenes: chapter.sortedScenes,
+                title: chapter.title.isEmpty ? "Chapter" : chapter.title
+            )
         }
     }
 }
