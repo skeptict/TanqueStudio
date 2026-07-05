@@ -49,6 +49,11 @@ final class StoryFlowEngine {
     /// Set by StoryFlowViewModel to insert the image into the SwiftData gallery.
     var onImageGenerated: ((NSImage, DrawThingsGenerationConfig, String, URL?) -> Void)?
 
+    /// Additive variant of `onImageGenerated` that also identifies the generate
+    /// step by its `outputName` parameter. Story Studio uses this to route each
+    /// image to the scene that produced it (outputName == scene UUID string).
+    var onStepImageGenerated: ((String, NSImage, DrawThingsGenerationConfig, String, URL?) -> Void)?
+
     // MARK: — Accumulator state (reset at each run)
 
     /// Current accumulated generation config. Starts from defaults; each Config instruction
@@ -389,6 +394,7 @@ final class StoryFlowEngine {
         }
         // Notify gallery so the image appears with metadata
         onImageGenerated?(img, cfg, prompt, savedURL)
+        onStepImageGenerated?(outputName, img, cfg, prompt, savedURL)
     }
 
     // MARK: — Config accumulation
@@ -545,9 +551,11 @@ final class StoryFlowEngine {
     private func resolveImage(named varName: String, variables: [WorkflowVariable]) -> NSImage? {
         // Saved canvases (from generate outputName or saveCanvas)
         if let img = savedCanvases[varName] { return img }
-        // Image variable definitions
-        guard let v = variables.first(where: { $0.name == varName && $0.type == .image }),
-              let fileName = v.imageFileName else { return nil }
+        // Image variable definitions — in-memory payload first (compiled
+        // workflows), then the WorkflowVariables folder.
+        guard let v = variables.first(where: { $0.name == varName && $0.type == .image }) else { return nil }
+        if let data = v.imageData, let img = NSImage(data: data) { return img }
+        guard let fileName = v.imageFileName else { return nil }
         let url = StoryFlowStorage.shared.variablesFolder
             .appendingPathComponent("images", isDirectory: true)
             .appendingPathComponent(fileName)

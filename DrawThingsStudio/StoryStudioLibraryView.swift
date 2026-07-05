@@ -3,14 +3,16 @@
 //  TanqueStudio
 //
 //  Story Studio v2, Phase 1: the project library. Create, rename, duplicate,
-//  and delete narrative projects. Opening a project into the outline/editor
-//  is Phase 2.
+//  and delete narrative projects. Clicking a card opens it in the Phase 2
+//  workspace (StoryStudioView).
 //
 
 import SwiftUI
 import SwiftData
 
 struct StoryStudioLibraryView: View {
+    var onOpen: (StoryProject) -> Void = { _ in }
+
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \StoryProject.modifiedAt, order: .reverse) private var projects: [StoryProject]
 
@@ -175,8 +177,17 @@ struct StoryStudioLibraryView: View {
         .background(TanqueDS.Color.surface1)
         .clipShape(RoundedRectangle(cornerRadius: TanqueDS.Layout.panelCornerRadius))
         .contentShape(Rectangle())
-        .onTapGesture { selectedProjectID = project.id }
+        .onTapGesture {
+            selectedProjectID = project.id
+            onOpen(project)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Open \(project.name)")
+        .accessibilityAddTraits(.isButton)
+        .accessibilityAction { onOpen(project) }
         .contextMenu {
+            Button("Open") { onOpen(project) }
+            Divider()
             Button("Rename…") { projectPendingRename = project }
             Button("Duplicate") { duplicate(project) }
             Divider()
@@ -193,6 +204,7 @@ struct StoryStudioLibraryView: View {
         let project = StoryProject(name: name)
         modelContext.insert(project)
         selectedProjectID = project.id
+        onOpen(project)
     }
 
     private func rename(_ project: StoryProject, to name: String) {
