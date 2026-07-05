@@ -43,6 +43,26 @@ extension Notification.Name {
 
 enum HelpLibrary {
 
+    /// The bundled Help topics, in slug form. These files live in the source at
+    /// `Resources/Help/*.md`, but the project's filesystem-synchronized group
+    /// copies them *flat* into the bundle Resources root (unlike LLMOperations,
+    /// which has an explicit folder reference in the project). So we load each by
+    /// name — `Bundle.url(forResource:)` finds them wherever they land — rather
+    /// than scanning a `Help/` subdirectory that doesn't exist at runtime. The
+    /// order here is the sidebar order; front-matter `order` is a tie-breaker.
+    static let topicSlugs = [
+        HelpTopicID.connecting,
+        HelpTopicID.generate,
+        HelpTopicID.canvas,
+        HelpTopicID.presetsLoRAs,
+        HelpTopicID.img2imgMoodboard,
+        HelpTopicID.video,
+        HelpTopicID.dtBrowser,
+        HelpTopicID.storyFlow,
+        HelpTopicID.storyStudio,
+        HelpTopicID.troubleshooting,
+    ]
+
     static let topics: [HelpTopic] = loadTopics()
 
     static func topic(id: String) -> HelpTopic? {
@@ -50,22 +70,26 @@ enum HelpLibrary {
     }
 
     private static func loadTopics() -> [HelpTopic] {
-        guard let urls = Bundle.main.urls(forResourcesWithExtension: "md", subdirectory: "Help") else {
-            return []
-        }
-        return urls
-            .compactMap { parse(url: $0) }
+        topicSlugs
+            .enumerated()
+            .compactMap { index, slug -> HelpTopic? in
+                guard let url = Bundle.main.url(forResource: slug, withExtension: "md") else {
+                    return nil
+                }
+                // Fall back to declared position if a file omits `order`.
+                return parse(url: url, fallbackOrder: index)
+            }
             .sorted { $0.order < $1.order }
     }
 
     /// Parses a topic file: front matter between leading `---` lines
     /// (`title:` and `order:` keys), then the markdown body.
-    private static func parse(url: URL) -> HelpTopic? {
+    private static func parse(url: URL, fallbackOrder: Int) -> HelpTopic? {
         guard let raw = try? String(contentsOf: url, encoding: .utf8) else { return nil }
         let slug = url.deletingPathExtension().lastPathComponent
 
         var title = slug
-        var order = Int.max
+        var order = fallbackOrder
         var body = raw
 
         let lines = raw.components(separatedBy: "\n")
