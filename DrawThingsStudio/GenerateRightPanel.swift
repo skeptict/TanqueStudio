@@ -1,6 +1,7 @@
 import SwiftUI
 import AppKit
 import SwiftData
+import TipKit
 
 // MARK: - Right Inspect Panel
 
@@ -11,6 +12,7 @@ struct GenerateRightPanel: View {
     let canvasScale: CGFloat
     let canvasOffset: CGSize
     let canvasSize: CGSize
+    private let pasteConfigTip = PasteConfigTip()
 
     var body: some View {
         VStack(spacing: 0) {
@@ -190,6 +192,7 @@ struct GenerateRightPanel: View {
                          help: "Apply a config JSON from the clipboard. Values pass through uncapped — e.g. numFrames 450.") {
                 pasteConfigFromDT()
             }
+            .popoverTip(pasteConfigTip)
 
             Rectangle().fill(TanqueDS.Color.surfaceBorder).frame(height: 1)
                 .padding(.vertical, 2)

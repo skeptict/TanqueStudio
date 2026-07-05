@@ -2,6 +2,7 @@ import SwiftUI
 import AppKit
 import Combine
 import SwiftData
+import TipKit
 
 // MARK: - Root View
 
@@ -689,6 +690,7 @@ private struct ZoomableEditSurface<Content: View, Overlay: View>: View {
     @State private var lastOffset: CGSize = .zero
     private enum DragMode { case undecided, paint, pan }
     @State private var dragMode: DragMode = .undecided
+    private let panTip = OptionDragPanTip()
 
     /// Screen point → content-space point. Display transform is
     /// `content.scaleEffect(scale, anchor: .center).offset(offset)` over the
@@ -708,6 +710,7 @@ private struct ZoomableEditSurface<Content: View, Overlay: View>: View {
         }
         .frame(width: geoSize.width, height: geoSize.height)
         .contentShape(Rectangle())
+        .popoverTip(panTip)
         .gesture(dragGesture)
         .simultaneousGesture(pinchGesture)
         .onContinuousHover { phase in

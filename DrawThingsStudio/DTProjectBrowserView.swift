@@ -7,6 +7,7 @@
 //
 
 import SwiftUI
+import TipKit
 
 struct DTProjectBrowserView: View {
     let vm: GenerateViewModel
@@ -15,6 +16,7 @@ struct DTProjectBrowserView: View {
     @State private var browser = DTProjectBrowserViewModel()
     @State private var entryToDelete: DTGenerationEntry?
     @State private var showDeleteConfirmation = false
+    private let multiSelectTip = CmdClickMultiSelectTip()
 
     var body: some View {
         Group {
@@ -318,7 +320,11 @@ struct DTProjectBrowserView: View {
         ScrollView {
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 120, maximum: 160), spacing: 8)], spacing: 8) {
                 ForEach(browser.filteredEntries) { entry in
-                    thumbnailCell(entry)
+                    if entry.id == browser.filteredEntries.first?.id {
+                        thumbnailCell(entry).popoverTip(multiSelectTip)
+                    } else {
+                        thumbnailCell(entry)
+                    }
                 }
             }
             .padding(12)
