@@ -130,7 +130,9 @@ struct AppTopBar: View {
     @Binding var columnVisibility: NavigationSplitViewVisibility
 
     private var sidebarCollapsed: Bool { columnVisibility == .detailOnly }
-    private var isConnected: Bool { !vm.models.isEmpty }
+    // Reflects the most recent actual connection probe, not just whether the inventory
+    // happens to be non-empty (a reachable server can legitimately report zero LoRAs).
+    private var isConnected: Bool { vm.lastConnectionSucceeded }
 
     private var modelDisplayName: String {
         guard !vm.config.model.isEmpty else { return "" }
