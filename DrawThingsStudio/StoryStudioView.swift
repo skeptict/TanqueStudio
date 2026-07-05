@@ -14,11 +14,20 @@ import SwiftData
 // MARK: - Root (library ↔ workspace)
 
 struct StoryStudioView: View {
+    /// The Generate pane's view model, so an approved variant can populate it.
+    let generateVM: GenerateViewModel
+    /// Switch the app's sidebar selection to the Generate pane.
+    let onNavigateToGenerate: () -> Void
+
     @State private var openProject: StoryProject?
 
     var body: some View {
         if let project = openProject {
-            StoryStudioWorkspaceView(project: project) { next in
+            StoryStudioWorkspaceView(
+                project: project,
+                generateVM: generateVM,
+                onNavigateToGenerate: onNavigateToGenerate
+            ) { next in
                 openProject = next
             }
             .id(project.id)
@@ -55,6 +64,8 @@ extension StorySetting: StorySortable {}
 
 struct StoryStudioWorkspaceView: View {
     @Bindable var project: StoryProject
+    let generateVM: GenerateViewModel
+    let onNavigateToGenerate: () -> Void
     /// Switch to another project, or `nil` to return to the library.
     let onSwitchProject: (StoryProject?) -> Void
 
@@ -71,9 +82,15 @@ struct StoryStudioWorkspaceView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             if case .scene(let id) = selection, let scene = findScene(id) {
                 Rectangle().fill(TanqueDS.Color.surfaceBorder).frame(width: 1)
-                StorySceneRenderPanel(scene: scene, project: project, controller: renderController)
-                    .frame(width: 300)
-                    .id(scene.id)
+                StorySceneRenderPanel(
+                    scene: scene,
+                    project: project,
+                    controller: renderController,
+                    generateVM: generateVM,
+                    onNavigateToGenerate: onNavigateToGenerate
+                )
+                .frame(width: 300)
+                .id(scene.id)
             }
         }
         .background(TanqueDS.Color.surface0)
