@@ -48,6 +48,11 @@ struct WorkflowVariable: Identifiable, Codable {
     var loraFile: String?
     var loraWeight: Double?
     var imageFileName: String?    // filename in WorkflowVariables/images/ folder
+    /// In-memory image payload, checked before `imageFileName` when resolving.
+    /// Used by compiled workflows (Story Studio) whose reference images live in
+    /// SwiftData, not in the WorkflowVariables folder. Optional and additive —
+    /// absent in all persisted StoryFlow JSON.
+    var imageData: Data?
     var wildcardOptions: [String]?  // pipe-separated in UI, stored as array
     var isBuiltIn: Bool = false
     var notes: String?
