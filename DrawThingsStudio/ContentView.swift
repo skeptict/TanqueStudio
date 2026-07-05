@@ -37,6 +37,7 @@ struct ContentView: View {
     @State private var generateVM = GenerateViewModel()
     @State private var storyFlowVM = StoryFlowViewModel()
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
+    @State private var showWelcome = !AppSettings.shared.welcomeSeen
     var body: some View {
         VStack(spacing: 0) {
             AppTopBar(vm: generateVM, columnVisibility: $columnVisibility)
@@ -83,6 +84,12 @@ struct ContentView: View {
             .toolbar(.hidden)
         }
         .ignoresSafeArea(edges: .top)
+        .sheet(isPresented: $showWelcome) {
+            WelcomeSheet(onOpenSettings: { selectedItem = .settings })
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .tanqueShowWelcome)) { _ in
+            showWelcome = true
+        }
     }
 
     @ViewBuilder
