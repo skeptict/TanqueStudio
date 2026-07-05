@@ -48,17 +48,43 @@ struct DTProjectBrowserView: View {
             Text("Browse Draw Things Projects")
                 .font(.title2)
                 .fontWeight(.semibold)
-            Text("Select a folder containing .sqlite3 project files.\nDefault: ~/Library/Containers/com.liuliu.draw-things/Data/Documents/")
+            Text("Select a folder containing .sqlite3 project files.")
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: 420)
-            Button(action: { browser.addFolder() }) {
-                Label("Add Folder…", systemImage: "folder.badge.plus")
+
+            HStack(spacing: 6) {
+                Text(Self.defaultDTDocumentsPath)
+                    .font(.system(.caption, design: .monospaced))
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                Button {
+                    let pb = NSPasteboard.general
+                    pb.clearContents()
+                    pb.setString(Self.defaultDTDocumentsPath, forType: .string)
+                } label: {
+                    Image(systemName: "doc.on.doc")
+                }
+                .buttonStyle(.borderless)
+                .help("Copy the default Draw Things documents path")
             }
-            .controlSize(.large)
+            .frame(maxWidth: 420)
+
+            HStack(spacing: 10) {
+                Button(action: { browser.addFolder() }) {
+                    Label("Add Folder…", systemImage: "folder.badge.plus")
+                }
+                .controlSize(.large)
+                HelpTopicLink(title: "Learn more…", topic: HelpTopicID.dtBrowser, font: .callout)
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
+
+    /// Draw Things' default per-user documents container (holds project .sqlite3 files).
+    private static let defaultDTDocumentsPath =
+        "~/Library/Containers/com.liuliu.draw-things/Data/Documents/"
 
     // MARK: - Browser Content
 
@@ -348,6 +374,7 @@ struct DTProjectBrowserView: View {
             }
             .aspectRatio(1, contentMode: .fit)
             .contentShape(Rectangle())
+            .help("Click to inspect · ⌘-click to select for export")
             .onTapGesture {
                 if NSEvent.modifierFlags.contains(.command) {
                     browser.toggleEntrySelection(entry)

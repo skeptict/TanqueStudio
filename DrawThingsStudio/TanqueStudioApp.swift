@@ -117,11 +117,39 @@ struct TanqueStudioApp: App {
         }
         .modelContainer(sharedModelContainer)
         .windowStyle(.hiddenTitleBar)
+        .commands {
+            CommandGroup(replacing: .help) {
+                HelpMenuCommands()
+            }
+        }
 
         #if os(macOS)
+        Window("Tanque Studio Help", id: tanqueHelpWindowID) {
+            HelpWindowView()
+        }
+        .defaultSize(width: 780, height: 560)
+
         Settings {
             SettingsView()
         }
         #endif
+    }
+}
+
+// MARK: - Help menu
+
+/// Replaces the default Help menu: reopen the welcome flow + the Help window.
+/// Split into its own view so `openWindow` resolves from the command environment.
+private struct HelpMenuCommands: View {
+    @Environment(\.openWindow) private var openWindow
+
+    var body: some View {
+        Button("Welcome to Tanque Studio") {
+            NotificationCenter.default.post(name: .tanqueShowWelcome, object: nil)
+        }
+        Button("Tanque Studio Help") {
+            openWindow(id: tanqueHelpWindowID)
+        }
+        .keyboardShortcut("?", modifiers: .command)
     }
 }

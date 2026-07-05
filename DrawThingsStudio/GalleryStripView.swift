@@ -297,6 +297,14 @@ private struct GalleryStripCell: View {
                 }
         }
         .buttonStyle(.plain)
+        .help(helpText)
+    }
+
+    private var helpText: String {
+        if let count = seriesCount {
+            return "Video series — \(count) frames. Click to open the scrubber; right-click to export or delete."
+        }
+        return "Click to load this image and its metadata. Right-click for Reveal in Finder, Copy, or Delete."
     }
 
     private var borderColor: Color {

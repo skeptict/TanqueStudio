@@ -114,8 +114,14 @@ struct StoryFlowStepListPanel: View {
                     Text("No workflow selected")
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                    Text("StoryFlow is a step-based workflow engine — stack config and prompt steps, loop them, and generate series in one run.")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                        .multilineTextAlignment(.center)
+                        .frame(maxWidth: 300)
                     Button("New Workflow") { vm.newWorkflow() }
                         .buttonStyle(.borderedProminent)
+                    HelpTopicLink(title: "Learn more…", topic: HelpTopicID.storyFlow)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
 

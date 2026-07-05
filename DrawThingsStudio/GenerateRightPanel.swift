@@ -181,11 +181,13 @@ struct GenerateRightPanel: View {
                 pb.setData(data, forType: .tiff)
             }
 
-            ActionButton(icon: "doc.on.clipboard", title: "Copy Config for DT", enabled: true) {
+            ActionButton(icon: "doc.on.clipboard", title: "Copy Config for DT", enabled: true,
+                         help: "Copy the current left-panel settings as JSON, pasteable into Draw Things.") {
                 copyConfigToDT()
             }
 
-            ActionButton(icon: "clipboard", title: "Paste Config from DT", enabled: true) {
+            ActionButton(icon: "clipboard", title: "Paste Config from DT", enabled: true,
+                         help: "Apply a config JSON from the clipboard. Values pass through uncapped — e.g. numFrames 450.") {
                 pasteConfigFromDT()
             }
 
@@ -195,7 +197,8 @@ struct GenerateRightPanel: View {
             sendToGenerateSection
 
             ActionButton(icon: "photo.stack", title: "Add to Moodboard",
-                         enabled: vm.generatedImage != nil) {
+                         enabled: vm.generatedImage != nil,
+                         help: "Add this image to the moodboard as a weighted reference.") {
                 if let img = croppedCanvasImage(image: vm.generatedImage,
                                                canvasScale: canvasScale,
                                                canvasOffset: canvasOffset,
@@ -211,11 +214,13 @@ struct GenerateRightPanel: View {
                     .padding(.bottom, 2)
 
                 ActionButton(icon: "square.and.arrow.up.on.square", title: "Export Frames…",
-                             enabled: !vm.isExportingSeries) {
+                             enabled: !vm.isExportingSeries,
+                             help: "Write every frame as numbered JPEGs into a folder.") {
                     vm.exportSeriesFrames(vm.seriesFrames)
                 }
                 ActionButton(icon: "film", title: "Export Video…",
-                             enabled: !vm.isExportingSeries) {
+                             enabled: !vm.isExportingSeries,
+                             help: "Assemble the frames into an H.264 .mp4 at the config's FPS.") {
                     vm.exportSeriesVideo(vm.seriesFrames)
                 }
                 if vm.isExportingSeries {
@@ -254,13 +259,17 @@ struct GenerateRightPanel: View {
             let hasImage = vm.generatedImage  != nil
 
             ActionButton(icon: "arrow.right.circle.fill", title: "Send All",
-                         enabled: hasMeta) { performSendAll() }
+                         enabled: hasMeta,
+                         help: "Apply this image's prompt, negative, and full config to the left panel.") { performSendAll() }
             ActionButton(icon: "text.bubble",             title: "Send Prompt",
-                         enabled: hasMeta) { performSendPrompt() }
+                         enabled: hasMeta,
+                         help: "Apply only the prompt and negative prompt.") { performSendPrompt() }
             ActionButton(icon: "slider.horizontal.3",     title: "Send Config",
-                         enabled: hasMeta) { performSendConfig() }
+                         enabled: hasMeta,
+                         help: "Apply model, sampler, steps, CFG, seed, dimensions, and LoRAs.") { performSendConfig() }
             ActionButton(icon: "photo.on.rectangle.angled", title: "Send to img2img",
-                         enabled: hasImage) {
+                         enabled: hasImage,
+                         help: "Use this image as the img2img source. When zoomed, the visible crop is used.") {
                 vm.sourceImage = croppedCanvasImage(image: vm.generatedImage, canvasScale: canvasScale, canvasOffset: canvasOffset, canvasSize: canvasSize)
             }
         }
@@ -942,6 +951,7 @@ private struct ActionButton: View {
     let icon: String
     let title: String
     let enabled: Bool
+    var help: String? = nil
     let action: () -> Void
 
     var body: some View {
@@ -957,5 +967,6 @@ private struct ActionButton: View {
         .buttonStyle(.plain)
         .disabled(!enabled)
         .opacity(enabled ? 1 : 0.4)
+        .help(help ?? "")
     }
 }

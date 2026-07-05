@@ -48,6 +48,14 @@ final class AppSettings {
         didSet { UserDefaults.standard.set(llmHostHistory, forKey: "tanqueStudio.llmHostHistory") }
     }
 
+    // MARK: - Onboarding
+
+    /// True once the first-run welcome sheet has been shown and dismissed.
+    /// Reopenable any time via Help → Welcome to Tanque Studio.
+    var welcomeSeen: Bool {
+        didSet { UserDefaults.standard.set(welcomeSeen, forKey: "tanqueStudio.welcomeSeen") }
+    }
+
     // MARK: - Generation Behaviour
 
     var autoSaveGenerated: Bool {
@@ -99,6 +107,7 @@ final class AppSettings {
 
     private init() {
         let d = UserDefaults.standard
+        welcomeSeen        = d.object(forKey: "tanqueStudio.welcomeSeen")         as? Bool ?? false
         autoSaveGenerated  = d.object(forKey: "tanqueStudio.autoSaveGenerated") as? Bool ?? true
         randomizeSeed      = d.object(forKey: "tanqueStudio.randomizeSeed")      as? Bool ?? true
         dtHost             = d.string(forKey: "tanqueStudio.dtHost")          ?? "127.0.0.1"
