@@ -338,6 +338,31 @@ struct GenerateLeftPanel: View {
                 set: { vm.config.stochasticSamplingGamma = $0 }
             )
         )
+
+        // Video — Frames is deliberately a free-form field, not a capped slider:
+        // DT's own client UI stops at 121 but the gRPC server accepts more (e.g. 450).
+        ConfigRow("Frames") {
+            TextField("0", value: $vm.config.numFrames, format: .number)
+                .multilineTextAlignment(.trailing)
+                .font(TanqueDS.Font.body)
+                .foregroundStyle(TanqueDS.Color.textPrimary)
+                .help("Video models: number of frames to render. 0 or 1 = still image.")
+        }
+
+        ConfigRow("FPS") {
+            TextField("0", value: $vm.config.fps, format: .number)
+                .multilineTextAlignment(.trailing)
+                .font(TanqueDS.Font.body)
+                .foregroundStyle(TanqueDS.Color.textPrimary)
+                .help("Video playback frame rate. 0 = model default.")
+        }
+
+        if vm.config.numFrames > 1 {
+            Text("Video render — \(vm.config.numFrames) frames will be saved as one gallery series.")
+                .font(TanqueDS.Font.bodySmall)
+                .foregroundStyle(TanqueDS.Color.textMuted)
+                .fixedSize(horizontal: false, vertical: true)
+        }
     }
 
     // MARK: — Saved Configs

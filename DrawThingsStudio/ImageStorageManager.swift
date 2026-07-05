@@ -9,6 +9,16 @@ import SwiftData
 /// All methods are nonisolated and safe to call from @MainActor contexts.
 enum ImageStorageManager {
 
+    // MARK: — Storage format
+
+    /// On-disk encoding for a stored image. Stills stay PNG (lossless, DT-compatible
+    /// metadata). Video frame series use JPEG — 121+ full-res PNGs per render is a
+    /// disk problem.
+    enum StoredFormat {
+        case png
+        case jpeg(quality: Double)
+    }
+
     // MARK: — Directory
 
     /// Returns the GeneratedImages directory, creating it if needed.
@@ -56,6 +66,22 @@ enum ImageStorageManager {
         try writePNGData(image, to: url, config: config, prompt: prompt)
     }
 
+    // MARK: — Write JPEG
+
+    /// Writes an NSImage to disk as a JPEG with the same embedded EXIF/IPTC metadata
+    /// as writePNG. Used for video frame series. Returns the saved file URL.
+    static func writeJPEG(_ image: NSImage,
+                          to directory: URL,
+                          id: UUID,
+                          quality: Double,
+                          config: DrawThingsGenerationConfig? = nil,
+                          prompt: String? = nil) throws -> URL {
+        let url = directory.appendingPathComponent("\(id.uuidString).jpg")
+        try writeImage(image, to: url, utType: "public.jpeg" as CFString,
+                       config: config, prompt: prompt, jpegQuality: quality)
+        return url
+    }
+
     // MARK: — Thumbnail
 
     /// Returns TIFF-encoded thumbnail data, max `maxDimension` on either axis.
@@ -88,6 +114,9 @@ enum ImageStorageManager {
         source: ImageSource,
         config: DrawThingsGenerationConfig?,
         prompt: String?,
+        format: StoredFormat = .png,
+        batchID: UUID? = nil,
+        batchIndex: Int? = nil,
         in context: ModelContext
     ) throws -> TSImage {
         let id = UUID()
@@ -118,8 +147,14 @@ enum ImageStorageManager {
         }
         defer { securityScopedURL?.stopAccessingSecurityScopedResource() }
 
-        // Write PNG with embedded EXIF metadata so Finder's Get Info shows params.
-        let fileURL = try writePNG(image, to: directory, id: id, config: config, prompt: prompt)
+        // Write with embedded EXIF metadata so Finder's Get Info shows params.
+        let fileURL: URL
+        switch format {
+        case .png:
+            fileURL = try writePNG(image, to: directory, id: id, config: config, prompt: prompt)
+        case .jpeg(let quality):
+            fileURL = try writeJPEG(image, to: directory, id: id, quality: quality, config: config, prompt: prompt)
+        }
 
         let configJSON: String?
         if let cfg = config {
@@ -134,14 +169,16 @@ enum ImageStorageManager {
             id: id,
             filePath: fileURL.path,
             source: source,
-            configJSON: configJSON
+            configJSON: configJSON,
+            batchID: batchID,
+            batchIndex: batchIndex
         )
         record.thumbnailData = thumbnail
         context.insert(record)
         return record
     }
 
-    // MARK: — Private: PNG write core
+    // MARK: — Private: image write core
 
     /// Core PNG write using CGImageDestination.
     /// When config is provided, embeds generation parameters in EXIF UserComment
@@ -150,13 +187,29 @@ enum ImageStorageManager {
                                      to url: URL,
                                      config: DrawThingsGenerationConfig?,
                                      prompt: String?) throws {
+        try writeImage(image, to: url, utType: "public.png" as CFString,
+                       config: config, prompt: prompt, jpegQuality: nil)
+    }
+
+    /// Shared CGImageDestination write for PNG and JPEG.
+    /// When config is provided, embeds generation parameters in EXIF UserComment
+    /// using Draw Things' short-key JSON format — the same format PNGMetadataParser reads.
+    private static func writeImage(_ image: NSImage,
+                                   to url: URL,
+                                   utType: CFString,
+                                   config: DrawThingsGenerationConfig?,
+                                   prompt: String?,
+                                   jpegQuality: Double?) throws {
         guard let cgImage = image.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
             throw StorageError.encodingFailed
         }
-        guard let dest = CGImageDestinationCreateWithURL(
-            url as CFURL, "public.png" as CFString, 1, nil
-        ) else {
+        guard let dest = CGImageDestinationCreateWithURL(url as CFURL, utType, 1, nil) else {
             throw StorageError.encodingFailed
+        }
+
+        var props: [String: Any] = [:]
+        if let quality = jpegQuality {
+            props[kCGImageDestinationLossyCompressionQuality as String] = quality
         }
 
         if let cfg = config,
@@ -171,19 +224,16 @@ enum ImageStorageManager {
             // readable by PNGMetadataParser and external tools (exiftool, etc.)
             // IPTC Caption-Abstract — indexed by Spotlight as kMDItemDescription,
             // displayed by Finder's Get Info as "Description".
-            let props: [String: Any] = [
-                kCGImagePropertyExifDictionary as String: [
-                    kCGImagePropertyExifUserComment as String: jsonStr
-                ],
-                kCGImagePropertyIPTCDictionary as String: [
-                    kCGImagePropertyIPTCCaptionAbstract as String: promptText,
-                    kCGImagePropertyIPTCOriginatingProgram as String: "TanqueStudio"
-                ]
+            props[kCGImagePropertyExifDictionary as String] = [
+                kCGImagePropertyExifUserComment as String: jsonStr
             ]
-            CGImageDestinationAddImage(dest, cgImage, props as CFDictionary)
-        } else {
-            CGImageDestinationAddImage(dest, cgImage, nil)
+            props[kCGImagePropertyIPTCDictionary as String] = [
+                kCGImagePropertyIPTCCaptionAbstract as String: promptText,
+                kCGImagePropertyIPTCOriginatingProgram as String: "TanqueStudio"
+            ]
         }
+
+        CGImageDestinationAddImage(dest, cgImage, props.isEmpty ? nil : props as CFDictionary)
 
         guard CGImageDestinationFinalize(dest) else {
             throw StorageError.encodingFailed
@@ -249,6 +299,8 @@ enum ImageStorageManager {
             v2["seedMode"] = idx
         }
         if config.seed >= 0 { v2["seed"] = config.seed }
+        if config.numFrames > 0 { v2["numFrames"] = config.numFrames }
+        if config.fps > 0       { v2["fps"]       = config.fps }
         if !config.negativePrompt.isEmpty {
             v2["negativePrompt"] = config.negativePrompt
         }
@@ -260,6 +312,41 @@ enum ImageStorageManager {
         guard let data = try? JSONSerialization.data(withJSONObject: top, options: [.sortedKeys]),
               let str = String(data: data, encoding: .utf8) else { return nil }
         return str
+    }
+
+    // MARK: — Config JSON decode
+
+    /// Decodes a configJSON string (written by encodeConfig) into PNGMetadata.
+    /// Mirror of encodeConfig. Returns nil if the JSON is malformed.
+    static func decodeConfigJSON(_ json: String) -> PNGMetadata? {
+        guard let data = json.data(using: .utf8),
+              let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return nil
+        }
+        var m = PNGMetadata()
+        m.prompt         = dict["prompt"]         as? String
+        m.negativePrompt = dict["negativePrompt"] as? String
+        m.model          = dict["model"]          as? String
+        m.sampler        = dict["sampler"]        as? String
+        m.steps          = (dict["steps"]         as? NSNumber)?.intValue
+        m.guidanceScale  = (dict["guidanceScale"] as? NSNumber)?.doubleValue
+        m.seed           = (dict["seed"]          as? NSNumber)?.intValue
+        m.seedMode       = dict["seedMode"]       as? String
+        m.width          = (dict["width"]         as? NSNumber)?.intValue
+        m.height         = (dict["height"]        as? NSNumber)?.intValue
+        m.shift          = (dict["shift"]         as? NSNumber)?.doubleValue
+        m.strength       = (dict["strength"]      as? NSNumber)?.doubleValue
+        m.numFrames      = (dict["numFrames"]     as? NSNumber)?.intValue
+        m.fps            = (dict["fps"]           as? NSNumber)?.intValue
+        if let loras = dict["loras"] as? [[String: Any]] {
+            m.loras = loras.compactMap { d in
+                guard let file   = d["file"]   as? String,
+                      let weight = (d["weight"] as? NSNumber)?.doubleValue else { return nil }
+                return PNGMetadataLoRA(file: file, weight: weight)
+            }
+        }
+        m.format = .drawThings
+        return m
     }
 
     // MARK: — Private: SwiftData config JSON
@@ -284,6 +371,8 @@ enum ImageStorageManager {
         dict["shift"]         = config.shift
         dict["strength"]      = config.strength
         dict["negativePrompt"] = config.negativePrompt
+        if config.numFrames > 0 { dict["numFrames"] = config.numFrames }
+        if config.fps > 0       { dict["fps"]       = config.fps }
         if !config.loras.isEmpty {
             dict["loras"] = config.loras.map { ["file": $0.file, "weight": $0.weight] }
         }

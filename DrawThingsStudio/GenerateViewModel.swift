@@ -1,6 +1,7 @@
 import SwiftUI
 import AppKit
 import SwiftData
+import UniformTypeIdentifiers
 
 // MARK: - ViewModel
 
@@ -424,6 +425,10 @@ final class GenerateViewModel {
                     var iterCfg = cfg
                     iterCfg.seed = Int(iterSeed)
                     iterSeed = xorshift32(iterSeed)
+                    // NOTE: the client API returns every frame in memory at once
+                    // ([Data] → [NSImage]) — a 450-frame video render spikes 1 GB+ RAM
+                    // while the response lands. If that ever bites, the fix is a
+                    // per-frame streaming callback in DT-gRPC-Swift-Client (upstream PR).
                     let images = try await client.generateImage(
                         prompt: capturedPrompt,
                         sourceImage: capturedSource,
@@ -439,6 +444,27 @@ final class GenerateViewModel {
                         self.errorMessage = "Draw Things returned no image. Possible causes: the model isn't downloaded in Draw Things, the sampler isn't supported by this model, or the server's shared secret doesn't match (Settings → Draw Things)."
                         continue
                     }
+                    // Video series: the SENT config asked for multiple frames AND DT
+                    // returned multiple images. Both halves are load-bearing — DT
+                    // occasionally returns extra preview images for stills (numFrames
+                    // <= 1), and those must keep the first-image behavior below.
+                    if iterCfg.numFrames > 1 && images.count > 1 {
+                        let frames = self.saveVideoSeries(images, config: iterCfg,
+                                                          prompt: capturedPrompt, in: context)
+                        if self.selectedGalleryID != capturedSelection {
+                            // User navigated the gallery mid-render — don't clobber
+                            // their selection; the series is already in the gallery.
+                            self.transientWarning = "Video render finished — \(frames.count) frames saved to gallery."
+                        } else {
+                            self.generatedImage = image     // canvas shows frame 0
+                            self.currentMetadata = iterCfg.asPNGMetadata(prompt: capturedPrompt)
+                            self.currentImageSource = .generated
+                            self.selectedRightTab = .metadata
+                            self.seriesFrames = frames
+                            self.seriesIndex = 0
+                        }
+                        continue
+                    }
                     if self.selectedGalleryID != capturedSelection {
                         // User navigated the gallery mid-render — don't clobber their
                         // selection. Save the result straight to the gallery instead
@@ -451,6 +477,7 @@ final class GenerateViewModel {
                         self.transientWarning = "Render finished — saved to gallery."
                         continue
                     }
+                    self.clearSeriesSelection()
                     self.generatedImage = image
                     self.currentMetadata = iterCfg.asPNGMetadata(prompt: capturedPrompt)
                     self.currentImageSource = .generated
@@ -479,6 +506,241 @@ final class GenerateViewModel {
         generationTask?.cancel()
         isGenerating = false
         progress = .complete
+    }
+
+    // MARK: — Video series (capture, scrubber, export)
+
+    /// Frames of the currently selected video series, sorted by batchIndex.
+    /// Non-empty (count > 1) activates the canvas frame scrubber.
+    var seriesFrames: [TSImage] = []
+    /// Index of the frame currently shown on the canvas.
+    var seriesIndex: Int = 0
+    var isSeriesActive: Bool { seriesFrames.count > 1 }
+
+    var isExportingSeries = false
+    private var seriesExportTask: Task<Void, Never>?
+
+    /// Saves every frame of a video render as one gallery series: shared batchID,
+    /// batchIndex = frame order. Frames are stored as JPEG (~0.9) — 121+ full-res
+    /// PNGs per render is a disk problem. Returns the inserted records in frame order.
+    private func saveVideoSeries(
+        _ images: [NSImage],
+        config: DrawThingsGenerationConfig,
+        prompt: String,
+        in context: ModelContext
+    ) -> [TSImage] {
+        let batchID = UUID()
+        var records: [TSImage] = []
+        for (index, frame) in images.enumerated() {
+            do {
+                let record = try ImageStorageManager.createAndInsert(
+                    image: frame, source: .generated, config: config, prompt: prompt,
+                    format: .jpeg(quality: 0.9), batchID: batchID, batchIndex: index,
+                    in: context
+                )
+                records.append(record)
+            } catch {
+                errorMessage = "Failed to save frame \(index + 1) of \(images.count): \(error.localizedDescription)"
+                break
+            }
+        }
+        try? context.save()
+        return records
+    }
+
+    /// Selects a gallery series: loads frame 0 onto the canvas and activates the scrubber.
+    func selectSeries(_ frames: [TSImage]) {
+        let sorted = frames.sorted { ($0.batchIndex ?? 0) < ($1.batchIndex ?? 0) }
+        guard let first = sorted.first else { return }
+        guard let image = loadFrameImage(first) else {
+            errorMessage = "Could not load frame at: \(first.filePath)"
+            return
+        }
+        seriesFrames = sorted
+        seriesIndex = 0
+        selectedGalleryID = first.id
+        generatedImage = image
+        currentImageSource = first.source
+        currentMetadata = first.configJSON.flatMap { ImageStorageManager.decodeConfigJSON($0) }
+        errorMessage = nil
+    }
+
+    /// Shows frame `index` of the selected series on the canvas (scrubber/step buttons).
+    func loadSeriesFrame(at index: Int) {
+        guard isSeriesActive, index >= 0, index < seriesFrames.count, index != seriesIndex else { return }
+        guard let image = loadFrameImage(seriesFrames[index]) else { return }
+        seriesIndex = index
+        generatedImage = image
+    }
+
+    func stepSeriesFrame(_ delta: Int) {
+        loadSeriesFrame(at: seriesIndex + delta)
+    }
+
+    func clearSeriesSelection() {
+        seriesFrames = []
+        seriesIndex = 0
+    }
+
+    private func loadFrameImage(_ tsImage: TSImage) -> NSImage? {
+        let url = URL(fileURLWithPath: tsImage.filePath)
+        if let data = try? ImageFolderAccess.readData(at: url), let image = NSImage(data: data) {
+            return image
+        }
+        if ImageFolderAccess.reauthorizeFolder(containing: url),
+           let data = try? ImageFolderAccess.readData(at: url),
+           let image = NSImage(data: data) {
+            return image
+        }
+        return nil
+    }
+
+    // MARK: — Video series export
+
+    /// Export every frame of `frames` to a user-chosen folder as
+    /// «prompt-slug»_f0001.jpg … Non-blocking panel, detached writes, cancellable.
+    func exportSeriesFrames(_ frames: [TSImage]) {
+        guard !isExportingSeries, !frames.isEmpty else { return }
+        let sorted = frames.sorted { ($0.batchIndex ?? 0) < ($1.batchIndex ?? 0) }
+        let slug = Self.seriesSlug(for: sorted)
+        let paths = sorted.map(\.filePath)
+
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.canCreateDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.prompt = "Export"
+        panel.message = "Choose a folder for the \(sorted.count) frames"
+        panel.begin { [weak self] response in
+            guard response == .OK, let folder = panel.url else { return }
+            Task { @MainActor [weak self] in
+                self?.runFrameExport(paths: paths, slug: slug, to: folder)
+            }
+        }
+    }
+
+    private func runFrameExport(paths: [String], slug: String, to folder: URL) {
+        isExportingSeries = true
+        seriesExportTask = Task {
+            let result = await Task.detached(priority: .userInitiated) { () -> (written: Int, skipped: Int) in
+                var written = 0, skipped = 0
+                for (index, path) in paths.enumerated() {
+                    if Task.isCancelled { break }
+                    let source = URL(fileURLWithPath: path)
+                    let ext = source.pathExtension.isEmpty ? "jpg" : source.pathExtension
+                    let dest = folder.appendingPathComponent(
+                        String(format: "%@_f%04d.%@", slug, index + 1, ext)
+                    )
+                    do {
+                        let data = try ImageFolderAccess.readData(at: source)
+                        try data.write(to: dest)
+                        written += 1
+                    } catch {
+                        skipped += 1
+                    }
+                }
+                return (written, skipped)
+            }.value
+
+            self.isExportingSeries = false
+            if Task.isCancelled {
+                self.transientWarning = "Export cancelled — \(result.written) frame(s) written."
+            } else if result.skipped == 0 {
+                self.transientWarning = "Exported \(result.written) frame(s)."
+            } else {
+                self.transientWarning = "Exported \(result.written) frame(s); \(result.skipped) skipped (unreadable)."
+            }
+        }
+    }
+
+    /// Assemble the series into an H.264 .mp4 via a save panel. fps comes from the
+    /// series config; when unset, per-family defaults apply (LTX 24, Wan 16, else 16).
+    func exportSeriesVideo(_ frames: [TSImage]) {
+        guard !isExportingSeries, frames.count > 1 else { return }
+        let sorted = frames.sorted { ($0.batchIndex ?? 0) < ($1.batchIndex ?? 0) }
+        let slug = Self.seriesSlug(for: sorted)
+        let fps = Self.seriesFPS(for: sorted)
+        let urls = sorted.map { URL(fileURLWithPath: $0.filePath) }
+
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [.mpeg4Movie]
+        panel.canCreateDirectories = true
+        panel.nameFieldStringValue = "\(slug).mp4"
+        panel.begin { [weak self] response in
+            guard response == .OK, let output = panel.url else { return }
+            Task { @MainActor [weak self] in
+                self?.runVideoExport(frameURLs: urls, fps: fps, to: output)
+            }
+        }
+    }
+
+    private func runVideoExport(frameURLs: [URL], fps: Int32, to output: URL) {
+        isExportingSeries = true
+        seriesExportTask = Task {
+            do {
+                try await VideoAssembler.assemble(frameURLs: frameURLs, fps: fps, to: output)
+                self.transientWarning = "Video exported — \(frameURLs.count) frames at \(fps) fps."
+            } catch is CancellationError {
+                self.transientWarning = "Video export cancelled."
+            } catch {
+                self.errorMessage = "Video export failed: \(error.localizedDescription)"
+            }
+            self.isExportingSeries = false
+        }
+    }
+
+    func cancelSeriesExport() {
+        seriesExportTask?.cancel()
+    }
+
+    /// Deletes every frame of a series (files + records). The confirmation lives in
+    /// the gallery UI — this method assumes the user already said yes once.
+    func deleteSeries(_ frames: [TSImage], in context: ModelContext) {
+        if frames.contains(where: { $0.id == selectedGalleryID }) {
+            selectedGalleryID = nil
+        }
+        if let batchID = frames.first?.batchID, seriesFrames.first?.batchID == batchID {
+            clearSeriesSelection()
+        }
+        for frame in frames {
+            try? FileManager.default.removeItem(atPath: frame.filePath)
+            context.delete(frame)
+        }
+        try? context.save()
+    }
+
+    /// Filename slug from the series' prompt (first frame's configJSON), e.g.
+    /// "A cat riding a bike" → "a-cat-riding-a-bike". Falls back to "video".
+    private static func seriesSlug(for frames: [TSImage]) -> String {
+        let prompt = frames.first?.configJSON
+            .flatMap { ImageStorageManager.decodeConfigJSON($0) }?.prompt ?? ""
+        var slug = ""
+        var lastWasDash = true  // suppress leading dash
+        for ch in prompt.lowercased() {
+            if ch.isLetter || ch.isNumber {
+                slug.append(ch)
+                lastWasDash = false
+            } else if !lastWasDash {
+                slug.append("-")
+                lastWasDash = true
+            }
+            if slug.count >= 40 { break }
+        }
+        while slug.hasSuffix("-") { slug.removeLast() }
+        return slug.isEmpty ? "video" : slug
+    }
+
+    /// Playback fps for a series: config fps when set, else per-family default.
+    private static func seriesFPS(for frames: [TSImage]) -> Int32 {
+        let meta = frames.first?.configJSON.flatMap { ImageStorageManager.decodeConfigJSON($0) }
+        if let fps = meta?.fps, fps > 0 { return Int32(fps) }
+        let family = DrawThingsGenerationConfig(model: meta?.model ?? "").modelFamily
+        switch family {
+        case .ltx: return 24
+        case .wan: return 16
+        default:   return 16
+        }
     }
 
     // MARK: — Inpaint
@@ -574,6 +836,7 @@ final class GenerateViewModel {
                     self.exitEditMode()
                     return
                 }
+                self.clearSeriesSelection()
                 self.generatedImage = image
                 self.currentMetadata = resolved.asPNGMetadata(prompt: capturedPrompt)
                 self.currentImageSource = .generated
@@ -704,6 +967,8 @@ final class GenerateViewModel {
         if let v = dtConfig.strength                            { config.strength                = v }
         if let v = dtConfig.stochasticSamplingGamma             { config.stochasticSamplingGamma = v }
         if let v = dtConfig.batchCount                          { config.batchCount              = v }
+        if let v = dtConfig.numFrames                           { config.numFrames               = v }
+        if let v = dtConfig.fps                                 { config.fps                     = v }
         if let v = dtConfig.refinerModel,           !v.isEmpty  { config.refinerModel            = v }
         if let v = dtConfig.refinerStart                        { config.refinerStart            = v }
         if let v = dtConfig.resolutionDependentShift            { config.resolutionDependentShift = v }
@@ -762,6 +1027,7 @@ final class GenerateViewModel {
     func handleDroppedImageURL(_ url: URL) {
         guard let data = try? Data(contentsOf: url),
               let image = NSImage(data: data) else { return }
+        clearSeriesSelection()
         generatedImage = image
         currentImageSource = .imported
         currentMetadata = PNGMetadataParser.parse(url: url)
@@ -829,6 +1095,8 @@ extension DrawThingsGenerationConfig {
         m.height           = height
         m.shift            = shift
         m.strength         = strength
+        m.numFrames        = numFrames > 0 ? numFrames : nil
+        m.fps              = fps > 0 ? fps : nil
         m.loras            = loras.map { PNGMetadataLoRA(file: $0.file, weight: $0.weight, mode: $0.mode) }
         m.format           = .drawThings
         return m

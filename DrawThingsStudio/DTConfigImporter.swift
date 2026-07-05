@@ -17,6 +17,8 @@ struct DTCustomConfig: Identifiable {
     let strength: Double?
     let stochasticSamplingGamma: Double?
     let batchCount: Int?
+    let numFrames: Int?
+    let fps: Int?
     let loras: [DrawThingsGenerationConfig.LoRAConfig]
     let refinerModel: String?
     let refinerStart: Double?
@@ -92,6 +94,8 @@ enum DTConfigImporter {
             strength:                (cfg["strength"]                as? NSNumber)?.doubleValue,
             stochasticSamplingGamma: (cfg["stochasticSamplingGamma"] as? NSNumber)?.doubleValue,
             batchCount:              (cfg["batchCount"]              as? NSNumber)?.intValue,
+            numFrames:               (cfg["numFrames"]               as? NSNumber)?.intValue,
+            fps:                     (cfg["fps"]                     as? NSNumber)?.intValue,
             loras:                   loras,
             refinerModel:            cfg["refinerModel"]            as? String,
             refinerStart:            (cfg["refinerStart"]            as? NSNumber)?.doubleValue,
@@ -135,6 +139,7 @@ enum DTConfigExporter {
             "batchSize":               config.batchSize,
             "batchCount":              config.batchCount,
             "numFrames":               config.numFrames,
+            "fps":                     config.fps,
             "loras":                   lorasArray,
             "refinerModel":            config.refinerModel,
             "refinerStart":            config.refinerStart,
@@ -186,6 +191,7 @@ enum DTConfigExporter {
         if let v = (dict["batchSize"]              as? NSNumber)?.intValue    { config.batchSize = v }
         if let v = (dict["batchCount"]             as? NSNumber)?.intValue    { config.batchCount = v }
         if let v = (dict["numFrames"]              as? NSNumber)?.intValue    { config.numFrames = v }
+        if let v = (dict["fps"]                    as? NSNumber)?.intValue    { config.fps = v }
         if let v = dict["refinerModel"]            as? String  { config.refinerModel = v }
         if let v = (dict["refinerStart"]           as? NSNumber)?.doubleValue { config.refinerStart = v }
         if let v = (dict["cfgZeroStar"]            as? NSNumber)?.boolValue   { config.cfgZeroStar = v }

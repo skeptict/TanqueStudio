@@ -43,6 +43,8 @@ struct PNGMetadata {
     var shift: Double?
     var resolutionDependentShift: Bool?
     var seedMode: String?
+    var numFrames: Int?
+    var fps: Int?
     var loras: [PNGMetadataLoRA] = []
     var refinerModel: String?
     var refinerStart: Double?
