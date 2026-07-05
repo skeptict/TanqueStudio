@@ -106,10 +106,11 @@ struct StoryStudioLibraryView: View {
             Text("No Story Projects")
                 .font(TanqueDS.Font.bodyMedium)
                 .foregroundStyle(TanqueDS.Color.textPrimary)
-            Text("Create a project to start building characters, settings, and scenes.")
+            Text("Story Studio builds multi-scene narratives with consistent characters — organize chapters of scenes and render them with reusable character and setting fragments.")
                 .font(TanqueDS.Font.bodySmall)
                 .foregroundStyle(TanqueDS.Color.textSecondary)
                 .multilineTextAlignment(.center)
+                .frame(maxWidth: 320)
             Button {
                 showingNewProjectSheet = true
             } label: {
@@ -118,6 +119,7 @@ struct StoryStudioLibraryView: View {
             .buttonStyle(.borderless)
             .foregroundStyle(TanqueDS.Color.brass)
             .padding(.top, 4)
+            HelpTopicLink(title: "Learn more…", topic: HelpTopicID.storyStudio)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }

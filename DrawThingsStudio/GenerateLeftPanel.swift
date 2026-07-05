@@ -189,6 +189,21 @@ struct GenerateLeftPanel: View {
                 }
             }
 
+            // Empty inventory almost always means a connection/secret problem, not a
+            // broken install — coach toward the fix rather than leaving a blank picker.
+            if vm.models.isEmpty {
+                HStack(spacing: 5) {
+                    Image(systemName: "exclamationmark.circle")
+                        .font(.system(size: 10))
+                        .foregroundStyle(TanqueDS.Color.textMuted)
+                    Text("No models loaded.")
+                        .font(TanqueDS.Font.bodySmall)
+                        .foregroundStyle(TanqueDS.Color.textMuted)
+                    HelpTopicLink(title: "Connection help…", topic: HelpTopicID.connecting)
+                    Spacer()
+                }
+            }
+
             // Sampler
             ConfigRow("Sampler") {
                 Picker("", selection: $vm.config.sampler) {

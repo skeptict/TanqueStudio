@@ -590,9 +590,26 @@ private struct GenerateCenterPanel: View {
             Text("No image yet")
                 .font(.title3)
                 .foregroundStyle(.secondary)
-            Text("Generate or drop a PNG here")
+            Text("Pick a model or a preset, type a prompt, and Generate — or drop a PNG here.")
                 .font(.caption)
                 .foregroundStyle(.tertiary)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: 320)
+            HStack(spacing: 4) {
+                Text("New here?")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+                Button {
+                    NotificationCenter.default.post(name: .tanqueShowWelcome, object: nil)
+                } label: {
+                    Text("Open the welcome guide")
+                        .font(.caption)
+                        .foregroundStyle(TanqueDS.Color.brass)
+                        .underline()
+                }
+                .buttonStyle(.plain)
+                .help("Reopen the first-run guide")
+            }
         }
     }
 
