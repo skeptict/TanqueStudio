@@ -36,6 +36,16 @@ final class GenerateViewModel {
     var models: [DrawThingsModel] = []
     var loras: [DrawThingsLoRA] = []
     var isLoadingAssets: Bool = false
+    /// In-flight asset fetch, tracked so a manual refresh can cancel a stuck attempt
+    /// and start fresh instead of no-op'ing behind the `isLoadingAssets` guard.
+    @ObservationIgnored private var loadAssetsTask: Task<Void, Never>?
+
+    // MARK: — Connection health
+    /// When the last asset fetch / connection probe resolved, and whether it succeeded.
+    /// Drives the real connection badge instead of inferring from `models.isEmpty`
+    /// (which conflates "empty inventory" with "not connected").
+    var lastConnectionCheck: Date?
+    var lastConnectionSucceeded: Bool = false
 
     // MARK: — img2img source
     var sourceImage: NSImage?
@@ -440,8 +450,9 @@ final class GenerateViewModel {
                     )
                     guard let image = images.first else {
                         // DT completed the request but produced nothing (e.g. model/sampler
-                        // mismatch). Surface it — don't silently clear the canvas.
-                        self.errorMessage = "Draw Things returned no image. Possible causes: the model isn't downloaded in Draw Things, the sampler isn't supported by this model, or the server's shared secret doesn't match (Settings → Draw Things)."
+                        // mismatch, or we're not actually connected). Surface it — don't
+                        // silently clear the canvas.
+                        self.errorMessage = self.noImageErrorMessage
                         continue
                     }
                     // Video series: the SENT config asked for multiple frames AND DT
@@ -817,7 +828,7 @@ final class GenerateViewModel {
                     return
                 }
                 guard let image = images.first else {
-                    self.errorMessage = "Draw Things returned no image. Possible causes: the model isn't downloaded in Draw Things, the sampler isn't supported by this model, or the server's shared secret doesn't match (Settings → Draw Things)."
+                    self.errorMessage = self.noImageErrorMessage
                     self.isGenerating = false
                     self.progress = .complete
                     return
@@ -1010,16 +1021,53 @@ final class GenerateViewModel {
     }
 
     func loadAssets() {
-        guard !isLoadingAssets else { return }
+        // Cancel any in-flight (possibly stuck) fetch so the refresh button always
+        // works — a hung previous attempt must never permanently block a retry.
+        loadAssetsTask?.cancel()
         isLoadingAssets = true
-        Task {
+        loadAssetsTask = Task {
             let client = AppSettings.shared.createDrawThingsClient()
-            let fetchedModels = try? await client.fetchModels()
-            let fetchedLoRAs  = try? await client.fetchLoRAs()
-            self.models = fetchedModels ?? []
-            self.loras  = fetchedLoRAs  ?? []
-            self.isLoadingAssets = false
+            do {
+                let fetchedModels = try await client.fetchModels()
+                let fetchedLoRAs  = try await client.fetchLoRAs()
+                // A newer refresh superseded us — let it own the state.
+                guard !Task.isCancelled else { return }
+                self.models = fetchedModels
+                self.loras  = fetchedLoRAs
+                self.lastConnectionCheck = Date()
+                // A missing/wrong secret makes DT silently return an empty-but-successful
+                // reply — identical on the surface to a genuinely empty inventory. Without
+                // this check the "connected" badge would read true while nothing works.
+                let secretMissing = (client as? DrawThingsGRPCClient)?.lastEchoSecretMissing ?? false
+                self.lastConnectionSucceeded = !secretMissing
+                if secretMissing {
+                    self.transientWarning = "Draw Things requires a shared secret that's missing or incorrect (Settings → Draw Things)."
+                }
+                self.isLoadingAssets = false
+            } catch {
+                guard !Task.isCancelled else { return }
+                // Keep any previously-loaded inventory rather than wiping the dropdown
+                // because one refresh failed; just record the failed probe.
+                self.lastConnectionCheck = Date()
+                self.lastConnectionSucceeded = false
+                if case DrawThingsError.timeout = error {
+                    self.transientWarning = "Draw Things didn't respond in time — check the connection in Settings."
+                }
+                self.isLoadingAssets = false
+            }
         }
+    }
+
+    /// Message for the "DT completed the request but returned zero images" case.
+    /// Branches on the real connection signal instead of always presuming a missing
+    /// *local* model — DT+ cloud-bridge users need no local download, so that
+    /// presumption misleads them. When we have no recent successful connection (or no
+    /// inventory), lead with the likely cause; otherwise list the render-side causes.
+    private var noImageErrorMessage: String {
+        if models.isEmpty || !lastConnectionSucceeded {
+            return "Draw Things returned no image — you may not be connected. Check the server address and shared secret in Settings → Draw Things, then hit refresh next to the model picker."
+        }
+        return "Draw Things returned no image. Possible causes: the model isn't available on the server, the sampler isn't supported by this model, or the shared secret doesn't match (Settings → Draw Things)."
     }
 
     // MARK: — Dropped image handling

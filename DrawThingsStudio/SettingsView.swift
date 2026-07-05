@@ -8,7 +8,7 @@ struct SettingsView: View {
     @State private var showLLMHostHistory = false
     @State private var revealSharedSecret = false
 
-    enum ConnectionStatus { case idle, testing, success, failure }
+    enum ConnectionStatus { case idle, testing, success, secretRequired, failure }
 
     enum LLMStatus {
         case idle, testing
@@ -117,6 +117,11 @@ struct SettingsView: View {
                                 Label("Connected", systemImage: "checkmark.circle.fill")
                                     .font(TanqueDS.Font.body)
                                     .foregroundStyle(TanqueDS.Color.connected)
+                            case .secretRequired:
+                                Label("Secret required", systemImage: "key.fill")
+                                    .font(TanqueDS.Font.body)
+                                    .foregroundStyle(TanqueDS.Color.textMuted)
+                                    .help("Reached Draw Things, but it requires a shared secret that's missing or incorrect.")
                             case .failure:
                                 Label("Failed", systemImage: "xmark.circle.fill")
                                     .font(TanqueDS.Font.body)
@@ -369,13 +374,18 @@ struct SettingsView: View {
         connectionStatus = .testing
         let host = settings.dtHost
         let port = settings.dtPort
+        let secret = settings.dtSharedSecretOrNil
         Task { @MainActor in
-            let client = DrawThingsGRPCClient(host: host, port: port)
-            let reachable = await client.checkConnection()
-            connectionStatus = reachable ? .success : .failure
-            if reachable {
+            let client = DrawThingsGRPCClient(host: host, port: port, sharedSecret: secret)
+            switch await client.checkConnectionHealth() {
+            case .connected:
+                connectionStatus = .success
                 settings.addDTHost(host)
                 NotificationCenter.default.post(name: .tanqueDTConnectionVerified, object: nil)
+            case .secretMissing:
+                connectionStatus = .secretRequired
+            case .failed:
+                connectionStatus = .failure
             }
         }
     }

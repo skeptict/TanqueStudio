@@ -20,9 +20,15 @@ final class DrawThingsGRPCClient: DrawThingsProvider {
 
     private let host: String
     private let port: Int
-    /// Optional Draw Things server shared secret; sent with generate requests only
-    /// (the echo RPC does not take one). nil when the server has no secret configured.
+    /// Optional Draw Things server shared secret, sent on echo and generate requests.
+    /// nil when the server has no secret configured.
     private let sharedSecret: String?
+    /// Whether the most recent echo reply came back with `sharedSecretMissing == true`
+    /// (server reachable, but our secret is missing/wrong so it withheld the file list).
+    /// `fetchModels()`/`fetchLoRAs()` return an empty-but-successful result in this case,
+    /// which looks identical to a genuinely empty inventory — callers that need to tell
+    /// the difference (e.g. the "connected" health signal) should check this after fetching.
+    private(set) var lastEchoSecretMissing: Bool = false
     private var client: DrawThingsClient?
     private var service: DrawThingsService?
     /// Hints built from moodboard entries; set by GenerateViewModel before generation, cleared after.
@@ -48,17 +54,38 @@ final class DrawThingsGRPCClient: DrawThingsProvider {
 
     // MARK: - Connection
 
+    /// Bounded wait for the echo RPC. Draw Things (or the network) can stall a call
+    /// indefinitely; without this the whole asset-fetch/connection path hangs forever.
+    private static let echoTimeout: Duration = .seconds(15)
+
+    /// Result of an authenticated connection probe.
+    enum ConnectionHealth {
+        case connected          // echo succeeded and the server accepted our secret (or needs none)
+        case secretMissing      // echo succeeded but the server still wants a (correct) shared secret
+        case failed(String)     // unreachable, RPC error, or timed out
+    }
+
     func checkConnection() async -> Bool {
+        if case .connected = await checkConnectionHealth() { return true }
+        return false
+    }
+
+    /// Fresh, authenticated connection probe with a real success criterion:
+    /// echo must not just return without throwing — the server must actually accept
+    /// our shared secret (`sharedSecretMissing == false`). Used by Settings' Test
+    /// Connection so a missing/wrong secret is reported, not a false-positive success.
+    func checkConnectionHealth() async -> ConnectionHealth {
         do {
+            let reply = try await performEcho()
             let address = "\(host):\(port)"
-            service = try DrawThingsService(address: address, useTLS: true)
-            _ = try await service!.echo(sharedSecret: sharedSecret)
-            client = try DrawThingsClient(address: address, useTLS: true)
+            if client == nil {
+                client = try DrawThingsClient(address: address, useTLS: true)
+            }
             await client?.connect(sharedSecret: sharedSecret)
-            return true
+            return reply.sharedSecretMissing ? .secretMissing : .connected
         } catch {
             logger.error("Connection check failed: \(error.localizedDescription)")
-            return false
+            return .failed(error.localizedDescription)
         }
     }
 
@@ -236,7 +263,18 @@ final class DrawThingsGRPCClient: DrawThingsProvider {
         if let cached = cachedEchoReply {
             return cached
         }
+        let reply = try await performEcho()
+        cachedEchoReply = reply
+        lastEchoSecretMissing = reply.sharedSecretMissing
+        logger.debug("Echo response received: files=\(reply.files.count), hasOverride=\(reply.hasOverride)")
+        return reply
+    }
 
+    /// Runs the echo RPC with a bounded timeout, racing the real call against a sleep.
+    /// The package's `echo` builds its own `CallOptions` internally and doesn't expose a
+    /// deadline to callers, so we enforce one here rather than modifying the package.
+    /// Throws `DrawThingsError.timeout` if the server doesn't respond within `echoTimeout`.
+    private func performEcho() async throws -> EchoReply {
         let address = "\(host):\(port)"
         if service == nil {
             service = try DrawThingsService(address: address, useTLS: true)
@@ -244,12 +282,19 @@ final class DrawThingsGRPCClient: DrawThingsProvider {
         guard let service = service else {
             throw DrawThingsError.connectionFailed("Failed to create gRPC service")
         }
-
-        let reply = try await service.echo(sharedSecret: sharedSecret)
-        cachedEchoReply = reply
-        logger.debug("Echo response received: files=\(reply.files.count), hasOverride=\(reply.hasOverride)")
-
-        return reply
+        let secret = sharedSecret
+        return try await withThrowingTaskGroup(of: EchoReply.self) { group in
+            group.addTask { try await service.echo(sharedSecret: secret) }
+            group.addTask {
+                try await Task.sleep(for: Self.echoTimeout)
+                throw DrawThingsError.timeout
+            }
+            defer { group.cancelAll() }
+            guard let reply = try await group.next() else {
+                throw DrawThingsError.timeout
+            }
+            return reply
+        }
     }
 
     // MARK: - FlatBuffer String Extraction
