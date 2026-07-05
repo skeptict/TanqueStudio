@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftData
+import TipKit
 
 // MARK: - UserDefaults key for backup restore signal
 // Written by TanqueStudioApp on schema wipe/recovery; read and cleared by ContentView.
@@ -109,6 +110,10 @@ struct TanqueStudioApp: App {
             }
         }
     }()
+
+    init() {
+        try? Tips.configure()
+    }
 
     var body: some Scene {
         WindowGroup {

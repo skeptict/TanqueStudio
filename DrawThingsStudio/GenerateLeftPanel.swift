@@ -1,4 +1,5 @@
 import SwiftUI
+import TipKit
 
 // MARK: - Collapsible Section
 
@@ -61,6 +62,8 @@ extension CollapsibleSection where Accessory == EmptyView {
 struct GenerateLeftPanel: View {
     @Bindable var vm: GenerateViewModel
     @Environment(\.modelContext) private var modelContext
+    private let diceTip = DiceRandomizeTip()
+    private let resolutionShiftTip = ResolutionShiftTip()
 
     var body: some View {
         VStack(spacing: 0) {
@@ -273,6 +276,7 @@ struct GenerateLeftPanel: View {
                     }
                     .buttonStyle(.borderless)
                     .help("Roll new seed")
+                    .popoverTip(diceTip)
                 }
             }
             // Randomize toggle
@@ -315,6 +319,7 @@ struct GenerateLeftPanel: View {
             ))
             .labelsHidden()
             .tint(TanqueDS.Color.brass)
+            .popoverTip(resolutionShiftTip)
         }
 
         // Shift (disabled + shows computed value when RDS is on)
