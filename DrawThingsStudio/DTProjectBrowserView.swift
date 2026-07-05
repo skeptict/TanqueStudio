@@ -374,6 +374,7 @@ struct DTProjectBrowserView: View {
             }
             .aspectRatio(1, contentMode: .fit)
             .contentShape(Rectangle())
+            .help("Click to inspect · ⌘-click to select for export")
             .onTapGesture {
                 if NSEvent.modifierFlags.contains(.command) {
                     browser.toggleEntrySelection(entry)

@@ -281,6 +281,7 @@ struct GenerateLeftPanel: View {
                     .font(TanqueDS.Font.body)
                     .foregroundStyle(TanqueDS.Color.textPrimary)
                     .tint(TanqueDS.Color.brass)
+                    .help("Roll a fresh seed automatically before every generation.")
             }
 
             // Renders
@@ -463,6 +464,7 @@ struct GenerateLeftPanel: View {
                         )
                     }
                     .buttonStyle(.plain)
+                    .help("Scale to ~\(tier.hint)px on the long edge, keeping the current aspect ratio")
                 }
             }
         }
@@ -499,6 +501,7 @@ struct GenerateLeftPanel: View {
                     .foregroundStyle(TanqueDS.Color.textSecondary)
             }
             .buttonStyle(.plain)
+            .help("Add a LoRA from the connected server, or type a filename.")
         } content: {
             if vm.config.loras.isEmpty {
                 Text("No LoRAs added")
@@ -579,6 +582,7 @@ struct GenerateLeftPanel: View {
                                 .font(TanqueDS.Font.body)
                                 .foregroundStyle(TanqueDS.Color.textMuted)
                         }
+                        .help("Drop an image to generate from it (img2img). Strength controls how far the result may drift.")
                         .dropDestination(for: URL.self) { urls, _ in
                             guard let url = urls.first,
                                   let img = NSImage(contentsOf: url) else { return false }
@@ -599,6 +603,7 @@ struct GenerateLeftPanel: View {
                     .buttonStyle(.borderless)
                     .font(TanqueDS.Font.body)
                     .foregroundStyle(TanqueDS.Color.textSecondary)
+                    .help("Remove all moodboard references")
             }
         } content: {
             if vm.moodboardEntries.isEmpty {
@@ -661,6 +666,7 @@ struct GenerateLeftPanel: View {
                     .font(TanqueDS.Font.body)
                     .foregroundStyle(TanqueDS.Color.textMuted)
             }
+            .help("Drag reference images from Finder. Each gets a 0–1 weight; works with edit models that support reference hints.")
             .dropDestination(for: URL.self) { urls, _ in
                 var added = false
                 for url in urls {
@@ -822,6 +828,7 @@ private struct AspectRatioTile: View {
             )
         }
         .buttonStyle(.plain)
+        .help("Set aspect ratio to \(ratioW):\(ratioH)")
     }
 }
 
@@ -846,6 +853,7 @@ private struct LoRARow: View {
                         .foregroundStyle(.red.opacity(0.7))
                 }
                 .buttonStyle(.plain)
+                .help("Remove this LoRA")
             }
             HStack(spacing: 4) {
                 Slider(value: $weight, in: 0...2, step: 0.05)

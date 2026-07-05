@@ -247,6 +247,7 @@ private struct GenerateCenterPanel: View {
 
             // Zoom indicator (view mode only — edit modes show a reset chip instead)
             if vm.canvasMode == .view {
+                let zoomActive = abs(canvasScale - 1.0) >= 0.01
                 VStack {
                     Spacer()
                     Text("\(Int(canvasScale * 100))%")
@@ -255,10 +256,13 @@ private struct GenerateCenterPanel: View {
                         .padding(.vertical, 4)
                         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 6))
                         .padding(.bottom, 10)
-                        .opacity(abs(canvasScale - 1.0) < 0.01 ? 0 : 1)
+                        .opacity(zoomActive ? 1 : 0)
                         .animation(.easeInOut(duration: 0.2), value: canvasScale)
+                        .help("Pinch to zoom · drag to pan · double-click to reset")
                 }
-                .allowsHitTesting(false)
+                // Only hittable while the chip is visible, so it never steals a
+                // canvas gesture at 100%.
+                .allowsHitTesting(zoomActive)
             }
 
             // Frame scrubber — a video series is selected (view mode only)
@@ -365,10 +369,10 @@ private struct GenerateCenterPanel: View {
             HStack {
                 Spacer()
                 HStack(spacing: 2) {
-                    modeButton(.view,      system: "hand.draw",          help: "View — zoom & pan")
-                    modeButton(.paint,     system: "paintbrush.pointed", help: "Paint a mask to inpaint")
-                    modeButton(.crop,      system: "crop",               help: "Crop a region")
-                    modeButton(.colorDraw, system: "paintpalette",       help: "Color draw — paint on image or blank canvas, then send to an edit model")
+                    modeButton(.view,      system: "hand.draw",          help: "View — pinch to zoom, drag to pan, double-click to reset")
+                    modeButton(.paint,     system: "paintbrush.pointed", help: "Paint a mask to inpaint — ⌥-drag to pan, ⌘Z to undo strokes")
+                    modeButton(.crop,      system: "crop",               help: "Crop a region — drag to select, ⌥-drag to pan")
+                    modeButton(.colorDraw, system: "paintpalette",       help: "Color draw — paint on image or blank canvas, then send to an edit model. ⌥-drag to pan, ⌘Z to undo")
                 }
                 .padding(4)
                 .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))

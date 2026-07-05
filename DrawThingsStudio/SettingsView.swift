@@ -36,6 +36,7 @@ struct SettingsView: View {
                                     .foregroundStyle(TanqueDS.Color.textSecondary)
                             }
                             .buttonStyle(.borderless)
+                            .help("Recent hosts")
                             .popover(isPresented: $showDTHostHistory, arrowEdge: .bottom) {
                                 hostHistoryPopover(
                                     history: settings.dtHostHistory,
@@ -107,6 +108,7 @@ struct SettingsView: View {
                                     .font(TanqueDS.Font.body)
                             }
                             .disabled(connectionStatus == .testing)
+                            .help("Check the gRPC connection to Draw Things and load the model inventory.")
                             Spacer()
                             switch connectionStatus {
                             case .idle:    EmptyView()
@@ -165,6 +167,7 @@ struct SettingsView: View {
                                     .foregroundStyle(TanqueDS.Color.textSecondary)
                             }
                             .buttonStyle(.borderless)
+                            .help("Recent hosts")
                             .popover(isPresented: $showLLMHostHistory, arrowEdge: .bottom) {
                                 hostHistoryPopover(
                                     history: settings.llmHostHistory,
@@ -197,6 +200,7 @@ struct SettingsView: View {
                                     .font(TanqueDS.Font.body)
                             }
                             .disabled(llmStatus.isTesting)
+                            .help("Check the LLM provider and list its available models.")
                             Spacer()
                             switch llmStatus {
                             case .idle:    EmptyView()
@@ -250,6 +254,7 @@ struct SettingsView: View {
                             }
                             Button("Browse…") { browseForFolder() }
                                 .font(TanqueDS.Font.body)
+                                .help("Choose where generated images are saved.")
                         }
                         .padding(.horizontal, TanqueDS.Spacing.md)
                         .padding(.vertical, TanqueDS.Spacing.sm)
@@ -284,6 +289,7 @@ struct SettingsView: View {
                             }
                             Button("Browse…") { browseForLLMOperationsFolder() }
                                 .font(TanqueDS.Font.body)
+                                .help("Choose the folder that holds your LLM operation (.md) files.")
                         }
                         .padding(.horizontal, TanqueDS.Spacing.md)
                         .padding(.vertical, TanqueDS.Spacing.sm)
