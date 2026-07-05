@@ -130,7 +130,25 @@ struct StoryProjectInfoEditor: View {
             Text("The art style leads every assembled scene prompt.")
                 .font(TanqueDS.Font.bodySmall)
                 .foregroundStyle(TanqueDS.Color.textSecondary)
+
+            Rectangle().fill(TanqueDS.Color.surfaceBorder).frame(height: 1)
+
+            StoryLabeledTextEditor("Base Config (JSON)", text: $project.baseConfigJSON, minHeight: 100, maxHeight: 200)
+            if !baseConfigIsValidJSON {
+                Text("Not valid JSON — renders will fall back to defaults.")
+                    .font(TanqueDS.Font.bodySmall)
+                    .foregroundStyle(.red)
+            } else {
+                Text("Model, size, steps, sampler for every render — same fields as a Draw Things config. Scenes can override per-field.")
+                    .font(TanqueDS.Font.bodySmall)
+                    .foregroundStyle(TanqueDS.Color.textSecondary)
+            }
         }
+    }
+
+    private var baseConfigIsValidJSON: Bool {
+        guard let data = project.baseConfigJSON.data(using: .utf8) else { return false }
+        return (try? JSONSerialization.jsonObject(with: data)) is [String: Any]
     }
 }
 

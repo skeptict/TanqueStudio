@@ -60,6 +60,7 @@ struct StoryStudioWorkspaceView: View {
 
     @Environment(\.modelContext) private var modelContext
     @State private var selection: StoryOutlineSelection?
+    @State private var renderController = StoryStudioRenderController()
 
     var body: some View {
         HStack(spacing: 0) {
@@ -68,8 +69,15 @@ struct StoryStudioWorkspaceView: View {
             Rectangle().fill(TanqueDS.Color.surfaceBorder).frame(width: 1)
             editorColumn
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+            if case .scene(let id) = selection, let scene = findScene(id) {
+                Rectangle().fill(TanqueDS.Color.surfaceBorder).frame(width: 1)
+                StorySceneRenderPanel(scene: scene, project: project, controller: renderController)
+                    .frame(width: 300)
+                    .id(scene.id)
+            }
         }
         .background(TanqueDS.Color.surface0)
+        .onAppear { renderController.configure(modelContext: modelContext) }
     }
 
     @ViewBuilder
@@ -87,7 +95,11 @@ struct StoryStudioWorkspaceView: View {
             }
         case .scene(let id):
             if let scene = findScene(id) {
-                StorySceneEditor(scene: scene, project: project)
+                VStack(spacing: 0) {
+                    StorySceneEditor(scene: scene, project: project)
+                    Rectangle().fill(TanqueDS.Color.surfaceBorder).frame(height: 1)
+                    renderBar(for: scene)
+                }
             } else {
                 editorPlaceholder
             }
@@ -106,6 +118,47 @@ struct StoryStudioWorkspaceView: View {
         case nil:
             editorPlaceholder
         }
+    }
+
+    /// Bottom bar of the scene editor column (spec §4): render actions.
+    /// Disabled while the private engine is running.
+    private func renderBar(for scene: StoryScene) -> some View {
+        HStack(spacing: TanqueDS.Spacing.md) {
+            Button {
+                renderController.renderScene(scene, project: project)
+            } label: {
+                Label("Render Scene", systemImage: "play.fill")
+                    .font(TanqueDS.Font.bodyMedium)
+            }
+            .buttonStyle(.borderless)
+            .foregroundStyle(renderController.isRunning ? TanqueDS.Color.textMuted : TanqueDS.Color.brass)
+            .disabled(renderController.isRunning)
+            .accessibilityLabel("Render Scene")
+
+            if let chapter = scene.chapter, chapter.scenes.count > 1 {
+                Button {
+                    renderController.renderChapter(chapter, project: project)
+                } label: {
+                    Label("Render Chapter", systemImage: "play.square.stack")
+                        .font(TanqueDS.Font.bodyMedium)
+                }
+                .buttonStyle(.borderless)
+                .foregroundStyle(renderController.isRunning ? TanqueDS.Color.textMuted : TanqueDS.Color.brass)
+                .disabled(renderController.isRunning)
+                .accessibilityLabel("Render Chapter")
+            }
+
+            Spacer()
+
+            if renderController.isRunning {
+                Text("Rendering…")
+                    .font(TanqueDS.Font.bodySmall)
+                    .foregroundStyle(TanqueDS.Color.textSecondary)
+            }
+        }
+        .padding(.horizontal, TanqueDS.Spacing.lg)
+        .padding(.vertical, TanqueDS.Spacing.sm + 2)
+        .background(TanqueDS.Color.surface1)
     }
 
     private var editorPlaceholder: some View {
