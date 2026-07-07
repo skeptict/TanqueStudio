@@ -346,7 +346,11 @@ final class StoryFlowEngine {
         // Resolve negative seed: roll concrete and record so output metadata is reproducible.
         if cfg.seed < 0 { cfg.seed = Int(UInt32.random(in: 0...UInt32.max)) }
 
-        log("  Generating… model: \(cfg.model.isEmpty ? "(none set)" : cfg.model)")
+        if cfg.model.isEmpty {
+            log("  ⚠ No model set in config — Draw Things will render with nothing loaded and likely return raw noise. Set \"model\" in the project's Base Config JSON (or the scene's config override).")
+        } else {
+            log("  Generating… model: \(cfg.model)")
+        }
 
         // Generate
         stepProgress = .starting
