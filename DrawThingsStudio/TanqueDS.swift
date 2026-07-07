@@ -28,15 +28,21 @@ enum TanqueDS {
 
     // MARK: Typography
     enum Font {
-        // TODO: IBMPlexMono — fonts not installed, using system monospaced fallback
+        // IBM Plex Mono ships as three distinct PostScript families (no shared
+        // weight axis), so each weight maps to its own named font rather than
+        // a single family + SwiftUI.Font.Weight.
         static func mono(_ size: CGFloat, weight: SwiftUI.Font.Weight = .regular) -> SwiftUI.Font {
-            .system(size: size, weight: weight, design: .monospaced)
+            switch weight {
+            case .medium: return monoMedium(size)
+            case .semibold, .bold, .heavy, .black: return monoSemiBold(size)
+            default: return .custom("IBMPlexMono-Regular", size: size)
+            }
         }
         static func monoMedium(_ size: CGFloat) -> SwiftUI.Font {
-            .system(size: size, weight: .medium, design: .monospaced)
+            .custom("IBMPlexMono-Medium", size: size)
         }
         static func monoSemiBold(_ size: CGFloat) -> SwiftUI.Font {
-            .system(size: size, weight: .semibold, design: .monospaced)
+            .custom("IBMPlexMono-SemiBold", size: size)
         }
 
         // Semantic aliases
