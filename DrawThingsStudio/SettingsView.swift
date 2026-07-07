@@ -7,6 +7,8 @@ struct SettingsView: View {
     @State private var showDTHostHistory = false
     @State private var showLLMHostHistory = false
     @State private var revealSharedSecret = false
+    @State private var connectionTestTask: Task<Void, Never>?
+    @State private var llmTestTask: Task<Void, Never>?
 
     enum ConnectionStatus { case idle, testing, success, secretRequired, failure }
 
@@ -109,6 +111,12 @@ struct SettingsView: View {
                             }
                             .disabled(connectionStatus == .testing)
                             .help("Check the gRPC connection to Draw Things and load the model inventory.")
+                            if connectionStatus == .testing {
+                                Button("Cancel") { connectionTestTask?.cancel() }
+                                    .font(TanqueDS.Font.body)
+                                    .buttonStyle(.borderless)
+                                    .foregroundStyle(TanqueDS.Color.textSecondary)
+                            }
                             Spacer()
                             switch connectionStatus {
                             case .idle:    EmptyView()
@@ -206,6 +214,12 @@ struct SettingsView: View {
                             }
                             .disabled(llmStatus.isTesting)
                             .help("Check the LLM provider and list its available models.")
+                            if llmStatus.isTesting {
+                                Button("Cancel") { llmTestTask?.cancel() }
+                                    .font(TanqueDS.Font.body)
+                                    .buttonStyle(.borderless)
+                                    .foregroundStyle(TanqueDS.Color.textSecondary)
+                            }
                             Spacer()
                             switch llmStatus {
                             case .idle:    EmptyView()
@@ -375,9 +389,19 @@ struct SettingsView: View {
         let host = settings.dtHost
         let port = settings.dtPort
         let secret = settings.dtSharedSecretOrNil
-        Task { @MainActor in
+        connectionTestTask = Task { @MainActor in
             let client = DrawThingsGRPCClient(host: host, port: port, sharedSecret: secret)
-            switch await client.checkConnectionHealth() {
+            let health = await client.checkConnectionHealth()
+            // Cancelling the task doesn't abort the in-flight RPC (grpc-swift isn't
+            // cancellation-aware mid-call), so checkConnectionHealth() still returns
+            // normally — usually as .failed once the socket unwinds. Without this
+            // guard a user-initiated Cancel would flash "Failed" instead of going
+            // quietly back to idle.
+            guard !Task.isCancelled else {
+                connectionStatus = .idle
+                return
+            }
+            switch health {
             case .connected:
                 connectionStatus = .success
                 settings.addDTHost(host)
@@ -394,13 +418,14 @@ struct SettingsView: View {
         llmStatus = .testing
         let baseURL = settings.llmEffectiveBaseURL
         let enteredURL = settings.llmBaseURL
-        Task { @MainActor in
+        llmTestTask = Task { @MainActor in
             do {
                 let models = try await LLMService.fetchModels(baseURL: baseURL, provider: settings.llmProvider, apiKey: settings.llmAPIKey)
+                guard !Task.isCancelled else { llmStatus = .idle; return }
                 llmStatus = .success(models.count)
                 settings.addLLMHost(enteredURL)
             } catch {
-                llmStatus = .failure(error.localizedDescription)
+                llmStatus = Task.isCancelled ? .idle : .failure(error.localizedDescription)
             }
         }
     }
