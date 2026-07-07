@@ -1,0 +1,595 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Concept 1 — Command Deck · Tanque Studio</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="shared-data.js"></script>
+<style>
+:root{
+  --bg:#08090a; --canvas:#0a0b0d;
+  --glass:rgba(22,23,25,0.68); --glass-2:rgba(30,31,34,0.7);
+  --glass-border:rgba(255,255,255,0.09); --glass-border-2:rgba(255,255,255,0.15);
+  --brass:#c9a058; --brass-dim:rgba(201,160,88,.24); --brass-bg:rgba(201,160,88,.1);
+  --text:#e8e4dc; --muted:#726c62; --muted2:#a89f8f;
+  --green:#4caf7a; --red:#d05f5f; --orange:#e0843a;
+  --mono:'IBM Plex Mono',monospace; --sans:'Atkinson Hyperlegible',system-ui,sans-serif;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+html,body,#root{height:100%;overflow:hidden;background:var(--bg);}
+body{font-family:var(--sans);color:var(--text);}
+::-webkit-scrollbar{width:4px;height:4px;}
+::-webkit-scrollbar-thumb{background:#2a2b2e;border-radius:2px;}
+button{font-family:var(--mono);cursor:pointer;background:none;border:none;color:inherit;}
+input,textarea,select{font-family:var(--mono);color:var(--text);}
+textarea{resize:none;outline:none;}
+input:focus,textarea:focus{outline:none;}
+
+.glass{background:var(--glass);backdrop-filter:blur(22px) saturate(160%);-webkit-backdrop-filter:blur(22px) saturate(160%);
+  border:1px solid var(--glass-border);border-radius:14px;box-shadow:0 20px 60px rgba(0,0,0,.5);}
+
+/* stage */
+.stage{position:absolute;inset:0;background:
+  radial-gradient(ellipse at 50% 30%, rgba(201,160,88,0.05), transparent 60%), var(--canvas);}
+.dotgrid{position:absolute;inset:0;background-image:radial-gradient(rgba(255,255,255,.06) 1px, transparent 1px);
+  background-size:28px 28px;pointer-events:none;}
+
+/* top-left switcher button */
+.tq-logo{position:fixed;top:16px;left:16px;z-index:60;width:40px;height:40px;display:flex;align-items:center;justify-content:center;}
+.tq-logo img{width:22px;height:22px;border-radius:5px;}
+.tq-logo:hover{border-color:var(--glass-border-2);}
+
+/* top-right status */
+.tq-status{position:fixed;top:16px;right:16px;z-index:60;display:flex;align-items:center;gap:10px;padding:9px 14px;}
+.dot{width:6px;height:6px;border-radius:50%;flex-shrink:0;}
+.kbd{font-family:var(--mono);font-size:10px;color:var(--muted);border:1px solid var(--glass-border);border-radius:4px;padding:1px 5px;letter-spacing:.04em;}
+
+/* app switcher popover */
+.switcher-backdrop{position:fixed;inset:0;z-index:90;background:rgba(0,0,0,.45);display:flex;align-items:flex-start;justify-content:flex-start;padding:64px 0 0 16px;}
+.switcher{width:300px;padding:10px;display:flex;flex-direction:column;gap:2px;}
+.switcher-item{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:9px;cursor:pointer;}
+.switcher-item:hover{background:rgba(255,255,255,.05);}
+.switcher-item.active{background:var(--brass-bg);}
+.switcher-item .lbl{font-family:var(--mono);font-size:12.5px;color:var(--muted2);flex:1;}
+.switcher-item.active .lbl{color:var(--brass);}
+.badge-labs{font-family:var(--mono);font-size:8.5px;font-weight:600;padding:1px 5px;border-radius:99;background:rgba(224,132,58,.18);color:var(--orange);letter-spacing:.04em;}
+
+/* command palette (cmd-k) */
+.palette-backdrop{position:fixed;inset:0;z-index:100;background:rgba(0,0,0,.55);display:flex;align-items:flex-start;justify-content:center;padding-top:110px;}
+.palette{width:520px;max-height:400px;display:flex;flex-direction:column;overflow:hidden;}
+.palette-input{padding:14px 16px;border-bottom:1px solid var(--glass-border);display:flex;align-items:center;gap:10px;}
+.palette-input input{flex:1;background:transparent;border:none;font-size:14px;color:var(--text);}
+.palette-list{overflow-y:auto;padding:6px;}
+.palette-cmd{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:8px;cursor:pointer;}
+.palette-cmd:hover,.palette-cmd.sel{background:rgba(201,160,88,.12);}
+.palette-cmd .t{font-family:var(--mono);font-size:12.5px;color:var(--text);flex:1;}
+.palette-cmd .g{font-family:var(--mono);font-size:10px;color:var(--muted);}
+
+/* bottom command bar */
+.cmdbar-wrap{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);z-index:50;
+  display:flex;flex-direction:column;align-items:center;gap:10px;width:min(680px,calc(100vw - 260px));}
+.cmdbar{width:100%;padding:10px 10px 10px 16px;display:flex;align-items:flex-end;gap:10px;}
+.cmdbar textarea{flex:1;background:transparent;border:none;font-family:var(--sans);font-size:13.5px;line-height:1.5;
+  color:var(--text);max-height:90px;min-height:22px;}
+.cmdbar textarea::placeholder{color:var(--muted);}
+.icon-btn{width:34px;height:34px;border-radius:9px;display:flex;align-items:center;justify-content:center;flex-shrink:0;
+  color:var(--muted2);transition:background .12s,color .12s;}
+.icon-btn:hover{background:rgba(255,255,255,.06);color:var(--text);}
+.icon-btn.on{background:var(--brass-bg);color:var(--brass);}
+.gen-btn{width:38px;height:38px;border-radius:10px;background:var(--brass);color:#0d0e10;display:flex;align-items:center;justify-content:center;flex-shrink:0;position:relative;}
+.gen-btn.busy{background:rgba(255,255,255,.06);color:var(--brass);}
+.gen-btn svg.ring{position:absolute;inset:0;transform:rotate(-90deg);}
+
+.chip-row{display:flex;gap:6px;}
+.chip{padding:5px 11px;border-radius:99px;font-family:var(--mono);font-size:10.5px;letter-spacing:.04em;color:var(--muted2);
+  background:rgba(255,255,255,.04);border:1px solid var(--glass-border);}
+.chip.active{background:var(--brass-bg);color:var(--brass);border-color:var(--brass);}
+
+/* right icon rail */
+.rail{position:fixed;right:16px;top:50%;transform:translateY(-50%);z-index:55;display:flex;flex-direction:column;gap:4px;padding:8px 6px;}
+.rail .icon-btn{width:36px;height:36px;}
+
+/* floating panels */
+.panel{position:fixed;top:70px;right:66px;z-index:56;width:300px;max-height:calc(100vh - 160px);
+  display:flex;flex-direction:column;overflow:hidden;}
+.panel-hd{padding:12px 14px;border-bottom:1px solid var(--glass-border);display:flex;align-items:center;justify-content:space-between;flex-shrink:0;}
+.panel-hd .t{font-family:var(--mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted2);}
+.panel-body{padding:14px;overflow-y:auto;}
+.sect-label{font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin:12px 0 8px;}
+.sect-label:first-child{margin-top:0;}
+.field-row{display:flex;justify-content:space-between;margin-bottom:6px;}
+.field-row .k{font-family:var(--mono);font-size:11.5px;color:var(--muted2);}
+.field-row .v{font-family:var(--mono);font-size:11.5px;color:var(--brass);}
+input[type=range]{-webkit-appearance:none;width:100%;height:3px;border-radius:2px;background:rgba(255,255,255,.08);outline:none;cursor:pointer;margin-bottom:12px;}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:13px;height:13px;border-radius:50%;background:var(--brass);cursor:pointer;box-shadow:0 0 0 2px var(--brass-dim);}
+.model-card{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:9px;border:1px solid var(--glass-border);cursor:pointer;margin-bottom:6px;}
+.model-card:hover{border-color:var(--glass-border-2);}
+.model-card.sel{border-color:var(--brass);background:var(--brass-bg);}
+.model-swatch{width:30px;height:30px;border-radius:7px;flex-shrink:0;}
+.model-card .nm{font-family:var(--mono);font-size:12px;color:var(--text);}
+.model-card .vr{font-family:var(--mono);font-size:10px;color:var(--muted);}
+.lora-row{display:flex;align-items:center;gap:8px;margin-bottom:10px;}
+.lora-row .nm{font-family:var(--mono);font-size:11px;color:var(--muted2);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.dropzone{border:1.5px dashed var(--glass-border-2);border-radius:9px;padding:20px 10px;text-align:center;color:var(--muted);font-family:var(--mono);font-size:11px;}
+.gallery-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;}
+.gallery-cell{aspect-ratio:1;border-radius:8px;overflow:hidden;position:relative;cursor:pointer;border:2px solid transparent;background:linear-gradient(135deg,#1a1c1f,#222427);}
+.gallery-cell.sel{border-color:var(--brass);}
+.gallery-cell .lbl{position:absolute;bottom:0;left:0;right:0;text-align:center;font-family:var(--mono);font-size:8.5px;padding:2px 0;background:rgba(0,0,0,.6);}
+.tabbar{display:flex;border-bottom:1px solid var(--glass-border);flex-shrink:0;}
+.tabbar button{flex:1;padding:10px 4px;font-family:var(--mono);font-size:11px;color:var(--muted2);border-bottom:2px solid transparent;}
+.tabbar button.active{color:var(--brass);border-color:var(--brass);font-weight:600;}
+.action-card{padding:9px 11px;border-radius:8px;border:1px solid var(--glass-border);margin-bottom:6px;cursor:pointer;}
+.action-card:hover{border-color:var(--glass-border-2);}
+.action-card .t{font-family:var(--mono);font-size:12px;color:var(--text);}
+.action-card .s{font-family:var(--sans);font-size:11px;color:var(--muted2);margin-top:2px;}
+
+/* toast */
+.toast{position:fixed;bottom:100px;right:24px;z-index:70;padding:10px 14px;display:flex;align-items:center;gap:10px;
+  animation:toastIn .25s ease-out;}
+@keyframes toastIn{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:translateY(0);}}
+.toast .thumb{width:34px;height:34px;border-radius:6px;background:linear-gradient(135deg,#c9a058,#8b6a35);flex-shrink:0;}
+.toast .t{font-family:var(--mono);font-size:12px;color:var(--text);}
+.toast .s{font-family:var(--mono);font-size:10px;color:var(--muted2);}
+
+/* generic full view (dt projects / labs / settings) */
+.view{position:absolute;inset:0;padding:88px 64px 40px;overflow-y:auto;}
+.view-title{font-family:var(--mono);font-size:20px;font-weight:600;color:var(--text);margin-bottom:4px;}
+.view-sub{font-family:var(--mono);font-size:12px;color:var(--muted);margin-bottom:28px;}
+.proj-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:16px;max-width:1000px;}
+.proj-card{padding:18px;border-radius:12px;cursor:pointer;transition:border-color .15s;}
+.proj-card:hover{border-color:var(--glass-border-2);}
+.proj-card .icon{width:36px;height:36px;border-radius:9px;background:var(--brass-bg);display:flex;align-items:center;justify-content:center;color:var(--brass);margin-bottom:12px;}
+.proj-card .nm{font-family:var(--mono);font-size:13px;color:var(--text);margin-bottom:6px;word-break:break-all;}
+.proj-card .meta{font-family:var(--mono);font-size:10.5px;color:var(--muted);}
+
+.pill-tabs{display:inline-flex;gap:2px;padding:4px;border-radius:10px;margin-bottom:24px;}
+.pill-tabs button{padding:7px 16px;border-radius:7px;font-family:var(--mono);font-size:11px;letter-spacing:.04em;color:var(--muted2);}
+.pill-tabs button.active{background:var(--brass);color:#0d0e10;font-weight:600;}
+
+.flow-track{display:flex;gap:14px;overflow-x:auto;padding-bottom:12px;max-width:1000px;}
+.flow-card{width:180px;flex-shrink:0;padding:14px;border-radius:12px;cursor:pointer;}
+.flow-card.active{border-color:var(--brass);background:var(--brass-bg);}
+.flow-card .kind{font-family:var(--mono);font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:8px;}
+.flow-card .title{font-family:var(--mono);font-size:12.5px;color:var(--text);margin-bottom:10px;}
+.flow-status{font-family:var(--mono);font-size:9.5px;padding:2px 7px;border-radius:99;display:inline-block;}
+.flow-status.done{background:rgba(76,175,122,.15);color:var(--green);}
+.flow-status.active{background:var(--brass-bg);color:var(--brass);}
+.flow-status.pending{background:rgba(255,255,255,.05);color:var(--muted);}
+
+.settings-backdrop{position:fixed;inset:0;z-index:80;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;}
+.settings-sheet{width:560px;max-height:80vh;overflow-y:auto;padding:0;}
+.settings-hd{padding:16px 20px;border-bottom:1px solid var(--glass-border);display:flex;justify-content:space-between;align-items:center;}
+.settings-hd .t{font-family:var(--mono);font-size:14px;font-weight:600;}
+.settings-sect{padding:16px 20px;border-bottom:1px solid var(--glass-border);}
+.settings-sect .lbl{font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:12px;}
+.settings-row{display:flex;justify-content:space-between;align-items:center;padding:7px 0;}
+.settings-row .k{font-family:var(--mono);font-size:12px;color:var(--muted2);}
+.settings-row input{background:rgba(255,255,255,.05);border:1px solid var(--glass-border);border-radius:6px;padding:4px 9px;font-size:11px;width:200px;text-align:right;}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect, useRef, useCallback } = React;
+const D = window.TD;
+
+function Icon({ name, size = 16 }) {
+  const p = {
+    brush:  "M2 14c1-1 2-2 4-2 .5 0 1-.5 1-1L11 7 9 5 4.5 8.5c0 0-.5.5-1 .5C2.5 9 1 10 1 11c0 .8.5 1.5 1 2z",
+    folder: "M1 4a1 1 0 011-1h4l1.5 2H14a1 1 0 011 1v6a1 1 0 01-1 1H2a1 1 0 01-1-1V4z",
+    gear:   "M8 1v2M8 13v2M1 8h2M13 8h2M3.2 3.2l1.4 1.4M11.4 11.4l1.4 1.4M3.2 12.8l1.4-1.4M11.4 4.6l1.4-1.4",
+    grid:   "M2 2h5v5H2zM9 2h5v5H9zM2 9h5v5H2zM9 9h5v5H9z",
+    search: "M11 11l3.5 3.5M12.5 7A5.5 5.5 0 111 7a5.5 5.5 0 0111.5 0z",
+    x:      "M3 3l10 10M13 3L3 13",
+    image:  "M1 2h14v12H1zM4.5 6.5a1.5 1.5 0 100-3 1.5 1.5 0 000 3zM1 11l4-3 3 2.5 3-3.5 4 4",
+    tune:   "M3 3v4M3 11v2M8 3v7M8 13v0M13 3v2M13 9v4M1 7h4M6 3h4M11 10h4",
+    layers: "M8 1l7 3.5L8 8 1 4.5 8 1zM1 8l7 3.5L15 8M1 11.5L8 15l7-3.5",
+    send:   "M14 2L2 8l5 2 2 5 5-13z",
+    dice:   "M2 3a1 1 0 011-1h10a1 1 0 011 1v10a1 1 0 01-1 1H3a1 1 0 01-1-1V3zM5.5 5.5h.01M10.5 5.5h.01M8 8h.01M5.5 10.5h.01M10.5 10.5h.01",
+  };
+  return <svg width={size} height={size} viewBox="0 0 16 16" fill="none"><path d={p[name] || p.image} stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/></svg>;
+}
+
+/* ── Bottom command bar ─────────────────────────────── */
+function CommandBar({ st, set, panels, togglePanel, onGenerate }) {
+  return (
+    <div className="cmdbar-wrap">
+      <div className="chip-row">
+        {D.aspects.slice(0,5).map(a => (
+          <div key={a} className={"chip" + (st.aspect===a?' active':'')} onClick={() => set('aspect', a)}>{a}</div>
+        ))}
+      </div>
+      <div className="cmdbar glass">
+        <div className="icon-btn" title="Model & Params" onClick={() => togglePanel('params')} style={panels.params?{background:'var(--brass-bg)',color:'var(--brass)'}:{}}>
+          <Icon name="tune" />
+        </div>
+        <div className="icon-btn" title="LoRAs" onClick={() => togglePanel('lora')} style={panels.lora?{background:'var(--brass-bg)',color:'var(--brass)'}:{}}>
+          <Icon name="layers" />
+        </div>
+        <div className="icon-btn" title="img2img / Moodboard" onClick={() => togglePanel('img2img')} style={panels.img2img?{background:'var(--brass-bg)',color:'var(--brass)'}:{}}>
+          <Icon name="image" />
+        </div>
+        <textarea rows={1} placeholder="Describe your image…  (⌘K for commands)" value={st.prompt}
+          onChange={e => { set('prompt', e.target.value); e.target.style.height='auto'; e.target.style.height=Math.min(90,e.target.scrollHeight)+'px'; }} />
+        <div className={"gen-btn" + (st.isGenerating?' busy':'')} onClick={onGenerate} title="Generate">
+          {st.isGenerating ? (
+            <svg className="ring" width="38" height="38" viewBox="0 0 38 38">
+              <circle cx="19" cy="19" r="16" stroke="rgba(201,160,88,.2)" strokeWidth="2.5" fill="none"/>
+              <circle cx="19" cy="19" r="16" stroke="var(--brass)" strokeWidth="2.5" fill="none"
+                strokeDasharray={100.5} strokeDashoffset={100.5 - (st.progress/100)*100.5} strokeLinecap="round"/>
+            </svg>
+          ) : <Icon name="send" size={15} />}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ── Right icon rail ────────────────────────────────── */
+function Rail({ panels, togglePanel }) {
+  const items = [
+    ['gallery', 'grid', 'Gallery'],
+    ['inspector', 'layers', 'Inspector'],
+  ];
+  return (
+    <div className="rail glass">
+      {items.map(([key, icon, title]) => (
+        <div key={key} className={"icon-btn" + (panels[key] ? ' on' : '')} title={title} onClick={() => togglePanel(key)}>
+          <Icon name={icon} />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/* ── Floating Params panel ──────────────────────────── */
+function ParamsPanel({ st, set, onClose }) {
+  return (
+    <div className="panel glass">
+      <div className="panel-hd"><span className="t">Model &amp; Params</span><div className="icon-btn" onClick={onClose}><Icon name="x" size={13}/></div></div>
+      <div className="panel-body">
+        <div className="sect-label">Model</div>
+        {D.models.map(m => (
+          <div key={m.id} className={"model-card" + (st.model===m.id?' sel':'')} onClick={() => set('model', m.id)}>
+            <div className="model-swatch" style={{background:`linear-gradient(135deg,${m.swatch[0]},${m.swatch[1]})`}} />
+            <div><div className="nm">{m.name}</div><div className="vr">{m.variant}</div></div>
+          </div>
+        ))}
+        <div className="sect-label">Parameters</div>
+        <div className="field-row"><span className="k">Steps</span><span className="v">{st.steps}</span></div>
+        <input type="range" min={1} max={50} value={st.steps} onChange={e => set('steps', +e.target.value)} />
+        <div className="field-row"><span className="k">CFG</span><span className="v">{st.cfg.toFixed(1)}</span></div>
+        <input type="range" min={1} max={15} step={0.5} value={st.cfg} onChange={e => set('cfg', +e.target.value)} />
+        <div className="field-row"><span className="k">Seed</span><span className="v">{st.seed}</span></div>
+        <input type="range" min={-1} max={99999} value={st.seed} onChange={e => set('seed', +e.target.value)} />
+      </div>
+    </div>
+  );
+}
+
+function LoraPanel({ loras, onClose }) {
+  return (
+    <div className="panel glass">
+      <div className="panel-hd"><span className="t">LoRAs</span><div className="icon-btn" onClick={onClose}><Icon name="x" size={13}/></div></div>
+      <div className="panel-body">
+        {loras.map(l => (
+          <div key={l.id} className="lora-row">
+            <span className="nm">{l.name}</span>
+            <input type="range" min={0} max={1} step={0.05} defaultValue={l.weight} style={{width:80,marginBottom:0}} />
+            <span style={{fontFamily:'var(--mono)',fontSize:11,color:'var(--brass)',width:32,textAlign:'right'}}>{l.weight.toFixed(2)}</span>
+          </div>
+        ))}
+        <button className="icon-btn" style={{width:'100%',border:'1px solid var(--glass-border)',borderRadius:8,color:'var(--brass)',fontSize:11,padding:'7px 0'}}>+ add LoRA</button>
+      </div>
+    </div>
+  );
+}
+
+function Img2ImgPanel({ onClose }) {
+  return (
+    <div className="panel glass">
+      <div className="panel-hd"><span className="t">img2img · Moodboard</span><div className="icon-btn" onClick={onClose}><Icon name="x" size={13}/></div></div>
+      <div className="panel-body">
+        <div className="sect-label">img2img source</div>
+        <div className="dropzone"><Icon name="image" size={20}/><div style={{marginTop:6}}>drop image here</div></div>
+        <div className="sect-label">Moodboard</div>
+        <div className="gallery-grid">
+          {D.gallery.slice(0,2).map(g => <div key={g.id} className="gallery-cell" />)}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function GalleryPanel({ selected, onSelect, onClose }) {
+  return (
+    <div className="panel glass">
+      <div className="panel-hd"><span className="t">Gallery</span><div className="icon-btn" onClick={onClose}><Icon name="x" size={13}/></div></div>
+      <div className="panel-body">
+        <div className="gallery-grid">
+          {D.gallery.map(g => (
+            <div key={g.id} className={"gallery-cell" + (selected===g.id?' sel':'')} onClick={() => onSelect(g.id)}>
+              <div className="lbl" style={{color: g.source==='generated' ? 'var(--green)' : 'var(--muted2)'}}>{g.label}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function InspectorPanel({ onClose }) {
+  const [tab, setTab] = useState('Metadata');
+  return (
+    <div className="panel glass" style={{top:70}}>
+      <div className="panel-hd"><span className="t">Inspector</span><div className="icon-btn" onClick={onClose}><Icon name="x" size={13}/></div></div>
+      <div className="tabbar">
+        {['Metadata','Assist','Actions'].map(t => <button key={t} className={tab===t?'active':''} onClick={()=>setTab(t)}>{t}</button>)}
+      </div>
+      <div className="panel-body">
+        {tab === 'Metadata' && D.metadata.map(([k,v]) => (
+          <div key={k} className="field-row" style={{borderBottom:'1px solid var(--glass-border)',paddingBottom:5}}>
+            <span className="k">{k}</span><span style={{fontFamily:'var(--mono)',fontSize:11.5,color:'var(--text)'}}>{v}</span>
+          </div>
+        ))}
+        {tab === 'Assist' && (
+          <div>
+            <div className="sect-label">LLM Operation</div>
+            <div className="model-card sel" style={{cursor:'default'}}><div className="nm">Enhance Prompt</div></div>
+            <button className="icon-btn" style={{width:'100%',background:'var(--brass)',color:'#0d0e10',borderRadius:8,padding:'8px 0',marginTop:10,fontWeight:600}}>Run</button>
+          </div>
+        )}
+        {tab === 'Actions' && D.actions.map(a => (
+          <div key={a.label} className="action-card"><div className="t">{a.label}</div><div className="s">{a.sub}</div></div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* ── App switcher popover ───────────────────────────── */
+function Switcher({ view, onSelect, onClose }) {
+  return (
+    <div className="switcher-backdrop" onClick={onClose}>
+      <div className="switcher glass" onClick={e => e.stopPropagation()}>
+        {D.navItems.map(item => (
+          <div key={item.id} className={"switcher-item" + (view===item.id?' active':'')} onClick={() => onSelect(item.id)}>
+            <Icon name={item.icon === 'brush' ? 'brush' : item.icon === 'folder' ? 'folder' : item.icon === 'gear' ? 'gear' : 'layers'} />
+            <span className="lbl">{item.label}</span>
+            {item.labs && <span className="badge-labs">Labs</span>}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* ── Command palette (⌘K) ───────────────────────────── */
+function CommandPalette({ onClose, onNavigate }) {
+  const [q, setQ] = useState('');
+  const inputRef = useRef(null);
+  useEffect(() => { inputRef.current?.focus(); }, []);
+  const commands = [
+    { t: 'Go to Generate', g: 'nav', run: () => onNavigate('generate') },
+    { t: 'Go to DT Project Browser', g: 'nav', run: () => onNavigate('dtProjects') },
+    { t: 'Go to StoryFlow', g: 'nav · labs', run: () => onNavigate('labs') },
+    { t: 'Go to Settings', g: 'nav', run: () => onNavigate('settings') },
+    { t: 'Set model → flux.1 [dev]', g: 'action' },
+    { t: 'Set model → flux.2 [klein]', g: 'action' },
+    { t: 'Randomize seed', g: 'action' },
+    { t: 'Send config to Draw Things', g: 'action' },
+    { t: 'Export current image as PNG', g: 'action' },
+  ].filter(c => c.t.toLowerCase().includes(q.toLowerCase()));
+  return (
+    <div className="palette-backdrop" onClick={onClose}>
+      <div className="palette glass" onClick={e => e.stopPropagation()}>
+        <div className="palette-input">
+          <Icon name="search" size={14} />
+          <input ref={inputRef} placeholder="Type a command or search…" value={q} onChange={e => setQ(e.target.value)} />
+          <span className="kbd">esc</span>
+        </div>
+        <div className="palette-list">
+          {commands.map((c,i) => (
+            <div key={i} className="palette-cmd" onClick={() => { c.run && c.run(); onClose(); }}>
+              <span className="t">{c.t}</span><span className="g">{c.g}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ── Secondary views ─────────────────────────────────── */
+function DTProjectsView() {
+  return (
+    <div className="view">
+      <div className="view-title">DT Project Browser</div>
+      <div className="view-sub">Draw Things .sqlite3 projects · press ⌘K to search</div>
+      <div className="proj-grid">
+        {D.dtProjects.map(p => (
+          <div key={p.id} className="proj-card glass">
+            <div className="icon"><Icon name="folder" size={18}/></div>
+            <div className="nm">{p.name}</div>
+            <div className="meta">{p.images} images · {p.updated}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function LabsView() {
+  const [sub, setSub] = useState('storyFlow');
+  return (
+    <div className="view">
+      <div className="view-title">Labs</div>
+      <div className="view-sub">Experimental workflows</div>
+      <div className="pill-tabs glass" style={{display:'inline-flex'}}>
+        {['storyFlow','storyStudio','workflowBuilder'].map(s => (
+          <button key={s} className={sub===s?'active':''} onClick={() => setSub(s)}>
+            {s === 'storyFlow' ? 'StoryFlow' : s === 'storyStudio' ? 'Story Studio' : 'Workflow Builder'}
+          </button>
+        ))}
+      </div>
+      {sub === 'storyFlow' && (
+        <div className="flow-track">
+          {D.storyFlowSteps.map(s => (
+            <div key={s.id} className={"flow-card glass" + (s.status==='active'?' active':'')}>
+              <div className="kind">{s.kind}</div>
+              <div className="title">{s.title}</div>
+              <span className={"flow-status " + s.status}>{s.status}</span>
+            </div>
+          ))}
+        </div>
+      )}
+      {sub !== 'storyFlow' && (
+        <div className="glass" style={{padding:40,textAlign:'center',maxWidth:400,color:'var(--muted)',fontFamily:'var(--mono)',fontSize:12}}>
+          Coming soon
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SettingsView({ onClose }) {
+  const sections = [
+    { title: 'DRAW THINGS CONNECTION', rows: [['Host','localhost'],['Port','7859']] },
+    { title: 'LLM ASSIST', rows: [['Provider','Ollama'],['Model','llama3.2']] },
+  ];
+  return (
+    <div className="settings-backdrop" onClick={onClose}>
+      <div className="settings-sheet glass" onClick={e => e.stopPropagation()}>
+        <div className="settings-hd"><span className="t">Settings</span><div className="icon-btn" onClick={onClose}><Icon name="x"/></div></div>
+        {sections.map(s => (
+          <div key={s.title} className="settings-sect">
+            <div className="lbl">{s.title}</div>
+            {s.rows.map(([k,v]) => (
+              <div key={k} className="settings-row"><span className="k">{k}</span><input defaultValue={v} /></div>
+            ))}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* ── App ─────────────────────────────────────────────── */
+function App() {
+  const [view, setView] = useState('generate');
+  const [switcherOpen, setSwitcherOpen] = useState(false);
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const [panels, setPanels] = useState({ params:false, lora:false, img2img:false, gallery:false, inspector:false });
+  const [gallerySel, setGallerySel] = useState(1);
+  const [toast, setToast] = useState(null);
+  const [st, setSt] = useState({ prompt:'', model:'flux1-dev-q4', aspect:'1:1', steps:20, cfg:7.5, seed:42, isGenerating:false, progress:0 });
+  const timerRef = useRef(null);
+
+  const set = (k,v) => setSt(s => ({ ...s, [k]: v }));
+  const togglePanel = (k) => setPanels(p => ({ ...p, [k]: !p[k] }));
+
+  const onGenerate = useCallback(() => {
+    if (st.isGenerating) return;
+    setSt(s => ({ ...s, isGenerating:true, progress:0 }));
+    timerRef.current = setInterval(() => {
+      setSt(s => {
+        const next = Math.min(s.progress + 6, 100);
+        if (next >= 100) {
+          clearInterval(timerRef.current);
+          setToast({ t: 'Generated in 3.2s', s: '1024×1024 · flux.1 [dev]' });
+          setTimeout(() => setToast(null), 3200);
+          return { ...s, progress:100, isGenerating:false };
+        }
+        return { ...s, progress: next };
+      });
+    }, 90);
+  }, [st.isGenerating]);
+
+  useEffect(() => {
+    function onKey(e) {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') { e.preventDefault(); setPaletteOpen(o => !o); }
+      if (e.key === 'Escape') { setPaletteOpen(false); setSwitcherOpen(false); }
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
+  const connected = true;
+
+  return (
+    <div style={{ position:'fixed', inset:0, overflow:'hidden' }}>
+      <div className="stage"><div className="dotgrid" /></div>
+
+      {/* Canvas content (generate view only) */}
+      {view === 'generate' && (
+        <div style={{ position:'absolute', inset:0, display:'flex', alignItems:'center', justifyContent:'center' }}>
+          {!st.progress && !st.isGenerating ? (
+            <div style={{ textAlign:'center', color:'var(--muted)' }}>
+              <Icon name="image" size={44} />
+              <div style={{ fontFamily:'var(--sans)', fontSize:15, color:'var(--muted2)', marginTop:14 }}>No image yet</div>
+              <div style={{ fontFamily:'var(--mono)', fontSize:11, marginTop:6, letterSpacing:'.06em' }}>type a prompt below, or press ⌘K</div>
+            </div>
+          ) : (
+            <div style={{ width:420, height:420, borderRadius:16, background:'linear-gradient(135deg,#1a1c1f,#0d0e10)',
+              border: `2px solid ${st.isGenerating ? 'var(--brass-dim)' : 'var(--glass-border)'}`, position:'relative', overflow:'hidden',
+              boxShadow: st.isGenerating ? '0 0 60px rgba(201,160,88,.15)' : 'none', transition:'box-shadow .3s' }}>
+              {st.isGenerating && (
+                <div style={{ position:'absolute', inset:0, display:'flex', alignItems:'center', justifyContent:'center' }}>
+                  <div style={{ width:160, height:3, background:'rgba(255,255,255,.08)', borderRadius:2, overflow:'hidden' }}>
+                    <div style={{ height:'100%', width:`${st.progress}%`, background:'var(--brass)', transition:'width .1s linear' }} />
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+      {view === 'dtProjects' && <DTProjectsView />}
+      {view === 'labs' && <LabsView />}
+
+      {/* Top-left logo/switcher */}
+      <div className="tq-logo glass" onClick={() => setSwitcherOpen(true)}>
+        <img src="../assets/icon_128x128.png" />
+      </div>
+
+      {/* Top-right status */}
+      <div className="tq-status glass">
+        <div className="dot" style={{ background: connected ? 'var(--green)' : 'var(--muted)' }} />
+        <span style={{ fontFamily:'var(--mono)', fontSize:10, color: connected ? 'var(--green)' : 'var(--muted)', letterSpacing:'.06em' }}>connected</span>
+        <span className="kbd">⌘K</span>
+      </div>
+
+      {/* Generate-only chrome */}
+      {view === 'generate' && (
+        <React.Fragment>
+          <CommandBar st={st} set={set} panels={panels} togglePanel={togglePanel} onGenerate={onGenerate} />
+          <Rail panels={panels} togglePanel={togglePanel} />
+          {panels.params  && <ParamsPanel st={st} set={set} onClose={() => togglePanel('params')} />}
+          {panels.lora    && <div style={{position:'fixed',top:70,right:66,zIndex:56}}><LoraPanel loras={D.loras} onClose={() => togglePanel('lora')} /></div>}
+          {panels.img2img && <div style={{position:'fixed',top:70,right:66,zIndex:56}}><Img2ImgPanel onClose={() => togglePanel('img2img')} /></div>}
+          {panels.gallery && <GalleryPanel selected={gallerySel} onSelect={setGallerySel} onClose={() => togglePanel('gallery')} />}
+          {panels.inspector && <InspectorPanel onClose={() => togglePanel('inspector')} />}
+        </React.Fragment>
+      )}
+
+      {switcherOpen && <Switcher view={view} onSelect={(v) => { setView(v === 'settings' ? 'settings' : v); setSwitcherOpen(false); }} onClose={() => setSwitcherOpen(false)} />}
+      {paletteOpen && <CommandPalette onClose={() => setPaletteOpen(false)} onNavigate={setView} />}
+      {view === 'settings' && <SettingsView onClose={() => setView('generate')} />}
+
+      {toast && (
+        <div className="toast glass">
+          <div className="thumb" />
+          <div><div className="t">{toast.t}</div><div className="s">{toast.s}</div></div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>
