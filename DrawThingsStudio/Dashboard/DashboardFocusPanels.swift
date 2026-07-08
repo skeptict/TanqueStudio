@@ -194,6 +194,20 @@ struct ParametersSection: View {
             fieldRow("Seed", "\(vm.config.seed)")
             Slider(value: Binding(get: { Double(vm.config.seed) }, set: { vm.config.seed = Int($0) }), in: -1...99_999, step: 1)
                 .tint(DashboardDS.brass)
+
+            Button {
+                vm.showConfigPicker = true
+            } label: {
+                Text(AppSettings.shared.dtConfigsBookmark == nil ? "Import custom_configs.json…" : "Choose Config…")
+                    .font(TanqueDS.Font.mono(11.5))
+                    .foregroundStyle(DashboardDS.text)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(9)
+                    .background(DashboardDS.surf2, in: RoundedRectangle(cornerRadius: 8))
+            }
+            .buttonStyle(.plain)
+            .help("Import from DT custom_configs.json")
+            .padding(.top, 8)
         }
     }
 

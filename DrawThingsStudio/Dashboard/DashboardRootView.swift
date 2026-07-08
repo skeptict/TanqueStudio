@@ -81,6 +81,9 @@ struct DashboardRootView: View {
             }
         }
         .animation(.easeOut(duration: 0.25), value: toast?.id)
+        .sheet(isPresented: $generateVM.showConfigPicker) {
+            ConfigPickerSheet(vm: generateVM)
+        }
         .onAppear {
             generateVM.loadAssets()
             if dtProjectsVM == nil { dtProjectsVM = DTProjectBrowserViewModel() }

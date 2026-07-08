@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftData
+import AppKit
 
 // MARK: - Focus Room: full-bleed canvas + filmstrip + accordion drawer
 
@@ -7,6 +8,7 @@ struct FocusRoomView: View {
     @Bindable var vm: GenerateViewModel
     let modelContext: ModelContext
     let onSelectImage: (TSImage) -> Void
+    @State private var imageToDelete: TSImage?
 
     var body: some View {
         HStack(spacing: 0) {
@@ -99,7 +101,8 @@ struct FocusRoomView: View {
                 .background(.black.opacity(0.15), in: RoundedRectangle(cornerRadius: 10))
             }
         }
-        .frame(width: 380, height: 380)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(32)
         .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(
             vm.isGenerating ? DashboardDS.brassDim : DashboardDS.border, lineWidth: 2))
         .shadow(color: vm.isGenerating ? DashboardDS.brass.opacity(0.18) : .black.opacity(0.15),
@@ -137,6 +140,14 @@ struct FocusRoomView: View {
                     }
                     .buttonStyle(.plain)
                     .help("\(image.source == .generated ? "Generated" : "Imported") \(image.createdAt.formatted(date: .abbreviated, time: .shortened))")
+                    .contextMenu {
+                        Button("Reveal in Finder") {
+                            NSWorkspace.shared.selectFile(image.filePath, inFileViewerRootedAtPath: "")
+                        }
+                        Button("Copy to Clipboard") { copyToClipboard(image) }
+                        Divider()
+                        Button("Delete", role: .destructive) { imageToDelete = image }
+                    }
                 }
             }
             .padding(.horizontal, 14)
@@ -146,5 +157,40 @@ struct FocusRoomView: View {
         .overlay(alignment: .top) {
             Rectangle().fill(DashboardDS.border).frame(height: 1)
         }
+        // Mirrors GalleryStripView's delete confirmation.
+        .confirmationDialog(
+            "Delete Image",
+            isPresented: Binding(
+                get: { imageToDelete != nil },
+                set: { if !$0 { imageToDelete = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("Delete", role: .destructive) {
+                if let img = imageToDelete { deleteImage(img) }
+                imageToDelete = nil
+            }
+            Button("Cancel", role: .cancel) { imageToDelete = nil }
+        } message: {
+            Text("This image will be removed from the gallery and deleted from disk.")
+        }
+    }
+
+    // Mirrors GalleryStripView's private copyToClipboard(_:)/deleteImage(_:).
+    private func copyToClipboard(_ tsImage: TSImage) {
+        let url = URL(fileURLWithPath: tsImage.filePath)
+        guard let data = try? ImageFolderAccess.readData(at: url),
+              let image = NSImage(data: data),
+              let tiff = image.tiffRepresentation else { return }
+        let pb = NSPasteboard.general
+        pb.clearContents()
+        pb.setData(tiff, forType: .tiff)
+    }
+
+    private func deleteImage(_ tsImage: TSImage) {
+        if tsImage.id == vm.selectedGalleryID { vm.selectedGalleryID = nil }
+        try? FileManager.default.removeItem(atPath: tsImage.filePath)
+        modelContext.delete(tsImage)
+        try? modelContext.save()
     }
 }

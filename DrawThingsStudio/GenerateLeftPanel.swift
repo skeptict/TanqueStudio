@@ -1094,7 +1094,7 @@ private struct ModelRowList: View {
 
 // MARK: - Config Picker Sheet
 
-private struct ConfigPickerSheet: View {
+struct ConfigPickerSheet: View {
     @Bindable var vm: GenerateViewModel
     @Environment(\.dismiss) private var dismiss
     @State private var configs: [DTCustomConfig] = []
