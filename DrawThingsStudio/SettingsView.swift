@@ -391,13 +391,7 @@ struct SettingsView: View {
         let secret = settings.dtSharedSecretOrNil
         connectionTestTask = Task { @MainActor in
             let client = DrawThingsGRPCClient(host: host, port: port, sharedSecret: secret)
-            let health = await client.checkConnectionHealth()
-            // Cancelling the task doesn't abort the in-flight RPC (grpc-swift isn't
-            // cancellation-aware mid-call), so checkConnectionHealth() still returns
-            // normally — usually as .failed once the socket unwinds. Without this
-            // guard a user-initiated Cancel would flash "Failed" instead of going
-            // quietly back to idle.
-            guard !Task.isCancelled else {
+            guard let health = await raceAgainstCancellation({ await client.checkConnectionHealth() }) else {
                 connectionStatus = .idle
                 return
             }
@@ -418,15 +412,49 @@ struct SettingsView: View {
         llmStatus = .testing
         let baseURL = settings.llmEffectiveBaseURL
         let enteredURL = settings.llmBaseURL
+        let provider = settings.llmProvider
+        let apiKey = settings.llmAPIKey
         llmTestTask = Task { @MainActor in
-            do {
-                let models = try await LLMService.fetchModels(baseURL: baseURL, provider: settings.llmProvider, apiKey: settings.llmAPIKey)
-                guard !Task.isCancelled else { llmStatus = .idle; return }
+            let outcome = await raceAgainstCancellation { () -> Result<[String], Error> in
+                do {
+                    return .success(try await LLMService.fetchModels(baseURL: baseURL, provider: provider, apiKey: apiKey))
+                } catch {
+                    return .failure(error)
+                }
+            }
+            guard let outcome else { llmStatus = .idle; return }
+            switch outcome {
+            case .success(let models):
                 llmStatus = .success(models.count)
                 settings.addLLMHost(enteredURL)
-            } catch {
-                llmStatus = Task.isCancelled ? .idle : .failure(error.localizedDescription)
+            case .failure(let error):
+                llmStatus = .failure(error.localizedDescription)
             }
+        }
+    }
+
+    /// Races `operation` against active cancellation polling instead of
+    /// trusting Swift's cooperative cancellation to propagate into it.
+    /// grpc-swift's calls (and URLSession-backed LLMService calls) don't
+    /// check `Task.isCancelled` internally, so `await`ing them directly and
+    /// checking cancellation only afterward — the first thing this
+    /// replaced — doesn't shorten the wait at all; Cancel just relabels
+    /// whatever result eventually arrives (up to the full ~15s timeout).
+    /// Polling every 100ms here means Cancel actually returns control to
+    /// the UI almost immediately, regardless of what the real network call
+    /// is still doing in the background.
+    private func raceAgainstCancellation<T: Sendable>(_ operation: @escaping @Sendable () async -> T) async -> T? {
+        await withTaskGroup(of: T?.self) { group in
+            group.addTask { await operation() }
+            group.addTask {
+                while !Task.isCancelled {
+                    try? await Task.sleep(for: .milliseconds(100))
+                }
+                return nil
+            }
+            let result = await group.next() ?? nil
+            group.cancelAll()
+            return result
         }
     }
 
