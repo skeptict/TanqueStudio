@@ -1,0 +1,569 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Concept 5 — Palette & Stage · Tanque Studio</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="shared-data.js"></script>
+<style>
+:root{
+  --bg:#07080a; --stage:#050607; --panel:#151619; --panel-hd:#1c1d20; --panel-2:#1f2023;
+  --border:rgba(201,160,88,.16); --border2:rgba(201,160,88,.32);
+  --brass:#c9a058; --brass-dim:rgba(201,160,88,.24); --brass-bg:rgba(201,160,88,.1);
+  --text:#e8e4dc; --muted:#6b655a; --muted2:#9c9384;
+  --green:#4caf7a; --red:#d05f5f; --orange:#e0843a;
+  --mono:'IBM Plex Mono',monospace; --sans:'Atkinson Hyperlegible',system-ui,sans-serif;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+html,body,#root{height:100%;overflow:hidden;background:var(--bg);}
+body{font-family:var(--sans);color:var(--text);}
+::-webkit-scrollbar{width:4px;height:4px;}
+::-webkit-scrollbar-thumb{background:var(--panel-2);border-radius:2px;}
+button{font-family:var(--mono);cursor:pointer;background:none;border:none;color:inherit;}
+input,textarea{font-family:var(--mono);color:var(--text);}
+textarea{resize:none;outline:none;}
+input:focus,textarea:focus{outline:none;}
+input[type=range]{-webkit-appearance:none;width:100%;height:3px;border-radius:2px;background:var(--panel-2);outline:none;cursor:pointer;}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:12px;height:12px;border-radius:50%;background:var(--brass);cursor:pointer;box-shadow:0 0 0 2px var(--brass-dim);}
+
+.app{position:fixed;inset:0;overflow:auto;}
+.stage{position:absolute;inset:0;top:32px;background:radial-gradient(ellipse at 50% 40%, rgba(201,160,88,.04), transparent 60%), var(--stage);}
+.dotgrid{position:absolute;inset:0;background-image:radial-gradient(rgba(255,255,255,.05) 1px, transparent 1px);background-size:26px 26px;pointer-events:none;}
+
+/* menu bar */
+.menubar{position:fixed;top:0;left:0;right:0;height:32px;background:var(--panel-hd);border-bottom:1px solid var(--border);
+  display:flex;align-items:center;padding:0 12px;gap:4px;z-index:200;}
+.menubar img{width:16px;height:16px;border-radius:4px;margin-right:6px;}
+.menubar .brand{font-family:var(--mono);font-size:11.5px;font-weight:600;letter-spacing:.03em;margin-right:14px;}
+.menu-item{padding:5px 10px;font-family:var(--mono);font-size:11.5px;color:var(--muted2);border-radius:5px;cursor:pointer;position:relative;}
+.menu-item:hover,.menu-item.open{background:rgba(201,160,88,.12);color:var(--brass);}
+.menu-dropdown{position:absolute;top:30px;left:0;min-width:210px;background:var(--panel);border:1px solid var(--border2);border-radius:9px;
+  box-shadow:0 20px 50px rgba(0,0,0,.5);padding:5px;z-index:210;}
+.menu-row{display:flex;align-items:center;gap:9px;padding:6px 9px;border-radius:6px;cursor:pointer;font-family:var(--mono);font-size:11.5px;color:var(--muted2);}
+.menu-row:hover{background:rgba(255,255,255,.05);}
+.menu-row .chk{width:12px;color:var(--brass);}
+.menu-row.active{color:var(--brass);}
+.menu-sep{height:1px;background:var(--border);margin:4px 6px;}
+.badge-labs{margin-left:auto;font-family:var(--mono);font-size:8px;font-weight:600;padding:1px 5px;border-radius:99;background:rgba(224,132,58,.18);color:var(--orange);}
+.menubar-right{margin-left:auto;display:flex;align-items:center;gap:8px;padding-right:6px;}
+.dot{width:6px;height:6px;border-radius:50%;}
+
+/* floating palette */
+.palette{position:absolute;width:264px;background:var(--panel);border:1px solid var(--border);border-radius:10px;
+  box-shadow:0 16px 40px rgba(0,0,0,.5);display:flex;flex-direction:column;overflow:hidden;z-index:20;}
+.palette.glow{animation:paletteGlow 1s ease-out;}
+@keyframes paletteGlow{0%{box-shadow:0 0 0 2px rgba(201,160,88,.7),0 16px 40px rgba(0,0,0,.5);}100%{box-shadow:0 16px 40px rgba(0,0,0,.5);}}
+.palette-hd{height:30px;background:var(--panel-hd);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 10px;
+  cursor:grab;flex-shrink:0;position:relative;}
+.palette-hd::before{content:'';position:absolute;top:0;left:8px;right:8px;height:1px;background:linear-gradient(90deg,transparent,var(--brass),transparent);opacity:.6;}
+.palette-hd .t{font-family:var(--mono);font-size:10px;letter-spacing:.09em;text-transform:uppercase;color:var(--muted2);flex:1;}
+.palette-x{width:16px;height:16px;border-radius:4px;display:flex;align-items:center;justify-content:center;color:var(--muted);}
+.palette-x:hover{background:rgba(255,255,255,.08);color:var(--text);}
+.palette-body{padding:12px;overflow-y:auto;max-height:420px;}
+
+.sect-label{font-family:var(--mono);font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin:10px 0 7px;}
+.sect-label:first-child{margin-top:0;}
+textarea.ta{width:100%;background:var(--panel-2);border:1px solid var(--border);border-radius:6px;padding:7px 9px;font-family:var(--sans);font-size:12px;line-height:1.5;margin-bottom:8px;}
+.chip-wrap{display:flex;flex-wrap:wrap;gap:5px;}
+.chip{padding:3px 9px;border-radius:99px;font-family:var(--mono);font-size:10px;color:var(--muted2);background:var(--panel-2);border:1px solid var(--border);cursor:pointer;}
+.chip.active{background:var(--brass-bg);color:var(--brass);border-color:var(--brass);}
+.field-row{display:flex;justify-content:space-between;margin-bottom:5px;}
+.field-row .k{font-family:var(--mono);font-size:11px;color:var(--muted2);}
+.field-row .v{font-family:var(--mono);font-size:11px;color:var(--brass);}
+input[type=range]{margin-bottom:10px;}
+.gen-btn{position:relative;width:100%;padding:8px;border-radius:7px;font-family:var(--mono);font-size:11.5px;font-weight:600;letter-spacing:.05em;
+  background:var(--panel-2);color:var(--brass);overflow:hidden;border:1px solid var(--border2);text-align:center;margin-top:4px;}
+.gen-btn .fill{position:absolute;inset:0;background:var(--brass);z-index:0;transition:width .1s linear;}
+.gen-btn span{position:relative;z-index:1;mix-blend-mode:difference;}
+
+.model-card{display:flex;align-items:center;gap:9px;padding:7px 8px;border-radius:7px;border:1px solid var(--border);cursor:pointer;margin-bottom:5px;}
+.model-card.sel{border-color:var(--brass);background:var(--brass-bg);}
+.model-swatch{width:26px;height:26px;border-radius:6px;flex-shrink:0;}
+.model-card .nm{font-family:var(--mono);font-size:11px;}
+.model-card .vr{font-family:var(--mono);font-size:9.5px;color:var(--muted);}
+.lora-row{display:flex;align-items:center;gap:7px;margin-bottom:9px;}
+.lora-row .nm{font-family:var(--mono);font-size:10.5px;color:var(--muted2);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.dropzone{border:1.5px dashed var(--border2);border-radius:8px;padding:16px 8px;text-align:center;color:var(--muted);font-family:var(--mono);font-size:10.5px;}
+.mood-strip{display:flex;gap:5px;margin-top:8px;}
+.mood-thumb{width:40px;height:40px;border-radius:5px;background:linear-gradient(135deg,var(--panel-2),var(--panel));border:1px solid var(--border);}
+.gallery-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:7px;}
+.gallery-cell{aspect-ratio:1;border-radius:7px;overflow:hidden;position:relative;cursor:pointer;border:2px solid transparent;background:linear-gradient(135deg,var(--panel-2),var(--panel));}
+.gallery-cell.sel{border-color:var(--brass);}
+.gallery-cell .lbl{position:absolute;bottom:0;left:0;right:0;text-align:center;font-family:var(--mono);font-size:8px;padding:2px 0;background:rgba(0,0,0,.55);}
+.tabbar{display:flex;border-bottom:1px solid var(--border);margin:-12px -12px 10px;}
+.tabbar button{flex:1;padding:8px 4px;font-family:var(--mono);font-size:10.5px;color:var(--muted2);border-bottom:2px solid transparent;}
+.tabbar button.active{color:var(--brass);border-color:var(--brass);font-weight:600;}
+.meta-row{display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--border);}
+.meta-row .k{font-family:var(--mono);font-size:10.5px;color:var(--muted);}
+.meta-row .v{font-family:var(--mono);font-size:10.5px;color:var(--text);}
+.action-card{padding:8px 9px;border-radius:7px;border:1px solid var(--border);margin-bottom:5px;cursor:pointer;}
+.action-card .t{font-family:var(--mono);font-size:11px;}
+.action-card .s{font-family:var(--sans);font-size:10px;color:var(--muted2);margin-top:2px;}
+
+/* canvas center piece */
+.canvas-center{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none;}
+.hud{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);background:var(--panel);border:1px solid var(--border2);border-radius:9px;
+  padding:8px 16px;font-family:var(--mono);font-size:11px;color:var(--muted2);display:flex;align-items:center;gap:10px;z-index:30;}
+
+/* stage pages (dtProjects/labs/settings) */
+.stage-page{position:absolute;inset:32px 0 0;overflow-y:auto;padding:40px 56px;}
+.page-title{font-family:var(--mono);font-size:18px;font-weight:600;margin-bottom:4px;}
+.page-sub{font-family:var(--mono);font-size:11.5px;color:var(--muted);margin-bottom:24px;}
+.proj-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:14px;max-width:960px;}
+.proj-card{padding:16px;border-radius:9px;background:var(--panel);border:1px solid var(--border);cursor:pointer;}
+.proj-card:hover{border-color:var(--border2);}
+.proj-card .icon{width:32px;height:32px;border-radius:7px;background:var(--brass-bg);color:var(--brass);display:flex;align-items:center;justify-content:center;margin-bottom:10px;}
+.proj-card .nm{font-family:var(--mono);font-size:12.5px;margin-bottom:6px;word-break:break-all;}
+.proj-card .meta{font-family:var(--mono);font-size:10.5px;color:var(--muted);}
+.pill-tabs{display:inline-flex;gap:2px;background:var(--panel);padding:4px;border-radius:9px;margin-bottom:20px;border:1px solid var(--border);}
+.pill-tabs button{padding:6px 14px;border-radius:6px;font-family:var(--mono);font-size:11px;color:var(--muted2);}
+.pill-tabs button.active{background:var(--brass);color:#07080a;font-weight:600;}
+.flow-track{display:flex;gap:12px;overflow-x:auto;max-width:960px;}
+.flow-card{width:170px;flex-shrink:0;padding:12px;border-radius:9px;background:var(--panel);border:1px solid var(--border);}
+.flow-card.active{border-color:var(--brass);background:var(--brass-bg);}
+.flow-card .kind{font-family:var(--mono);font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:8px;}
+.flow-card .title{font-family:var(--mono);font-size:12px;margin-bottom:10px;}
+.flow-status{font-family:var(--mono);font-size:9.5px;padding:2px 7px;border-radius:99;display:inline-block;}
+.flow-status.done{background:rgba(76,175,122,.15);color:var(--green);}
+.flow-status.active{background:var(--brass-bg);color:var(--brass);}
+.flow-status.pending{background:rgba(255,255,255,.05);color:var(--muted);}
+.settings-card{max-width:520px;background:var(--panel);border:1px solid var(--border);border-radius:9px;margin-bottom:16px;overflow:hidden;}
+.settings-card .hd{padding:9px 16px;border-bottom:1px solid var(--border);font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);}
+.settings-row{display:flex;justify-content:space-between;align-items:center;padding:9px 16px;border-bottom:1px solid var(--border);}
+.settings-row .k{font-family:var(--mono);font-size:12px;color:var(--muted2);}
+.settings-row input{background:var(--panel-2);border:1px solid var(--border);border-radius:5px;padding:4px 9px;font-size:11px;width:200px;text-align:right;}
+
+.toast{position:fixed;bottom:16px;right:20px;z-index:70;padding:10px 14px;display:flex;align-items:center;gap:10px;
+  background:var(--panel);border:1px solid var(--border2);border-radius:9px;box-shadow:0 10px 30px rgba(0,0,0,.5);animation:toastIn .25s ease-out;}
+@keyframes toastIn{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:translateY(0);}}
+.toast .thumb{width:32px;height:32px;border-radius:6px;background:linear-gradient(135deg,#c9a058,#8b6a35);flex-shrink:0;}
+.toast .t{font-family:var(--mono);font-size:11.5px;}
+.toast .s{font-family:var(--mono);font-size:10px;color:var(--muted2);}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useRef, useCallback, useEffect, useLayoutEffect } = React;
+const D = window.TD;
+
+function Icon({ name, size=14 }) {
+  const p = {
+    image: "M1 2h14v12H1zM4.5 6.5a1.5 1.5 0 100-3 1.5 1.5 0 000 3zM1 11l4-3 3 2.5 3-3.5 4 4",
+    folder:"M1 4a1 1 0 011-1h4l1.5 2H14a1 1 0 011 1v6a1 1 0 01-1 1H2a1 1 0 01-1-1V4z",
+    check: "M3 8l3.5 3.5L13 5",
+    x:     "M3 3l10 10M13 3L3 13",
+  };
+  return <svg width={size} height={size} viewBox="0 0 16 16" fill="none"><path d={p[name]||p.image} stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/></svg>;
+}
+
+/* draggable palette shell */
+function Palette({ id, title, pos, onDrag, onClose, glow, children, width, bodyMaxHeight }) {
+  const dragRef = useRef(null);
+  const onMouseDown = (e) => {
+    const startX = e.clientX, startY = e.clientY;
+    const orig = { ...pos };
+    dragRef.current = { startX, startY, orig };
+    const onMove = (ev) => {
+      const dx = ev.clientX - dragRef.current.startX;
+      const dy = ev.clientY - dragRef.current.startY;
+      onDrag(id, { x: dragRef.current.orig.x + dx, y: dragRef.current.orig.y + dy });
+    };
+    const onUp = () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  };
+  return (
+    <div className={"palette"+(glow?' glow':'')} style={{ left: pos.x, top: pos.y, width: width || 264 }}>
+      <div className="palette-hd" onMouseDown={onMouseDown}>
+        <span className="t">{title}</span>
+        <div className="palette-x" onClick={() => onClose(id)}><Icon name="x" size={10} /></div>
+      </div>
+      <div className="palette-body" style={bodyMaxHeight ? { maxHeight: bodyMaxHeight } : undefined}>{children}</div>
+    </div>
+  );
+}
+
+function PromptParamsPalette({ st, set, onGenerate }) {
+  return (
+    <React.Fragment>
+      <div className="sect-label">Prompt</div>
+      <textarea className="ta" rows={3} placeholder="Describe your image…" value={st.prompt} onChange={e=>set('prompt',e.target.value)} />
+      <textarea className="ta" rows={2} placeholder="Negative prompt…" value={st.negPrompt} onChange={e=>set('negPrompt',e.target.value)} />
+      <div className="sect-label">Aspect</div>
+      <div className="chip-wrap" style={{marginBottom:8}}>{D.aspects.map(a => <div key={a} className={"chip"+(st.aspect===a?' active':'')} onClick={()=>set('aspect',a)}>{a}</div>)}</div>
+      <div className="sect-label">Parameters</div>
+      <div className="field-row"><span className="k">Steps</span><span className="v">{st.steps}</span></div>
+      <input type="range" min={1} max={50} value={st.steps} onChange={e=>set('steps',+e.target.value)} />
+      <div className="field-row"><span className="k">CFG</span><span className="v">{st.cfg.toFixed(1)}</span></div>
+      <input type="range" min={1} max={15} step={.5} value={st.cfg} onChange={e=>set('cfg',+e.target.value)} />
+      <div className="field-row"><span className="k">Seed</span><span className="v">{st.seed}</span></div>
+      <input type="range" min={-1} max={99999} value={st.seed} onChange={e=>set('seed',+e.target.value)} />
+      <div className="gen-btn" onClick={onGenerate}>
+        <div className="fill" style={{ width: st.isGenerating ? `${st.progress}%` : '0%' }} />
+        <span>{st.isGenerating ? `${st.progress}%` : 'Generate'}</span>
+      </div>
+    </React.Fragment>
+  );
+}
+
+function ModelPalette({ st, set }) {
+  return (
+    <React.Fragment>
+      <div className="sect-label">Checkpoint</div>
+      {D.models.map(m => (
+        <div key={m.id} className={"model-card"+(st.model===m.id?' sel':'')} onClick={()=>set('model',m.id)}>
+          <div className="model-swatch" style={{background:`linear-gradient(135deg,${m.swatch[0]},${m.swatch[1]})`}} />
+          <div><div className="nm">{m.name}</div><div className="vr">{m.variant}</div></div>
+        </div>
+      ))}
+      <div className="sect-label">Sampler</div>
+      <div className="chip-wrap">{D.samplers.slice(0,3).map(s => <div key={s} className={"chip"+(st.sampler===s?' active':'')} onClick={()=>set('sampler',s)}>{s}</div>)}</div>
+    </React.Fragment>
+  );
+}
+
+function LoraPalette() {
+  return (
+    <React.Fragment>
+      {D.loras.map(l => (
+        <div key={l.id} className="lora-row">
+          <span className="nm">{l.name}</span>
+          <input type="range" min={0} max={1} step={.05} defaultValue={l.weight} style={{width:70,marginBottom:0}} />
+          <span style={{fontFamily:'var(--mono)',fontSize:10.5,color:'var(--brass)',width:30,textAlign:'right'}}>{l.weight.toFixed(2)}</span>
+        </div>
+      ))}
+      <button style={{width:'100%',border:'1px solid var(--border)',borderRadius:6,color:'var(--brass)',fontSize:10.5,padding:'6px 0'}}>+ add LoRA</button>
+    </React.Fragment>
+  );
+}
+
+function Img2ImgPalette() {
+  return (
+    <React.Fragment>
+      <div className="sect-label">img2img source</div>
+      <div className="dropzone"><Icon name="image" size={16}/><div style={{marginTop:5}}>drop image here</div></div>
+      <div className="sect-label">Moodboard</div>
+      <div className="mood-strip">{D.gallery.slice(0,4).map(g=><div key={g.id} className="mood-thumb"/>)}</div>
+    </React.Fragment>
+  );
+}
+
+function GalleryPalette({ selected, onSelect }) {
+  return (
+    <div className="gallery-grid">
+      {D.gallery.map(g => (
+        <div key={g.id} className={"gallery-cell"+(selected===g.id?' sel':'')} onClick={()=>onSelect(g.id)}>
+          <div className="lbl" style={{color:g.source==='generated'?'var(--green)':'var(--muted2)'}}>{g.label}</div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function InspectorPalette() {
+  const [tab, setTab] = useState('Metadata');
+  return (
+    <React.Fragment>
+      <div className="tabbar">{['Metadata','Assist','Actions'].map(t => <button key={t} className={tab===t?'active':''} onClick={()=>setTab(t)}>{t}</button>)}</div>
+      {tab==='Metadata' && D.metadata.map(([k,v]) => <div key={k} className="meta-row"><span className="k">{k}</span><span className="v">{v}</span></div>)}
+      {tab==='Assist' && (
+        <React.Fragment>
+          <div className="sect-label">LLM Operation</div>
+          <div className="model-card sel" style={{cursor:'default'}}><div className="nm">Enhance Prompt</div></div>
+          <button style={{width:'100%',background:'var(--brass)',color:'#07080a',borderRadius:6,padding:'7px 0',marginTop:8,fontWeight:600,fontSize:11}}>Run</button>
+        </React.Fragment>
+      )}
+      {tab==='Actions' && D.actions.map(a => <div key={a.label} className="action-card"><div className="t">{a.label}</div><div className="s">{a.sub}</div></div>)}
+    </React.Fragment>
+  );
+}
+
+// Palette titles (positions are computed responsively at mount time by computeLayout —
+// see below — so the default arrangement always fits the actual viewport, never a
+// hardcoded design-width assumption).
+const PALETTE_DEFS = {
+  promptParams: { title: 'Prompt & Params' },
+  model:        { title: 'Model' },
+  lora:         { title: 'LoRAs' },
+  img2img:      { title: 'img2img · Moodboard' },
+  gallery:      { title: 'Gallery' },
+  inspector:    { title: 'Inspector' },
+};
+
+// Stacks a column of palettes top-to-bottom, allocating each one's body height
+// proportionally to `weight` (with a `minBody` floor) so the whole column fits
+// within `colAvailH` regardless of actual viewport size.
+function stackColumn(items, x, y0, colAvailH, headerH, gap) {
+  const totalWeight = items.reduce((s,i) => s + i.weight, 0);
+  const totalGap = gap * (items.length - 1);
+  const usable = Math.max(items.length * 70, colAvailH - totalGap - items.length * headerH);
+  let y = y0;
+  const out = {};
+  items.forEach(it => {
+    const bodyH = Math.max(it.minBody, Math.round(usable * (it.weight / totalWeight)));
+    out[it.key] = { pos: { x, y }, bodyMaxHeight: bodyH };
+    y += headerH + bodyH + gap;
+  });
+  return out;
+}
+
+function computeLayout(vw, vh) {
+  const menubarH = 32, margin = 16, gap = 12, headerH = 30;
+  const y0 = menubarH + margin;
+  const availH = Math.max(320, vh - menubarH - margin * 2);
+  const leftW = 264, rightW = 280;
+
+  if (vw < 760) {
+    // Narrow viewport: single column, everything stacked (app is scrollable as a safety net).
+    return stackColumn([
+      { key:'promptParams', weight:3, minBody:110 },
+      { key:'model',        weight:2, minBody:100 },
+      { key:'lora',         weight:1, minBody:70 },
+      { key:'gallery',      weight:2, minBody:100 },
+      { key:'inspector',    weight:2, minBody:100 },
+    ], margin, y0, availH * 2.6, headerH, gap);
+  }
+
+  const rightX = Math.max(leftW + margin * 2, vw - rightW - margin);
+  const left = stackColumn([
+    { key:'promptParams', weight:3, minBody:120 },
+    { key:'model',        weight:2, minBody:100 },
+    { key:'lora',         weight:1, minBody:70 },
+  ], margin, y0, availH, headerH, gap);
+  const right = stackColumn([
+    { key:'gallery',   weight:1, minBody:110 },
+    { key:'inspector', weight:1, minBody:100 },
+  ], rightX, y0, availH, headerH, gap);
+  const img2imgX = Math.min(leftW + margin * 2, Math.max(leftW + margin, rightX - rightW - margin));
+
+  return { ...left, ...right, img2img: { pos: { x: img2imgX, y: y0 }, bodyMaxHeight: 200 } };
+}
+
+function MenuBar({ view, setView, visible, toggleVisible, connected }) {
+  const [openMenu, setOpenMenu] = useState(null);
+  return (
+    <div className="menubar" onClick={e => e.stopPropagation()}>
+      <img src="../assets/icon_128x128.png" />
+      <span className="brand">TANQUE STUDIO</span>
+      <div className={"menu-item"+(openMenu==='go'?' open':'')} onClick={() => setOpenMenu(m => m==='go'?null:'go')}>
+        Go
+        {openMenu==='go' && (
+          <div className="menu-dropdown">
+            {D.navItems.map(item => (
+              <div key={item.id} className={"menu-row"+((view===item.id||(view==='labs'&&item.labs))?' active':'')}
+                onClick={() => { setView(item.labs?'labs':item.id); setOpenMenu(null); }}>
+                <span className="chk">{(view===item.id||(view==='labs'&&item.labs)) ? '●' : ''}</span>
+                <span>{item.label}</span>
+                {item.labs && <span className="badge-labs">Labs</span>}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+      <div className={"menu-item"+(openMenu==='window'?' open':'')} onClick={() => setOpenMenu(m => m==='window'?null:'window')}>
+        Window
+        {openMenu==='window' && (
+          <div className="menu-dropdown">
+            {Object.entries(PALETTE_DEFS).map(([key, def]) => (
+              <div key={key} className="menu-row" onClick={() => toggleVisible(key)}>
+                <span className="chk">{visible[key] ? '✓' : ''}</span>
+                <span>{def.title}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+      <div className="menubar-right">
+        <span className="dot" style={{background:connected?'var(--green)':'var(--muted)'}} />
+        <span style={{fontFamily:'var(--mono)',fontSize:10,color:connected?'var(--green)':'var(--muted)'}}>{connected?'connected':'offline'}</span>
+      </div>
+    </div>
+  );
+}
+
+function DTProjectsPage() {
+  return (
+    <div className="stage-page">
+      <div className="page-title">DT Project Browser</div>
+      <div className="page-sub">Draw Things .sqlite3 projects</div>
+      <div className="proj-grid">
+        {D.dtProjects.map(p => (
+          <div key={p.id} className="proj-card">
+            <div className="icon"><Icon name="folder" size={15}/></div>
+            <div className="nm">{p.name}</div>
+            <div className="meta">{p.images} images · {p.updated}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function LabsPage() {
+  const [sub, setSub] = useState('storyFlow');
+  return (
+    <div className="stage-page">
+      <div className="page-title">Labs</div>
+      <div className="page-sub">Experimental workflows</div>
+      <div className="pill-tabs">
+        {['storyFlow','storyStudio','workflowBuilder'].map(s => (
+          <button key={s} className={sub===s?'active':''} onClick={()=>setSub(s)}>{s==='storyFlow'?'StoryFlow':s==='storyStudio'?'Story Studio':'Workflow Builder'}</button>
+        ))}
+      </div>
+      {sub==='storyFlow' ? (
+        <div className="flow-track">
+          {D.storyFlowSteps.map(s => (
+            <div key={s.id} className={"flow-card"+(s.status==='active'?' active':'')}>
+              <div className="kind">{s.kind}</div><div className="title">{s.title}</div>
+              <span className={"flow-status "+s.status}>{s.status}</span>
+            </div>
+          ))}
+        </div>
+      ) : <div style={{color:'var(--muted)',fontFamily:'var(--mono)',fontSize:12}}>Coming soon</div>}
+    </div>
+  );
+}
+
+function SettingsPage() {
+  const sections = [
+    { title:'DRAW THINGS CONNECTION', rows:[['Host','localhost'],['Port','7859']] },
+    { title:'LLM ASSIST', rows:[['Provider','Ollama'],['Model','llama3.2']] },
+  ];
+  return (
+    <div className="stage-page">
+      <div className="page-title">Settings</div><div className="page-sub">&nbsp;</div>
+      {sections.map(s => (
+        <div key={s.title} className="settings-card">
+          <div className="hd">{s.title}</div>
+          {s.rows.map(([k,v]) => <div key={k} className="settings-row"><span className="k">{k}</span><input defaultValue={v} /></div>)}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function App() {
+  const [view, setView] = useState('generate');
+
+  // Computed FRESH on every render, synchronously in the render body — not in a
+  // useState initializer, not behind useEffect/useLayoutEffect, not via any timer,
+  // ResizeObserver, or 'resize' listener. Six rounds of async/deferred-measurement
+  // approaches all failed silently in this sandboxed preview (timers not firing,
+  // ResizeObserver never invoking, interval effectively dead post-mount) even though
+  // window.innerWidth/innerHeight read correctly and stably the whole time. A plain
+  // synchronous read is proven correct here, and since the component re-renders
+  // constantly anyway (drag, toggle, generate-progress ticks), it self-corrects
+  // within a render or two even if the very first paint raced a transient size.
+  const layout = computeLayout(window.innerWidth, window.innerHeight);
+
+  // The synchronous read above is correct AS OF WHENEVER IT RUNS — but nothing forces
+  // App to render a second time, so if the very first render raced a transient
+  // pre-settle width, that wrong result paints and sticks forever. Proven empirically
+  // that a re-render at any point after settle self-corrects (computeLayout and its
+  // call site are both correct). Proven ALSO (via direct eval_js control test) that
+  // requestAnimationFrame callbacks NEVER fire in this sandboxed preview iframe (0
+  // invocations after 1000ms), while a plain setTimeout fires reliably within 300ms.
+  // So: force repeated re-renders via setInterval (a timer, proven to actually run
+  // here) rather than rAF (proven dead here) or resize/ResizeObserver (proven dead
+  // in earlier rounds) — for a few seconds after mount, then stop.
+  const [, forceTick] = useState(0);
+  useEffect(() => {
+    let count = 0;
+    const id = setInterval(() => {
+      count++;
+      forceTick(t => t + 1);
+      if (count >= 30) clearInterval(id); // ~3s at 100ms
+    }, 100);
+    return () => clearInterval(id);
+  }, []);
+
+  // `positionOverrides` holds ONLY palettes the user has manually dragged — everything
+  // else falls back to `layout[key].pos` computed above, every render.
+  const [positionOverrides, setPositionOverrides] = useState({});
+
+  const [visible, setVisible] = useState({ promptParams:true, model:true, lora:true, img2img:false, gallery:true, inspector:true });
+  const [gallerySel, setGallerySel] = useState(1);
+  const [glowKey, setGlowKey] = useState(null);
+  const [toast, setToast] = useState(null);
+  const [st, setSt] = useState({ prompt:'', negPrompt:'', model:'flux1-dev-q4', sampler:'DPM++ 2M', aspect:'1:1', steps:20, cfg:7.5, seed:42, isGenerating:false, progress:0 });
+  const timerRef = useRef(null);
+  const set = (k,v) => setSt(s => ({...s,[k]:v}));
+
+  const posFor = (key) => positionOverrides[key] || layout[key].pos;
+  const onDrag = (id, pos) => setPositionOverrides(p => ({ ...p, [id]: pos }));
+  const toggleVisible = (id) => setVisible(v => ({ ...v, [id]: !v[id] }));
+  const closePalette = (id) => setVisible(v => ({ ...v, [id]: false }));
+
+  const onGenerate = useCallback(() => {
+    if (st.isGenerating) return;
+    setSt(s => ({...s, isGenerating:true, progress:0}));
+    timerRef.current = setInterval(() => {
+      setSt(s => {
+        const next = Math.min(s.progress+6,100);
+        if (next>=100) {
+          clearInterval(timerRef.current);
+          setToast({ t:'Generated in 3.0s', s:'1024×1024 · flux.1 [dev]' });
+          setGlowKey('gallery');
+          setTimeout(()=>setToast(null),3000);
+          setTimeout(()=>setGlowKey(null),1000);
+          return {...s, progress:100, isGenerating:false};
+        }
+        return {...s, progress:next};
+      });
+    }, 90);
+  }, [st.isGenerating]);
+
+
+  return (
+    <div className="app">
+      <MenuBar view={view} setView={setView} visible={visible} toggleVisible={toggleVisible} connected={true} />
+      <div className="stage"><div className="dotgrid" /></div>
+
+      {view === 'generate' && (
+        <React.Fragment>
+          <div className="canvas-center">
+            {(st.isGenerating || st.progress > 0) && (
+              <div style={{ width:380, height:380, borderRadius:14, background:'linear-gradient(135deg,var(--panel-2),#050607)',
+                border:`2px solid ${st.isGenerating?'var(--border2)':'var(--border)'}`, position:'relative',
+                boxShadow: st.isGenerating ? '0 0 60px rgba(201,160,88,.14)' : 'none' }}>
+                {st.isGenerating && (
+                  <div style={{ position:'absolute', inset:0, display:'flex', alignItems:'center', justifyContent:'center' }}>
+                    <div style={{ width:160, height:3, background:'var(--panel-2)', borderRadius:2, overflow:'hidden' }}>
+                      <div style={{ height:'100%', width:`${st.progress}%`, background:'var(--brass)', transition:'width .1s linear' }} />
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+          {visible.promptParams && <Palette id="promptParams" title="Prompt & Params" pos={posFor('promptParams')} onDrag={onDrag} onClose={closePalette} bodyMaxHeight={layout.promptParams.bodyMaxHeight}>
+            <PromptParamsPalette st={st} set={set} onGenerate={onGenerate} /></Palette>}
+          {visible.model && <Palette id="model" title="Model" pos={posFor('model')} onDrag={onDrag} onClose={closePalette} bodyMaxHeight={layout.model.bodyMaxHeight}>
+            <ModelPalette st={st} set={set} /></Palette>}
+          {visible.lora && <Palette id="lora" title="LoRAs" pos={posFor('lora')} onDrag={onDrag} onClose={closePalette} bodyMaxHeight={layout.lora.bodyMaxHeight}>
+            <LoraPalette /></Palette>}
+          {visible.img2img && <Palette id="img2img" title="img2img · Moodboard" pos={posFor('img2img')} onDrag={onDrag} onClose={closePalette} bodyMaxHeight={layout.img2img.bodyMaxHeight}>
+            <Img2ImgPalette /></Palette>}
+          {visible.gallery && <Palette id="gallery" title="Gallery" pos={posFor('gallery')} onDrag={onDrag} onClose={closePalette} glow={glowKey==='gallery'} bodyMaxHeight={layout.gallery.bodyMaxHeight}>
+            <GalleryPalette selected={gallerySel} onSelect={setGallerySel} /></Palette>}
+          {visible.inspector && <Palette id="inspector" title="Inspector" pos={posFor('inspector')} onDrag={onDrag} onClose={closePalette} width={280} bodyMaxHeight={layout.inspector.bodyMaxHeight}>
+            <InspectorPalette /></Palette>}
+        </React.Fragment>
+      )}
+      {view === 'dtProjects' && <DTProjectsPage />}
+      {view === 'labs' && <LabsPage />}
+      {view === 'settings' && <SettingsPage />}
+
+      {toast && <div className="toast"><div className="thumb" /><div><div className="t">{toast.t}</div><div className="s">{toast.s}</div></div></div>}
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>
