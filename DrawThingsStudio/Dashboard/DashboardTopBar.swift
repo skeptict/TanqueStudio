@@ -11,6 +11,7 @@ struct DashboardCrumb: Identifiable {
 // MARK: - Top bar (wordmark, breadcrumb, search, connection dot)
 
 struct DashboardTopBar: View {
+    let mode: DashboardMode
     let crumb: [DashboardCrumb]
     let isConnected: Bool
     let onNavigate: (DashboardMode) -> Void
@@ -19,23 +20,31 @@ struct DashboardTopBar: View {
 
     var body: some View {
         HStack(spacing: 14) {
-            HStack(spacing: 9) {
-                Image(nsImage: NSApp.applicationIconImage)
-                    .resizable()
-                    .frame(width: 24, height: 24)
-                    .clipShape(RoundedRectangle(cornerRadius: 6))
-                HStack(spacing: 4) {
-                    Text("TANQUE")
-                        .font(TanqueDS.Font.monoSemiBold(13))
-                        .foregroundStyle(DashboardDS.text)
-                    Text("STUDIO")
-                        .font(TanqueDS.Font.mono(10))
-                        .tracking(0.5)
-                        .foregroundStyle(DashboardDS.muted)
+            Button { onNavigate(.dashboard) } label: {
+                HStack(spacing: 9) {
+                    Image(nsImage: NSApp.applicationIconImage)
+                        .resizable()
+                        .frame(width: 24, height: 24)
+                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                    HStack(spacing: 4) {
+                        Text("TANQUE")
+                            .font(TanqueDS.Font.monoSemiBold(13))
+                            .foregroundStyle(DashboardDS.text)
+                        Text("STUDIO")
+                            .font(TanqueDS.Font.mono(10))
+                            .tracking(0.5)
+                            .foregroundStyle(DashboardDS.muted)
+                    }
                 }
             }
+            .buttonStyle(.plain)
+            .help("Go to Dashboard")
 
             breadcrumbView
+
+            Rectangle().fill(DashboardDS.border).frame(width: 1, height: 16)
+
+            persistentNavView
 
             Spacer()
 
@@ -80,6 +89,30 @@ struct DashboardTopBar: View {
                 }
             }
         }
+    }
+
+    // Persistent nav — reachable from every mode (unlike the breadcrumb, which
+    // only shows the current drill-down path). Fixes the fork-exploration gap
+    // where Focus Room / Labs / Settings had no way back to Project Browser
+    // without returning to the Dashboard first.
+    private var persistentNavView: some View {
+        HStack(spacing: 18) {
+            navButton("Project Browser", target: .projects)
+            navButton("Labs", target: .labs, badge: true)
+            navButton("Settings", target: .settings)
+        }
+    }
+
+    private func navButton(_ label: String, target: DashboardMode, badge: Bool = false) -> some View {
+        Button { onNavigate(target) } label: {
+            HStack(spacing: 5) {
+                Text(label)
+                if badge { DashboardLabsBadge() }
+            }
+        }
+        .buttonStyle(.plain)
+        .font(TanqueDS.Font.mono(12))
+        .foregroundStyle(mode == target ? DashboardDS.brass : DashboardDS.muted2)
     }
 
     private var searchField: some View {

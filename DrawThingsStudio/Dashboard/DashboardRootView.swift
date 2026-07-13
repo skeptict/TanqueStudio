@@ -66,7 +66,7 @@ struct DashboardRootView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            DashboardTopBar(crumb: breadcrumb, isConnected: generateVM.lastConnectionSucceeded, onNavigate: { mode = $0 })
+            DashboardTopBar(mode: mode, crumb: breadcrumb, isConnected: generateVM.lastConnectionSucceeded, onNavigate: { mode = $0 })
             ZStack {
                 DashboardDS.bg.ignoresSafeArea()
                 content
