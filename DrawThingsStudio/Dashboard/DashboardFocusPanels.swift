@@ -1,7 +1,6 @@
 import SwiftUI
 import SwiftData
 import AppKit
-import UniformTypeIdentifiers
 
 // MARK: - Accordion header style shared by every drawer section
 
@@ -22,6 +21,7 @@ struct FocusRoomDrawer: View {
     let modelContext: ModelContext
 
     @State private var promptExpanded = true
+    @State private var assistExpanded = false
     @State private var modelExpanded = false
     @State private var paramsExpanded = false
     @State private var lorasExpanded = false
@@ -33,11 +33,14 @@ struct FocusRoomDrawer: View {
             ScrollView {
                 VStack(spacing: 0) {
                     section("Prompt", isExpanded: $promptExpanded) { PromptSection(vm: vm) }
+                    section("Assist", isExpanded: $assistExpanded) {
+                        AssistTabView(vm: vm, canvasScale: 1, canvasOffset: .zero, canvasSize: .zero)
+                    }
                     section("Model", isExpanded: $modelExpanded) { ModelSection(vm: vm) }
                     section("Parameters", isExpanded: $paramsExpanded) { ParametersSection(vm: vm) }
                     section("LoRAs", isExpanded: $lorasExpanded) { LoRAsSection(vm: vm) }
                     section("img2img & Moodboard", isExpanded: $img2imgExpanded) { Img2ImgMoodboardSection(vm: vm) }
-                    section("Actions", isExpanded: $actionsExpanded) { ActionsSection(vm: vm) }
+                    section("Actions", isExpanded: $actionsExpanded) { ActionsSection(vm: vm, modelContext: modelContext) }
                 }
             }
             generateButton
@@ -47,6 +50,14 @@ struct FocusRoomDrawer: View {
         .background(DashboardDS.surf1)
         .overlay(alignment: .leading) {
             Rectangle().fill(DashboardDS.border).frame(width: 1)
+        }
+        // The ✨ button in PromptSection calls vm.requestLLMTrigger(), which only
+        // flips vm.pendingLLMTrigger — it doesn't know this fork uses an accordion
+        // instead of a tabbed inspector, so it can't open anything itself. Expand
+        // the Assist section on its behalf; AssistTabView's own onAppear/onChange
+        // (unchanged from GenerateRightPanel) picks up the pending trigger from there.
+        .onChange(of: vm.pendingLLMTrigger) { _, pending in
+            if pending { assistExpanded = true }
         }
     }
 
@@ -107,6 +118,17 @@ struct PromptSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Spacer()
+                Button { vm.requestLLMTrigger() } label: {
+                    Label("Assist", systemImage: "sparkles")
+                        .font(TanqueDS.Font.mono(10.5))
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(DashboardDS.brass)
+                .help("Expand or enhance this prompt with the configured LLM (see the Assist section below).")
+            }
+
             TextField("Describe your image\u{2026}", text: $vm.prompt, axis: .vertical)
                 .textFieldStyle(.plain)
                 .lineLimit(2...5)
@@ -194,6 +216,13 @@ struct ParametersSection: View {
             fieldRow("Seed", "\(vm.config.seed)")
             Slider(value: Binding(get: { Double(vm.config.seed) }, set: { vm.config.seed = Int($0) }), in: -1...99_999, step: 1)
                 .tint(DashboardDS.brass)
+
+            Toggle("Randomize each run", isOn: $vm.randomizeSeed)
+                .font(TanqueDS.Font.mono(11.5))
+                .foregroundStyle(DashboardDS.text)
+                .tint(DashboardDS.brass)
+                .help("Roll a fresh seed automatically before every generation.")
+                .padding(.top, 6)
 
             Button {
                 vm.showConfigPicker = true
@@ -292,9 +321,11 @@ struct Img2ImgMoodboardSection: View {
                                   style: StrokeStyle(lineWidth: isDropTargeted ? 2 : 1.5, dash: [4]))
                     .frame(height: 70)
                     .overlay(Text("drop image here").font(TanqueDS.Font.mono(11)).foregroundStyle(DashboardDS.muted))
-                    .onDrop(of: [.fileURL, .image], isTargeted: $isDropTargeted) { providers in
-                        loadDropped(providers) { image in vm.sourceImage = image }
-                    }
+                    .dropDestination(for: URL.self) { urls, _ in
+                        guard let url = urls.first, let image = NSImage(contentsOf: url) else { return false }
+                        vm.sourceImage = image
+                        return true
+                    } isTargeted: { isDropTargeted = $0 }
             }
             HStack(spacing: 10) {
                 Button("Choose\u{2026}") { chooseSourceImage() }
@@ -308,28 +339,59 @@ struct Img2ImgMoodboardSection: View {
                 HStack {
                     Text("Strength").font(TanqueDS.Font.mono(11.5)).foregroundStyle(DashboardDS.muted2)
                     Spacer()
+                    Text(String(format: "%.2f", vm.config.strength))
+                        .font(TanqueDS.Font.mono(11.5)).foregroundStyle(DashboardDS.brass)
                 }
                 Slider(value: $vm.config.strength, in: 0...1, step: 0.05).tint(DashboardDS.brass)
             }
 
             Text("MOODBOARD").font(TanqueDS.Font.mono(10)).tracking(1.0).foregroundStyle(DashboardDS.muted).padding(.top, 4)
-            HStack(spacing: 6) {
+            VStack(spacing: 8) {
                 ForEach(vm.moodboardEntries) { entry in
-                    ZStack(alignment: .topTrailing) {
-                        Image(nsImage: entry.image).resizable().aspectRatio(contentMode: .fill)
-                            .frame(width: 46, height: 46).clipShape(RoundedRectangle(cornerRadius: 6)).clipped()
-                        Button { vm.removeMoodboardEntry(id: entry.id) } label: {
-                            Image(systemName: "xmark.circle.fill").foregroundStyle(.white, .black.opacity(0.6))
+                    HStack(spacing: 10) {
+                        ZStack(alignment: .topTrailing) {
+                            Image(nsImage: entry.image).resizable().aspectRatio(contentMode: .fill)
+                                .frame(width: 46, height: 46).clipShape(RoundedRectangle(cornerRadius: 6)).clipped()
+                            Button { vm.removeMoodboardEntry(id: entry.id) } label: {
+                                Image(systemName: "xmark.circle.fill").foregroundStyle(.white, .black.opacity(0.6))
+                            }
+                            .buttonStyle(.plain)
                         }
-                        .buttonStyle(.plain)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Weight").font(TanqueDS.Font.mono(10)).foregroundStyle(DashboardDS.muted)
+                            HStack(spacing: 6) {
+                                Slider(
+                                    value: Binding(
+                                        get: { Double(entry.weight) },
+                                        set: { newVal in
+                                            if let idx = vm.moodboardEntries.firstIndex(where: { $0.id == entry.id }) {
+                                                vm.moodboardEntries[idx].weight = Float(newVal)
+                                            }
+                                        }
+                                    ),
+                                    in: 0...1, step: 0.05
+                                )
+                                .tint(DashboardDS.brass)
+                                Text(String(format: "%.2f", entry.weight))
+                                    .font(TanqueDS.Font.mono(11)).foregroundStyle(DashboardDS.muted2)
+                                    .frame(width: 30, alignment: .trailing)
+                            }
+                        }
                     }
                 }
                 RoundedRectangle(cornerRadius: 6)
                     .strokeBorder(DashboardDS.border2, style: StrokeStyle(lineWidth: 1, dash: [4]))
-                    .frame(width: 46, height: 46)
-                    .overlay(Image(systemName: "plus").font(.system(size: 11)).foregroundStyle(DashboardDS.muted))
-                    .onDrop(of: [.fileURL, .image], isTargeted: nil) { providers in
-                        loadDropped(providers) { image in vm.addToMoodboard(image) }
+                    .frame(height: 40)
+                    .overlay(Label("Add reference", systemImage: "photo.stack")
+                        .font(TanqueDS.Font.mono(11)).foregroundStyle(DashboardDS.muted))
+                    .dropDestination(for: URL.self) { urls, _ in
+                        var added = false
+                        for url in urls {
+                            guard let image = NSImage(contentsOf: url) else { continue }
+                            vm.addToMoodboard(image)
+                            added = true
+                        }
+                        return added
                     }
             }
         }
@@ -345,32 +407,31 @@ struct Img2ImgMoodboardSection: View {
               let data = try? Data(contentsOf: url), let image = NSImage(data: data) else { return }
         vm.sourceImage = image
     }
-
-    @discardableResult
-    private func loadDropped(_ providers: [NSItemProvider], apply: @escaping (NSImage) -> Void) -> Bool {
-        guard let provider = providers.first,
-              provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) else { return false }
-        provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier, options: nil) { item, _ in
-            var url: URL?
-            if let itemURL = item as? URL { url = itemURL }
-            else if let data = item as? Data { url = URL(dataRepresentation: data, relativeTo: nil) }
-            guard let url, let data = try? Data(contentsOf: url), let image = NSImage(data: data) else { return }
-            Task { @MainActor in apply(image) }
-        }
-        return true
-    }
 }
 
 // MARK: - Actions
 
 struct ActionsSection: View {
     @Bindable var vm: GenerateViewModel
+    let modelContext: ModelContext
     @State private var flashApplied = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Button("Paste Config from DT", action: pasteConfigFromDT)
-                .buttonStyle(DashboardGhostButtonStyle())
+            let autoSave = AppSettings.shared.autoSaveGenerated
+            let isImported = vm.currentImageSource == .imported
+
+            actionButton(autoSave && !isImported ? "Auto-saved" : "Save Image",
+                         enabled: vm.generatedImage != nil && (!autoSave || isImported)) {
+                vm.saveCurrentImage(in: modelContext, source: vm.currentImageSource)
+            }
+            if let msg = vm.savedMessage {
+                Text(msg).font(TanqueDS.Font.mono(9.5)).foregroundStyle(DashboardDS.green).transition(.opacity)
+            }
+
+            actionButton("Copy Image", enabled: vm.generatedImage != nil, action: copyImage)
+            actionButton("Copy Config for DT", enabled: true, action: copyConfigToDT)
+            actionButton("Paste Config from DT", enabled: true, action: pasteConfigFromDT)
             if flashApplied {
                 HStack(spacing: 4) {
                     Image(systemName: "checkmark").font(.system(size: 9))
@@ -380,11 +441,69 @@ struct ActionsSection: View {
                 .foregroundStyle(DashboardDS.green)
                 .transition(.opacity)
             }
+
+            Rectangle().fill(DashboardDS.border2).frame(height: 1).padding(.vertical, 2)
+
+            Text("SEND TO GENERATE").font(TanqueDS.Font.mono(10)).tracking(1.0).foregroundStyle(DashboardDS.muted)
+            let hasMeta = vm.currentMetadata != nil
+            actionButton("Send All", enabled: hasMeta, action: performSendAll)
+            actionButton("Send Prompt", enabled: hasMeta, action: performSendPrompt)
+            actionButton("Send Config", enabled: hasMeta, action: performSendConfig)
+            actionButton("Send to img2img", enabled: vm.generatedImage != nil) {
+                vm.sourceImage = vm.generatedImage
+            }
+            actionButton("Add to Moodboard", enabled: vm.generatedImage != nil) {
+                if let img = vm.generatedImage { vm.addToMoodboard(img) }
+            }
+
+            if vm.isSeriesActive {
+                Rectangle().fill(DashboardDS.border2).frame(height: 1).padding(.vertical, 2)
+                Text("VIDEO SERIES \u{2014} \(vm.seriesFrames.count) FRAMES")
+                    .font(TanqueDS.Font.mono(10)).tracking(1.0).foregroundStyle(DashboardDS.muted)
+                actionButton("Export Frames\u{2026}", enabled: !vm.isExportingSeries) {
+                    vm.exportSeriesFrames(vm.seriesFrames)
+                }
+                actionButton("Export Video\u{2026}", enabled: !vm.isExportingSeries) {
+                    vm.exportSeriesVideo(vm.seriesFrames)
+                }
+                if vm.isExportingSeries {
+                    actionButton("Cancel Export", enabled: true, action: vm.cancelSeriesExport)
+                }
+            }
         }
     }
 
-    // Mirrors GenerateRightPanel.pasteConfigFromDT() — same real DT-clipboard
-    // merge, not a fake action.
+    private func actionButton(_ title: String, enabled: Bool, action: @escaping () -> Void) -> some View {
+        Button(title, action: action)
+            .buttonStyle(DashboardGhostButtonStyle())
+            .disabled(!enabled)
+            .opacity(enabled ? 1 : 0.45)
+    }
+
+    private func copyImage() {
+        guard let img = vm.generatedImage, let data = img.tiffRepresentation else { return }
+        let pb = NSPasteboard.general
+        pb.clearContents()
+        pb.setData(data, forType: .tiff)
+    }
+
+    // Mirrors GenerateRightPanel.copyConfigToDT()/pasteConfigFromDT() — same
+    // real DT-clipboard exchange, not a fake action.
+    private func copyConfigToDT() {
+        guard let json = DTConfigExporter.encodeDTClipboard(config: vm.config) else {
+            vm.transientWarning = "Copy failed: could not encode config"
+            return
+        }
+        let pb = NSPasteboard.general
+        pb.clearContents()
+        pb.setString(json, forType: .string)
+        withAnimation { flashApplied = true }
+        Task {
+            try? await Task.sleep(for: .seconds(1.4))
+            withAnimation { flashApplied = false }
+        }
+    }
+
     private func pasteConfigFromDT() {
         guard let json = NSPasteboard.general.string(forType: .string), !json.isEmpty else {
             vm.transientWarning = "Nothing on clipboard"
@@ -404,5 +523,45 @@ struct ActionsSection: View {
         } else {
             vm.transientWarning = "Clipboard doesn't look like a DT config"
         }
+    }
+
+    // Mirrors GenerateRightPanel's Send-to-Generate helpers. Dashboard's canvas
+    // isn't zoomable (no canvasScale/offset state), so unlike the real panel
+    // there's no crop step — vm.generatedImage is used as-is.
+    @discardableResult
+    private func applyConfigFields(from meta: PNGMetadata) -> [String] {
+        vm.applyMetadataToConfig(meta)
+        if !meta.loras.isEmpty {
+            vm.config.loras = meta.loras.map {
+                DrawThingsGenerationConfig.LoRAConfig(file: $0.file, weight: $0.weight, mode: $0.mode)
+            }
+        }
+        var missing: [String] = []
+        if meta.model == nil || (meta.model ?? "").isEmpty { missing.append("model") }
+        return missing
+    }
+
+    private func performSendAll() {
+        guard let meta = vm.currentMetadata else { vm.transientWarning = "No metadata"; return }
+        var missing: [String] = []
+        if let p = meta.prompt, !p.isEmpty { vm.prompt = p } else { missing.append("prompt") }
+        if let n = meta.negativePrompt, !n.isEmpty { vm.negativePrompt = n }
+        missing += applyConfigFields(from: meta)
+        vm.sourceImage = vm.generatedImage
+        if !missing.isEmpty { vm.transientWarning = "Sent (missing: \(missing.joined(separator: ", ")))" }
+    }
+
+    private func performSendPrompt() {
+        guard let meta = vm.currentMetadata else { vm.transientWarning = "No metadata"; return }
+        guard let p = meta.prompt, !p.isEmpty else { vm.transientWarning = "No prompt in metadata"; return }
+        vm.prompt = p
+        if let n = meta.negativePrompt, !n.isEmpty { vm.negativePrompt = n }
+    }
+
+    private func performSendConfig() {
+        guard let meta = vm.currentMetadata else { vm.transientWarning = "No metadata"; return }
+        let missing = applyConfigFields(from: meta)
+        vm.sourceImage = vm.generatedImage
+        if !missing.isEmpty { vm.transientWarning = "Config sent (missing: \(missing.joined(separator: ", ")))" }
     }
 }

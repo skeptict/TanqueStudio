@@ -379,7 +379,7 @@ private struct MetadataRow: View {
 
 // MARK: - Assist Tab
 
-private struct AssistTabView: View {
+struct AssistTabView: View {
     @Bindable var vm: GenerateViewModel
     @Environment(\.modelContext) private var modelContext
     let canvasScale: CGFloat

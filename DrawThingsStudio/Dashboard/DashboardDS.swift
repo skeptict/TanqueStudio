@@ -49,6 +49,16 @@ extension View {
     func dashboardCard(padding: CGFloat = 20) -> some View {
         modifier(DashboardCard(padding: padding))
     }
+
+    /// Lighter-weight surface for floating chrome (edit-mode toolbars, control
+    /// bars) that sits above the canvas rather than as a full section — same
+    /// visual language as dashboardCard but no fixed padding baked in.
+    func dashboardSurface(cornerRadius: CGFloat) -> some View {
+        self
+            .background(DashboardDS.surf1.opacity(0.98), in: RoundedRectangle(cornerRadius: cornerRadius))
+            .overlay(RoundedRectangle(cornerRadius: cornerRadius).strokeBorder(DashboardDS.border2, lineWidth: 1))
+            .shadow(color: .black.opacity(0.1), radius: 8, y: 3)
+    }
 }
 
 // MARK: - Shared small pieces

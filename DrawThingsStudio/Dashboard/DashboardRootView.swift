@@ -93,6 +93,16 @@ struct DashboardRootView: View {
             guard generateVM.errorMessage == nil, generateVM.generatedImage != nil else { return }
             showGeneratedToast()
         }
+        .onChange(of: generateVM.transientWarning) { _, warning in
+            if let warning {
+                toast = DashboardToast(title: warning, subtitle: "")
+                generateVM.transientWarning = nil
+                Task {
+                    try? await Task.sleep(for: .seconds(3.2))
+                    withAnimation { toast = nil }
+                }
+            }
+        }
     }
 
     @ViewBuilder
