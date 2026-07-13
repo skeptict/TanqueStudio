@@ -1,0 +1,226 @@
+/* ============================================================
+   Tanque Design System — Colors & Typography
+   tanque.org | skeptict/TanqueStudio + Patterns Studio
+   ============================================================ */
+
+/* ── Google Fonts ─────────────────────────────────────────── */
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&display=swap');
+
+/* ── Base Color Tokens (Dark Theme) ──────────────────────── */
+:root {
+  /* Backgrounds */
+  --bg:        #0d0e10;
+  --surf-1:    #131416;
+  --surf-2:    #1a1c1f;
+  --surf-3:    #222427;
+
+  /* Borders */
+  --border:    rgba(255,255,255,0.07);
+  --border-2:  rgba(255,255,255,0.12);
+
+  /* Text */
+  --text:      #e3dfd8;
+  --muted:     #6c6760;
+  --muted-2:   #9a938b;
+
+  /* Brand Accent */
+  --brass:     #c9a058;
+  --brass-dim: rgba(201,160,88,0.22);
+  --brass-bg:  rgba(201,160,88,0.10);
+
+  /* Status Colors */
+  --green:     #4caf7a;
+  --red:       #d05f5f;
+  --orange:    #e0843a;
+
+  /* ── Semantic Aliases ─────────────────────────────────── */
+  --color-bg-app:       var(--bg);
+  --color-bg-panel:     var(--surf-1);
+  --color-bg-elevated:  var(--surf-2);
+  --color-bg-control:   var(--surf-3);
+
+  --color-text-primary:    var(--text);
+  --color-text-secondary:  var(--muted-2);
+  --color-text-tertiary:   var(--muted);
+
+  --color-border-subtle:   var(--border);
+  --color-border-default:  var(--border-2);
+
+  --color-accent:          var(--brass);
+  --color-accent-dim:      var(--brass-dim);
+  --color-accent-bg:       var(--brass-bg);
+}
+
+/* ── Patterns Studio — Theme Variants ────────────────────── */
+[data-theme="chalk"] {
+  --bg:     #1a1a2e;
+  --surf-1: #16172a;
+  --surf-2: #1e1f35;
+  --surf-3: #252640;
+  --brass:  #9580b8;
+  --brass-dim: rgba(149,128,184,0.22);
+  --brass-bg:  rgba(149,128,184,0.10);
+}
+
+[data-theme="night"] {
+  --bg:     #0b1118;
+  --surf-1: #080e14;
+  --surf-2: #0f1820;
+  --surf-3: #162028;
+  --brass:  #5aafaa;
+  --brass-dim: rgba(90,175,170,0.22);
+  --brass-bg:  rgba(90,175,170,0.10);
+}
+
+[data-theme="paper"] {
+  --bg:     #f0ebe0;
+  --surf-1: #e8e0cc;
+  --surf-2: #ddd2ba;
+  --surf-3: #cfc5ad;
+  --border:   rgba(0,0,0,0.08);
+  --border-2: rgba(0,0,0,0.14);
+  --text:     #1a140c;
+  --muted:    #7a5e48;
+  --muted-2:  #7a5e48;
+  --brass:    #8b4a25;
+  --brass-dim: rgba(140,74,37,0.18);
+  --brass-bg:  rgba(140,74,37,0.08);
+}
+
+/* ── Typography ──────────────────────────────────────────── */
+:root {
+  --font-mono:  'IBM Plex Mono', 'Fira Mono', monospace;
+  --font-sans:  'Atkinson Hyperlegible', 'IBM Plex Sans', system-ui, sans-serif;
+
+  /* Scale */
+  --text-micro:   10px;   /* status bar, micro labels */
+  --text-xs:      11px;   /* stat values, secondary mono */
+  --text-sm:      12px;   /* control labels, body mono */
+  --text-base:    13px;   /* app title, default */
+  --text-md:      14px;   /* list items, larger body */
+  --text-lg:      16px;   /* subheadings */
+  --text-xl:      20px;   /* section titles */
+  --text-2xl:     24px;   /* display small */
+  --text-3xl:     32px;   /* display */
+
+  /* Letter spacing */
+  --tracking-tight:   0.02em;
+  --tracking-normal:  0.04em;
+  --tracking-wide:    0.08em;
+  --tracking-wider:   0.12em;   /* section labels */
+
+  /* Line height */
+  --leading-tight:  1.3;
+  --leading-normal: 1.5;
+  --leading-loose:  1.7;
+
+  /* Spacing */
+  --space-1:   4px;
+  --space-2:   8px;
+  --space-3:  12px;
+  --space-4:  16px;
+  --space-5:  20px;
+  --space-6:  24px;
+  --space-8:  32px;
+  --space-10: 40px;
+
+  /* Radii */
+  --radius-sm:  2px;   /* scrollbar thumb */
+  --radius-md:  6px;   /* inputs, buttons */
+  --radius-lg:  9px;   /* toggle pills */
+  --radius-xl: 10px;   /* toasts */
+
+  /* Panel widths */
+  --panel-left: 268px;
+  --panel-topbar: 50px;
+  --panel-statusbar: 28px;
+}
+
+/* ── Semantic Type Styles ────────────────────────────────── */
+
+/* Section label (ALL CAPS, mono, muted) */
+.label-section {
+  font-family: var(--font-mono);
+  font-size: var(--text-micro);
+  font-weight: 500;
+  letter-spacing: var(--tracking-wider);
+  text-transform: uppercase;
+  color: var(--muted);
+  line-height: var(--leading-tight);
+}
+
+/* Control label (lowercase mono, secondary) */
+.label-control {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  color: var(--muted-2);
+  line-height: var(--leading-normal);
+}
+
+/* Stat key */
+.stat-key {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--muted);
+  letter-spacing: var(--tracking-wide);
+}
+
+/* Stat value (accented) */
+.stat-value {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--brass);
+}
+
+/* App title */
+.app-title {
+  font-family: var(--font-mono);
+  font-size: var(--text-base);
+  font-weight: 600;
+  letter-spacing: var(--tracking-normal);
+  color: var(--text);
+}
+
+/* Body prose */
+.body {
+  font-family: var(--font-sans);
+  font-size: var(--text-md);
+  color: var(--text);
+  line-height: var(--leading-normal);
+}
+
+/* Caption / helper text */
+.caption {
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  color: var(--muted-2);
+  line-height: var(--leading-loose);
+}
+
+/* ── Scrollbar ───────────────────────────────────────────── */
+* { box-sizing: border-box; }
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--surf-3); border-radius: var(--radius-sm); }
+
+/* ── Base range input ────────────────────────────────────── */
+input[type=range] {
+  -webkit-appearance: none;
+  width: 100%; height: 3px;
+  background: var(--surf-3);
+  border-radius: var(--radius-sm);
+  outline: none; cursor: pointer;
+}
+input[type=range]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 13px; height: 13px;
+  border-radius: 50%;
+  background: var(--brass);
+  cursor: pointer;
+  box-shadow: 0 0 0 2px var(--brass-dim);
+  transition: transform 0.1s, box-shadow 0.1s;
+}
+input[type=range]:hover::-webkit-slider-thumb {
+  transform: scale(1.2);
+  box-shadow: 0 0 0 4px var(--brass-dim);
+}

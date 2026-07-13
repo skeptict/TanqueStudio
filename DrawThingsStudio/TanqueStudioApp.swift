@@ -117,7 +117,7 @@ struct TanqueStudioApp: App {
 
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            DashboardRootView()
                 .ignoresSafeArea()
         }
         .modelContainer(sharedModelContainer)
