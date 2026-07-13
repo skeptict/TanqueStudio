@@ -103,6 +103,12 @@ struct DashboardRootView: View {
                 }
             }
         }
+        // Mirrors GenerateView's listener — without this, changing the DT
+        // address in Settings and testing it there never refreshes this
+        // fork's models list; only a relaunch would pick it up.
+        .onReceive(NotificationCenter.default.publisher(for: .tanqueDTConnectionVerified)) { _ in
+            if generateVM.models.isEmpty { generateVM.loadAssets() }
+        }
     }
 
     @ViewBuilder
