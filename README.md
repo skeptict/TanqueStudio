@@ -4,9 +4,23 @@ A native macOS companion app for [Draw Things](https://drawthings.ai), providing
 
 ## Features
 
+### Dashboard + Focus Rooms
+
+The app opens on a **Dashboard** home screen rather than dropping straight into the generation workspace:
+
+- **Continue card** — resume the last in-progress session with one click
+- **System card** — live Draw Things connection, LLM Assist status, storage used
+- **Quick Start** — preset prompts/models that jump straight into a fresh session
+- **Recent Generations** strip and **Projects** / **Labs** mini-lists
+- A persistent top nav (**Project Browser** · **Labs** · **Settings**) reachable from every screen, not just from the Dashboard
+
+Opening a session (or clicking any image) enters a **Focus Room**: a full-bleed canvas + filmstrip below it, with all generation controls tucked into a single collapsible drawer on the right (Prompt, Assist, Model, Parameters, LoRAs, img2img & Moodboard, Actions) instead of stacked side panels. The feature set is the same one detailed below — same `GenerateViewModel`, same gRPC transport — just delivered through the drawer instead of dedicated left/right panels.
+
+---
+
 ### Generate
 
-Single-canvas image generation workspace with a four-panel layout: config left, canvas center, gallery strip, and inspect right.
+The generation feature set — prompt/config, canvas, gallery, LLM Assist, actions — described panel-by-panel below. In the running app this now lives inside a Focus Room's accordion drawer (see above) rather than a dedicated four-panel screen, but every capability listed here still applies.
 
 **Left panel**
 
@@ -101,22 +115,22 @@ Browse Draw Things project databases directly from the app.
 
 1. **Install Draw Things** from the Mac App Store
 2. **Enable the API Server** in Draw Things: Settings → API Server → Enable
-3. **Launch Tanque Studio**
-4. **Configure connection** in Settings → Draw Things Connection  
+3. **Launch Tanque Studio** — opens on the Dashboard
+4. **Configure connection** via **Settings** in the top nav → Draw Things Connection  
    Default: `localhost:7859` (gRPC)
 5. **Test Connection** to verify connectivity
-6. Type a prompt and click **Generate**
+6. Pick a **Quick Start** preset (or the **Continue** card to resume a prior session) to enter a Focus Room, type a prompt, and click **Generate**
 
 ### For Assist tab features (optional)
 
 1. Install Ollama, LM Studio, or Jan
-2. Configure the LLM provider in Settings → LLM Provider
+2. Configure the LLM provider in **Settings** → LLM Provider
 3. Test the connection
-4. Open the Assist tab in the right panel during a generation session
+4. In a Focus Room, click the **✨ Assist** button next to the prompt field — it expands the Assist section in the drawer and runs the default operation automatically
 
 ### For DT Project Browsing
 
-1. Navigate to **DT Project Browser** in the sidebar
+1. Click **Project Browser** in the persistent top nav (reachable from any screen)
 2. Click **Add Folder** and select a folder containing `.sqlite3` project files
    - Default Draw Things location: `~/Library/Containers/com.liuliu.draw-things/Data/Documents/`
    - External drives: navigate to any mounted volume under `/Volumes/`
@@ -137,16 +151,25 @@ Source retrieved 2026-06-12. Note: each preset references a specific model file 
 ```
 DrawThingsStudio/
 ├── App & Navigation
-│   ├── TanqueStudioApp.swift          # App entry, ModelContainer, migrations
-│   ├── ContentView.swift              # NavigationSplitView shell, sidebar
+│   ├── TanqueStudioApp.swift          # App entry, ModelContainer, migrations — WindowGroup root is DashboardRootView
+│   ├── ContentView.swift              # Classic NavigationSplitView shell, sidebar (no longer the app root; kept for reference)
 │   └── AppSettings.swift              # @Observable settings singleton (UserDefaults)
 │
-├── Generate
-│   ├── GenerateView.swift             # Four-panel root layout
+├── Dashboard (default navigation as of v0.9.25)
+│   ├── DashboardRootView.swift        # WindowGroup root: mode switch (dashboard/focus/projects/labs/settings)
+│   ├── DashboardTopBar.swift          # Wordmark, breadcrumb, persistent Project Browser/Labs/Settings nav
+│   ├── DashboardHomeView.swift        # Continue/System/Quick Start/Recent Generations/Projects+Labs cards
+│   ├── FocusRoomView.swift            # Full-bleed canvas + filmstrip; Paint/Crop/Color-Draw edit modes, scrubber
+│   ├── DashboardFocusPanels.swift     # Focus Room's accordion drawer (Prompt/Assist/Model/Parameters/LoRAs/img2img/Actions)
+│   ├── DashboardLabsPage.swift        # Labs pill-tabs (StoryFlow / Story Studio / Workflow Builder)
+│   └── DashboardDS.swift              # Isolated light "paper" design tokens for this navigation
+│
+├── Generate (business logic + classic four-panel view, reused by both navigations)
+│   ├── GenerateView.swift             # Classic four-panel root layout (config left, canvas center, gallery, inspect right)
 │   ├── GenerateLeftPanel.swift        # Config: prompt, params, LoRAs, moodboard
 │   ├── GenerateRightPanel.swift       # Metadata / Assist / Actions tabs
 │   ├── GalleryStripView.swift         # Resizable gallery column
-│   ├── GenerateViewModel.swift        # @MainActor @Observable ViewModel
+│   ├── GenerateViewModel.swift        # @MainActor @Observable ViewModel — shared by Dashboard and the classic view
 │   └── ImageStorageManager.swift      # Writes PNG + thumbnail, creates TSImage
 │
 ├── DT Project Browser
@@ -243,6 +266,7 @@ DrawThingsStudio/
 - [x] Connection reliability — bounded timeout on gRPC asset fetches, a refresh button that always works, Test Connection that checks the real secret, an honest connected/disconnected signal instead of a cosmetic one
 - [x] Story Studio Phase 4 — Send to Generate from a rendered variant, chapter contact-sheet export (image sequence/storyboard/comic grid, PNG+PDF), per-field LLM enhance + one-shot narrative writer on scene text
 - [x] Learnability Phase 2 — TipKit tips for hidden gestures (⌥-drag pan, ⌘-click multi-select, paste-config, dice/randomize, RDS); Story Studio help topic rewritten as a numbered walkthrough
+- [x] Dashboard + Focus Rooms navigation (v0.9.25) — real home screen (Continue card, live system status, Quick Start presets, Recent Generations, Projects/Labs mini-lists) replaces landing straight in Generate; Focus Room's full-bleed canvas + single accordion drawer replaces the four stacked panels for everyday use. Full feature parity with the classic Generate view: LLM Assist, complete Actions (Save/Copy/Send/video export), error/warning surfacing, Paint/Crop/Color-Draw editing, Video Generations batch grouping + frame scrubber. Chosen after a layout-forks spike comparing three navigation concepts.
 
 ### Upcoming
 
