@@ -675,7 +675,7 @@ private struct GenerateCenterPanel: View {
 /// input back into content space, and owns the view-conflicting gestures:
 /// plain drag → `onDragChanged` (paint/crop), ⌥-drag → pan, pinch → zoom.
 /// `screenOverlay` renders unscaled (brush cursors stay screen-sized).
-private struct ZoomableEditSurface<Content: View, Overlay: View>: View {
+struct ZoomableEditSurface<Content: View, Overlay: View>: View {
     @Binding var scale: CGFloat
     @Binding var offset: CGSize
     let geoSize: CGSize
@@ -790,7 +790,7 @@ private struct ZoomableEditSurface<Content: View, Overlay: View>: View {
     }
 }
 
-private struct InpaintLayer: View {
+struct InpaintLayer: View {
     @Bindable var vm: GenerateViewModel
     let image: NSImage
     @Binding var canvasScale: CGFloat
@@ -908,7 +908,7 @@ private struct InpaintLayer: View {
 
 /// Lets the user drag a crop rectangle over the image. Selection is stored on
 /// the VM in normalized image coordinates; zoom/pan via ZoomableEditSurface.
-private struct CropLayer: View {
+struct CropLayer: View {
     @Bindable var vm: GenerateViewModel
     let image: NSImage
     @Binding var canvasScale: CGFloat
@@ -997,7 +997,7 @@ private struct CropLayer: View {
 /// When `baseImage` is nil a white canvas is shown at config dimensions.
 /// Strokes are stored as normalized `ColorStroke` values on the VM and
 /// later rasterized via `flattenColorDrawing(onto:)`.
-private struct ColorDrawLayer: View {
+struct ColorDrawLayer: View {
     @Bindable var vm: GenerateViewModel
     let baseImage: NSImage?
     @Binding var canvasScale: CGFloat
