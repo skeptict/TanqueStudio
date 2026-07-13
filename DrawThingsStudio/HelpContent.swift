@@ -35,7 +35,7 @@ enum HelpTopicID {
 let tanqueHelpWindowID = "tanque-help"
 
 extension Notification.Name {
-    /// Posted by Help → Welcome to Tanque Studio; ContentView re-presents the welcome sheet.
+    /// Posted by Help → Welcome to Tanque Studio; DashboardRootView re-presents the welcome sheet.
     static let tanqueShowWelcome = Notification.Name("tanqueStudio.showWelcome")
 }
 

@@ -41,10 +41,10 @@ struct DashboardToastView: View {
 
 // MARK: - Root shell
 //
-// Replaces ContentView's sidebar + NavigationSplitView entirely. A real home
-// screen (Dashboard) instead of always landing on Generate, and a full-bleed
-// Focus Room instead of four stacked panels. See
-// design_handoff_layout_forks/README.md, Fork 4.
+// Replaces ContentView's sidebar + NavigationSplitView entirely (as of
+// v0.9.25) — a real home screen (Dashboard) instead of always landing on
+// Generate, and a full-bleed Focus Room instead of four stacked panels. See
+// design_handoff_dashboard_final/README.md.
 
 struct DashboardRootView: View {
     @State private var generateVM = GenerateViewModel()
@@ -62,6 +62,7 @@ struct DashboardRootView: View {
     @State private var dtProjectsVM: DTProjectBrowserViewModel?
     @State private var mode: DashboardMode = .dashboard
     @State private var toast: DashboardToast?
+    @State private var showWelcome = !AppSettings.shared.welcomeSeen
     @Environment(\.modelContext) private var modelContext
 
     var body: some View {
@@ -83,6 +84,15 @@ struct DashboardRootView: View {
         .animation(.easeOut(duration: 0.25), value: toast?.id)
         .sheet(isPresented: $generateVM.showConfigPicker) {
             ConfigPickerSheet(vm: generateVM)
+        }
+        // Mirrors ContentView's first-run welcome flow (WelcomeSheet, shown
+        // once via AppSettings.welcomeSeen) and Help menu's reopen command —
+        // ContentView is gone, this is the only place either still works.
+        .sheet(isPresented: $showWelcome) {
+            WelcomeSheet(onOpenSettings: { mode = .settings })
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .tanqueShowWelcome)) { _ in
+            showWelcome = true
         }
         .onAppear {
             generateVM.loadAssets()

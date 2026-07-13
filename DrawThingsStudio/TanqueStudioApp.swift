@@ -3,7 +3,9 @@ import SwiftData
 import TipKit
 
 // MARK: - UserDefaults key for backup restore signal
-// Written by TanqueStudioApp on schema wipe/recovery; read and cleared by ContentView.
+// Written by TanqueStudioApp on schema wipe/recovery. Not currently read
+// anywhere in the app (pre-existing — was already unread before ContentView
+// was removed, despite an earlier comment here claiming otherwise).
 let needsBackupRestoreKey = "tanqueStudio.needsBackupRestore"
 
 // MARK: - Migration helpers
