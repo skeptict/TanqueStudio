@@ -26,6 +26,7 @@ struct DTProjectBrowserView: View {
                 emptyState
             }
         }
+        .background(TanqueDS.Color.surface0)
         .preferredColorScheme(.dark)
         .alert("Delete Generation?", isPresented: $showDeleteConfirmation, presenting: entryToDelete) { entry in
             Button("Cancel", role: .cancel) { entryToDelete = nil }
