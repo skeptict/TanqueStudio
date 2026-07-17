@@ -224,6 +224,23 @@ struct ParametersSection: View {
                 .help("Roll a fresh seed automatically before every generation.")
                 .padding(.top, 6)
 
+            // Renders — sequential batch count. Mirrors GenerateLeftPanel's
+            // "Renders" Stepper (ported from the classic shell); this fork's
+            // rewritten Parameters accordion had dropped it entirely, leaving
+            // no way to request more than one render per Generate tap.
+            HStack {
+                Text("Renders").font(TanqueDS.Font.mono(11.5)).foregroundStyle(DashboardDS.muted2)
+                Spacer()
+                Stepper(value: $vm.config.batchCount, in: 1...10) {
+                    Text("\(vm.config.batchCount)")
+                        .font(TanqueDS.Font.mono(11.5))
+                        .foregroundStyle(DashboardDS.brass)
+                        .frame(width: 20, alignment: .trailing)
+                }
+            }
+            .padding(.top, 6)
+            .help("Number of sequential renders to run per Generate tap.")
+
             Button {
                 vm.showConfigPicker = true
             } label: {
