@@ -110,6 +110,13 @@ enum WorkflowStepType: String, Codable, CaseIterable {
     /// Parameters: text
     case note
 
+    /// Repeat the steps between this and loopEnd N times.
+    /// Parameters: count (number of iterations, default 3)
+    case loop
+
+    /// End-of-loop marker — no parameters.
+    case loopEnd
+
     var displayName: String {
         switch self {
         case .configInstruction:  return "Config"
@@ -121,6 +128,8 @@ enum WorkflowStepType: String, Codable, CaseIterable {
         case .clearMoodboard:     return "Clear Moodboard"
         case .canvasToMoodboard:  return "Canvas → Moodboard"
         case .note:               return "Note"
+        case .loop:               return "Loop"
+        case .loopEnd:            return "End Loop"
         }
     }
 
@@ -135,6 +144,8 @@ enum WorkflowStepType: String, Codable, CaseIterable {
         case .clearMoodboard:     return "trash"
         case .canvasToMoodboard:  return "photo.stack.fill"
         case .note:               return "note.text"
+        case .loop:               return "arrow.clockwise"
+        case .loopEnd:            return "arrow.clockwise.circle"
         }
     }
 
@@ -149,6 +160,8 @@ enum WorkflowStepType: String, Codable, CaseIterable {
         case .clearMoodboard:     return "orange"
         case .canvasToMoodboard:  return "purple"
         case .note:               return "gray"
+        case .loop:               return "indigo"
+        case .loopEnd:            return "indigo"
         }
     }
 }
@@ -176,11 +189,16 @@ struct WorkflowStep: Identifiable, Codable {
     var parameterSummary: String {
         switch type {
         case .configInstruction:
+            var parts: [String] = []
+            if let dtName = parameters["dtConfigName"] { parts.append(dtName) }
             let vars = parameters["configVars"] ?? ""
-            return vars.isEmpty ? "(none)" :
-                vars.split(separator: ",")
+            if !vars.isEmpty {
+                let varList = vars.split(separator: ",")
                     .map { "#\($0.trimmingCharacters(in: .whitespaces))" }
                     .joined(separator: "  ")
+                parts.append(varList)
+            }
+            return parts.isEmpty ? "(none)" : parts.joined(separator: "  ")
 
         case .promptInstruction:
             let t = parameters["text"] ?? ""
@@ -210,6 +228,13 @@ struct WorkflowStep: Identifiable, Codable {
 
         case .canvasToMoodboard:
             return "canvas  ×\(parameters["weight"] ?? "1.0")"
+
+        case .loop:
+            let n = parameters["count"] ?? "3"
+            return "repeat \(n)×"
+
+        case .loopEnd:
+            return "end of loop"
         }
     }
 }

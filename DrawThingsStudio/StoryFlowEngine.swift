@@ -62,9 +62,12 @@ final class StoryFlowEngine {
     /// Active moodboard for the current run.
     private var activeMoodboard: [(NSImage, Float)] = []
 
+    /// DT custom configs available for this run (looked up by name in configInstruction).
+    private var runDTConfigs: [DTCustomConfig] = []
+
     // MARK: — Run
 
-    func run(workflow: Workflow, variables: [WorkflowVariable]) {
+    func run(workflow: Workflow, variables: [WorkflowVariable], dtConfigs: [DTCustomConfig] = []) {
         // Block only if a run is actively in progress; allow re-run after
         // completion, cancellation, or failure.
         if case .running = runState { return }
@@ -76,6 +79,7 @@ final class StoryFlowEngine {
         savedCanvases = [:]
         lastGeneratedImage = nil
         activeMoodboard = []
+        runDTConfigs = dtConfigs
         currentStepIndex = 0
         totalSteps = workflow.steps.count
         runState = .running(stepIndex: 0)
@@ -83,13 +87,60 @@ final class StoryFlowEngine {
 
         runTask = Task { @MainActor in
             do {
-                for (idx, step) in workflow.steps.enumerated() {
+                let steps = workflow.steps
+                var i = 0
+                // Each frame: (startIndex of the .loop step, total count, current 0-based iteration)
+                var loopStack: [(startIndex: Int, count: Int, iteration: Int)] = []
+
+                while i < steps.count {
                     if Task.isCancelled { break }
-                    currentStepIndex = idx
-                    runState = .running(stepIndex: idx)
-                    log("▶ Step \(idx + 1)/\(workflow.steps.count): \(step.displayLabel)")
-                    try await executeStep(step, variables: variables)
+                    let step = steps[i]
+                    currentStepIndex = i
+                    runState = .running(stepIndex: i)
+
+                    if step.type == .loop {
+                        let count = Int(step.parameters["count"] ?? "3") ?? 3
+                        if count <= 0 {
+                            log("  ⚠ Loop count must be > 0 — skipping block")
+                            // Fast-forward past the matching loopEnd
+                            var depth = 1
+                            i += 1
+                            while i < steps.count && depth > 0 {
+                                if steps[i].type == .loop    { depth += 1 }
+                                if steps[i].type == .loopEnd { depth -= 1 }
+                                i += 1
+                            }
+                        } else {
+                            log("↻ Loop: \(count) iteration\(count == 1 ? "" : "s")")
+                            loopStack.append((startIndex: i, count: count, iteration: 0))
+                            i += 1
+                        }
+
+                    } else if step.type == .loopEnd {
+                        if !loopStack.isEmpty {
+                            var frame = loopStack[loopStack.count - 1]
+                            frame.iteration += 1
+                            if frame.iteration < frame.count {
+                                loopStack[loopStack.count - 1] = frame
+                                log("  ↻ Iteration \(frame.iteration + 1)/\(frame.count)")
+                                i = frame.startIndex + 1   // jump back to first step after .loop
+                            } else {
+                                loopStack.removeLast()
+                                log("  ✓ Loop completed")
+                                i += 1
+                            }
+                        } else {
+                            log("  ⚠ End Loop without matching Loop — ignoring")
+                            i += 1
+                        }
+
+                    } else {
+                        log("▶ Step \(i + 1): \(step.displayLabel)")
+                        try await executeStep(step, variables: variables)
+                        i += 1
+                    }
                 }
+
                 if Task.isCancelled {
                     runState = .cancelled
                     log("⏹ Cancelled")
@@ -125,12 +176,28 @@ final class StoryFlowEngine {
         switch step.type {
 
         case .configInstruction:
+            // 1. Apply DT config as the base layer (looked up by name at run time)
+            if let dtName = step.parameters["dtConfigName"], !dtName.isEmpty {
+                if let dtConfig = runDTConfigs.first(where: { $0.name == dtName }),
+                   let json = dtConfig.toConfigJSON(),
+                   !json.isEmpty,
+                   let data = json.data(using: .utf8),
+                   let dict = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] {
+                    mergeDict(dict, into: &currentConfig)
+                    log("  ✓ Applied DT config: \(dtName)")
+                } else {
+                    log("  ⚠ DT config '\(dtName)' not found or empty — skipping")
+                }
+            }
+
+            // 2. Apply #configVar overrides on top
             let varNames = (step.parameters["configVars"] ?? "")
                 .split(separator: ",")
                 .map { $0.trimmingCharacters(in: .whitespaces) }
                 .filter { !$0.isEmpty }
-            if varNames.isEmpty {
-                log("  ⚠ Config step has no configVars set — skipping")
+            let hasDT = !(step.parameters["dtConfigName"] ?? "").isEmpty
+            if varNames.isEmpty && !hasDT {
+                log("  ⚠ Config step has nothing set — skipping")
             }
             for name in varNames {
                 applyConfigVar(name, variables: variables)
@@ -193,6 +260,9 @@ final class StoryFlowEngine {
         case .note:
             let text = step.parameters["text"] ?? ""
             log("  📝 \(text)")
+
+        case .loop, .loopEnd:
+            break  // handled by the run() loop controller, never reaches here
         }
     }
 

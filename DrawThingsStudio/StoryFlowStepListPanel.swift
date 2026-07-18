@@ -135,30 +135,71 @@ struct StoryFlowStepListPanel: View {
                 .overlay(alignment: .bottom) { addStepButton }
 
             } else {
-                List {
-                    ForEach(Binding(
-                        get: { vm.selectedWorkflow?.steps ?? [] },
-                        set: { vm.selectedWorkflow?.steps = $0 }
-                    )) { $step in
-                        StoryFlowStepCard(step: $step,
-                                          onDelete: { vm.deleteStep(id: step.id) },
-                                          onChange: { vm.updateStep(step) })
-                            .listRowInsets(EdgeInsets(top: 3, leading: 8, bottom: 3, trailing: 8))
-                            .listRowBackground(Color.clear)
-                            .listRowSeparator(.hidden)
-                    }
-                    .onMove { vm.moveSteps(from: $0, to: $1) }
-                }
-                .listStyle(.plain)
-                .overlay(alignment: .bottomTrailing) { addStepButton }
+                stepsListView(vm.selectedWorkflow!)
             }
         }
+    }
+
+    // MARK: — Depth-aware steps list
+
+    /// Returns a List of step cards with loop-body steps visually indented.
+    private func stepsListView(_ workflow: Workflow) -> some View {
+        let steps = workflow.steps
+        let depths = loopDepths(for: steps)
+        return List {
+            ForEach(Binding(
+                get: { vm.selectedWorkflow?.steps ?? [] },
+                set: { vm.selectedWorkflow?.steps = $0 }
+            )) { $step in
+                let depth = steps.firstIndex(where: { $0.id == step.id })
+                    .map { depths[$0] } ?? 0
+                StoryFlowStepCard(step: $step,
+                                  loopDepth: depth,
+                                  dtConfigs: vm.dtConfigs,
+                                  onDelete: { vm.deleteStep(id: step.id) },
+                                  onChange: { vm.updateStep(step) })
+                    .listRowInsets(EdgeInsets(top: 3,
+                                             leading: 8 + CGFloat(depth) * 16,
+                                             bottom: 3,
+                                             trailing: 8))
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
+            }
+            .onMove { vm.moveSteps(from: $0, to: $1) }
+        }
+        .listStyle(.plain)
+        .overlay(alignment: .bottomTrailing) { addStepButton }
+    }
+
+    /// Compute the visual nesting depth for each step in the workflow.
+    /// - The .loop step itself sits at the current (outer) depth.
+    /// - Steps inside the loop body are at depth + 1.
+    /// - The .loopEnd step returns to the outer depth.
+    private func loopDepths(for steps: [WorkflowStep]) -> [Int] {
+        var result = [Int](repeating: 0, count: steps.count)
+        var depth = 0
+        for (i, step) in steps.enumerated() {
+            if step.type == .loop {
+                result[i] = depth     // loop header at current depth
+                depth += 1
+            } else if step.type == .loopEnd {
+                depth = max(0, depth - 1)
+                result[i] = depth     // end marker at reduced (outer) depth
+            } else {
+                result[i] = depth
+            }
+        }
+        return result
     }
 
     // MARK: — Add step menu
 
     private var addStepButton: some View {
         Menu {
+            Section("Flow Control") {
+                menuItem(.loop)
+                menuItem(.loopEnd)
+            }
             Section("Accumulator") {
                 menuItem(.configInstruction)
                 menuItem(.promptInstruction)
@@ -210,6 +251,8 @@ struct StoryFlowStepListPanel: View {
 
 private struct StoryFlowStepCard: View {
     @Binding var step: WorkflowStep
+    var loopDepth: Int = 0
+    var dtConfigs: [DTCustomConfig] = []
     let onDelete: () -> Void
     let onChange: () -> Void
 
@@ -224,11 +267,20 @@ private struct StoryFlowStepCard: View {
         case .clearMoodboard:     return .orange
         case .canvasToMoodboard:  return .purple
         case .note:               return .gray
+        case .loop:               return .indigo
+        case .loopEnd:            return .indigo
         }
     }
 
     var body: some View {
         HStack(spacing: 0) {
+            // Indigo depth indicator for steps nested inside a loop
+            if loopDepth > 0 {
+                Rectangle()
+                    .fill(Color.indigo.opacity(0.25))
+                    .frame(width: 3)
+            }
+
             // Colored left strip with drag handle
             VStack {
                 Image(systemName: "line.3.horizontal")
@@ -281,14 +333,67 @@ private struct StoryFlowStepCard: View {
         switch step.type {
 
         case .configInstruction:
-            // Comma-separated list of config var names (with or without # prefix)
-            TextField("#model, #sampler", text: Binding(
-                get: { step.parameters["configVars"] ?? "" },
-                set: { step.parameters["configVars"] = $0.isEmpty ? nil : $0 }
-            ))
-            .textFieldStyle(.roundedBorder)
-            .font(.system(size: 11, design: .monospaced))
-            .onSubmit { onChange() }
+            VStack(alignment: .leading, spacing: 5) {
+                // Row 1: DT Config dropdown
+                HStack(spacing: 6) {
+                    Text("DT Config")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .frame(width: 58, alignment: .leading)
+                    if dtConfigs.isEmpty {
+                        Text("No configs loaded — import in Generate panel")
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                    } else {
+                        Menu {
+                            Button("None") {
+                                step.parameters.removeValue(forKey: "dtConfigName")
+                                onChange()
+                            }
+                            Divider()
+                            ForEach(dtConfigs) { config in
+                                Button(config.name) {
+                                    step.parameters["dtConfigName"] = config.name
+                                    onChange()
+                                }
+                            }
+                        } label: {
+                            HStack(spacing: 4) {
+                                Text(step.parameters["dtConfigName"] ?? "None")
+                                    .font(.caption)
+                                    .foregroundStyle(
+                                        step.parameters["dtConfigName"] != nil
+                                            ? Color.primary : Color(NSColor.tertiaryLabelColor)
+                                    )
+                                Spacer()
+                                Image(systemName: "chevron.up.chevron.down")
+                                    .font(.system(size: 8))
+                                    .foregroundStyle(.secondary)
+                            }
+                            .padding(.vertical, 3)
+                            .padding(.horizontal, 6)
+                            .background(Color.secondary.opacity(0.08))
+                            .clipShape(RoundedRectangle(cornerRadius: 4))
+                        }
+                        .menuStyle(.borderlessButton)
+                    }
+                }
+
+                // Row 2: #variable names (existing)
+                HStack(spacing: 6) {
+                    Text("#vars")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .frame(width: 58, alignment: .leading)
+                    TextField("#model, #sampler", text: Binding(
+                        get: { step.parameters["configVars"] ?? "" },
+                        set: { step.parameters["configVars"] = $0.isEmpty ? nil : $0 }
+                    ))
+                    .textFieldStyle(.roundedBorder)
+                    .font(.system(size: 11, design: .monospaced))
+                    .onSubmit { onChange() }
+                }
+            }
 
         case .promptInstruction:
             // Prompt text with inline @var and $wildcard tokens
@@ -346,6 +451,29 @@ private struct StoryFlowStepCard: View {
             .textFieldStyle(.roundedBorder)
             .font(.caption)
             .onSubmit { onChange() }
+
+        case .loop:
+            HStack(spacing: 6) {
+                Text("Repeat")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                TextField("3", text: Binding(
+                    get: { step.parameters["count"] ?? "3" },
+                    set: { step.parameters["count"] = $0.isEmpty ? nil : $0 }
+                ))
+                .textFieldStyle(.roundedBorder)
+                .font(.system(size: 11, design: .monospaced))
+                .frame(width: 48)
+                .onSubmit { onChange() }
+                Text("times")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+        case .loopEnd:
+            Text("↩ returns to Loop")
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
         }
     }
 

@@ -14,6 +14,8 @@ final class StoryFlowViewModel {
     var selectedWorkflow: Workflow?
     var showTextView: Bool = false
     var workflowJSON: String = ""
+    /// DT custom configs loaded from the user's custom_configs.json (same file as Generate panel).
+    var dtConfigs: [DTCustomConfig] = []
 
     let engine = StoryFlowEngine()
 
@@ -109,6 +111,22 @@ final class StoryFlowViewModel {
             selectedWorkflow = workflows.first
         }
         updateWorkflowJSON()
+        loadDTConfigs()
+    }
+
+    /// Reload DT configs from the user's custom_configs.json bookmark (same source as Generate panel).
+    func loadDTConfigs() {
+        guard let bookmark = AppSettings.shared.dtConfigsBookmark else { return }
+        var isStale = false
+        guard let url = try? URL(
+            resolvingBookmarkData: bookmark,
+            options: .withSecurityScope,
+            relativeTo: nil,
+            bookmarkDataIsStale: &isStale
+        ) else { return }
+        let accessed = url.startAccessingSecurityScopedResource()
+        defer { if accessed { url.stopAccessingSecurityScopedResource() } }
+        dtConfigs = DTConfigImporter.load(from: url)
     }
 
     // MARK: — Workflow management
@@ -226,7 +244,7 @@ final class StoryFlowViewModel {
 
     func run() {
         guard let workflow = selectedWorkflow else { return }
-        engine.run(workflow: workflow, variables: variables)
+        engine.run(workflow: workflow, variables: variables, dtConfigs: dtConfigs)
     }
 
     func cancel() {

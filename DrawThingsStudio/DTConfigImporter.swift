@@ -24,6 +24,33 @@ struct DTCustomConfig: Identifiable {
     let cfgZeroStar: Bool?
 }
 
+extension DTCustomConfig {
+    /// Serialize to a JSON string compatible with StoryFlowEngine's mergeDict.
+    /// Returns nil only if JSONSerialization fails (shouldn't happen in practice).
+    func toConfigJSON() -> String? {
+        var dict: [String: Any] = [:]
+        if let v = model,                   !v.isEmpty  { dict["model"]                    = v }
+        if let v = steps                                { dict["steps"]                    = v }
+        if let v = guidanceScale                        { dict["guidanceScale"]            = v }
+        if let v = seed                                 { dict["seed"]                     = v }
+        if let v = seedMode,                !v.isEmpty  { dict["seedMode"]                 = v }
+        if let v = sampler,                 !v.isEmpty  { dict["sampler"]                  = v }
+        if let v = shift                                { dict["shift"]                    = v }
+        if let v = strength                             { dict["strength"]                 = v }
+        if let v = stochasticSamplingGamma              { dict["stochasticSamplingGamma"]  = v }
+        if let v = refinerModel,            !v.isEmpty  { dict["refinerModel"]             = v }
+        if let v = refinerStart                         { dict["refinerStart"]             = v }
+        if let v = resolutionDependentShift             { dict["resolutionDependentShift"] = v }
+        if let v = cfgZeroStar                          { dict["cfgZeroStar"]              = v }
+        if !loras.isEmpty {
+            dict["loras"] = loras.map { ["file": $0.file, "weight": $0.weight, "mode": $0.mode] }
+        }
+        guard let data = try? JSONSerialization.data(withJSONObject: dict),
+              let str  = String(data: data, encoding: .utf8) else { return nil }
+        return str
+    }
+}
+
 // MARK: - DTConfigImporter
 
 enum DTConfigImporter {
