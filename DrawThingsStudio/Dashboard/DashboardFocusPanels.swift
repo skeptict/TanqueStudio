@@ -333,6 +333,25 @@ struct ParametersSection: View {
             .padding(.top, 6)
             .help("Number of sequential renders to run per Generate tap.")
 
+            // Sibling of Renders: batchCount = sequential runs, batchSize =
+            // images per denoising pass. Bound to the real config property but
+            // shipped disabled per the enabled-means-functional policy — the
+            // encoding path hasn't been verified end-to-end. Enabling later is
+            // deleting the .disabled(true) line.
+            HStack {
+                Text("Batch Size").font(TanqueDS.Font.mono(11.5)).foregroundStyle(DashboardDS.muted2)
+                Spacer()
+                Stepper(value: $vm.config.batchSize, in: 1...8) {
+                    Text("\(vm.config.batchSize)")
+                        .font(TanqueDS.Font.mono(11.5))
+                        .foregroundStyle(DashboardDS.muted)
+                        .frame(width: 20, alignment: .trailing)
+                }
+            }
+            .padding(.top, 6)
+            .disabled(true)
+            .help("Images per batch — not yet verified end-to-end; coming in a later release.")
+
             // Advanced params, flattened — GenerateLeftPanel keeps these behind a
             // collapsed "Advanced" section; the Dashboard drawer surfaces them as
             // plain rows instead (Ned's direction: no revived collapse pattern).
