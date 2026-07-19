@@ -8,15 +8,13 @@ struct DashboardCrumb: Identifiable {
     let label: String
 }
 
-// MARK: - Top bar (wordmark, breadcrumb, search, connection dot)
+// MARK: - Top bar (wordmark, breadcrumb, connection dot)
 
 struct DashboardTopBar: View {
     let mode: DashboardMode
     let crumb: [DashboardCrumb]
     let isConnected: Bool
     let onNavigate: (DashboardMode) -> Void
-
-    @State private var searchText = ""
 
     var body: some View {
         HStack(spacing: 14) {
@@ -47,8 +45,6 @@ struct DashboardTopBar: View {
             persistentNavView
 
             Spacer()
-
-            searchField
 
             HStack(spacing: 6) {
                 Circle()
@@ -116,36 +112,4 @@ struct DashboardTopBar: View {
         .foregroundStyle(mode == target ? DashboardDS.brass : DashboardDS.muted2)
     }
 
-    private var searchField: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "magnifyingglass")
-                .font(.system(size: 11))
-                .foregroundStyle(DashboardDS.muted)
-            TextField("Search\u{2026}", text: $searchText)
-                .textFieldStyle(.plain)
-                .font(TanqueDS.Font.mono(12))
-                .foregroundStyle(DashboardDS.text)
-                .onSubmit(submitSearch)
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 6)
-        .frame(width: 220)
-        .background(DashboardDS.surf2, in: RoundedRectangle(cornerRadius: 8))
-        .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(DashboardDS.border, lineWidth: 1))
-    }
-
-    // Real (if minimal) behavior rather than a decorative dead-end field:
-    // jumps to the first nav destination whose name contains the typed text.
-    private func submitSearch() {
-        let query = searchText.trimmingCharacters(in: .whitespaces).lowercased()
-        guard !query.isEmpty else { return }
-        let destinations: [(String, DashboardMode)] = [
-            ("dashboard", .dashboard), ("focus room", .focus), ("projects", .projects),
-            ("labs", .labs), ("settings", .settings),
-        ]
-        if let match = destinations.first(where: { $0.0.contains(query) }) {
-            onNavigate(match.1)
-            searchText = ""
-        }
-    }
 }
