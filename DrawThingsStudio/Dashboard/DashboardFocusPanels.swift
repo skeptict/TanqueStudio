@@ -23,6 +23,7 @@ struct FocusRoomDrawer: View {
     @State private var promptExpanded = true
     @State private var assistExpanded = false
     @State private var modelExpanded = false
+    @State private var canvasExpanded = false
     @State private var paramsExpanded = false
     @State private var lorasExpanded = false
     @State private var img2imgExpanded = false
@@ -37,6 +38,7 @@ struct FocusRoomDrawer: View {
                         AssistTabView(vm: vm, canvasScale: 1, canvasOffset: .zero, canvasSize: .zero)
                     }
                     section("Model", isExpanded: $modelExpanded) { ModelSection(vm: vm) }
+                    section("Canvas Size", isExpanded: $canvasExpanded) { CanvasSizeSection(vm: vm) }
                     section("Parameters", isExpanded: $paramsExpanded) { ParametersSection(vm: vm) }
                     section("LoRAs", isExpanded: $lorasExpanded) { LoRAsSection(vm: vm) }
                     section("img2img & Moodboard", isExpanded: $img2imgExpanded) { Img2ImgMoodboardSection(vm: vm) }
@@ -112,10 +114,6 @@ struct FocusRoomDrawer: View {
 struct PromptSection: View {
     @Bindable var vm: GenerateViewModel
 
-    private let aspectChips: [(label: String, w: Int, h: Int)] = [
-        ("1:1", 1, 1), ("3:4", 3, 4), ("4:3", 4, 3), ("9:16", 9, 16), ("16:9", 16, 9),
-    ]
-
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
@@ -144,23 +142,6 @@ struct PromptSection: View {
                 .padding(8)
                 .background(DashboardDS.surf2, in: RoundedRectangle(cornerRadius: 7))
                 .overlay(RoundedRectangle(cornerRadius: 7).strokeBorder(DashboardDS.border, lineWidth: 1))
-
-            HStack(spacing: 5) {
-                ForEach(aspectChips, id: \.label) { chip in
-                    let active = vm.isCurrentRatio(w: chip.w, h: chip.h)
-                    Button {
-                        vm.applyAspectRatio(w: chip.w, h: chip.h)
-                    } label: {
-                        Text(chip.label)
-                            .font(TanqueDS.Font.mono(10.5))
-                            .foregroundStyle(active ? DashboardDS.brass : DashboardDS.muted2)
-                            .padding(.horizontal, 10).padding(.vertical, 4)
-                            .background(active ? DashboardDS.brassSubtle : DashboardDS.surf2, in: Capsule())
-                            .overlay(Capsule().strokeBorder(active ? DashboardDS.brass : DashboardDS.border, lineWidth: 1))
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
         }
     }
 }
@@ -196,11 +177,130 @@ struct ModelSection: View {
                 .buttonStyle(.plain)
                 .help(model.name)
             }
+
+            // SDXL refiner — second model takes over at the refinerStart
+            // fraction of the denoise schedule. Empty string = no refiner
+            // (convertConfig maps it to nil on the wire).
+            HStack {
+                Text("Refiner").font(TanqueDS.Font.mono(11.5)).foregroundStyle(DashboardDS.muted2)
+                Spacer()
+                Picker("", selection: $vm.config.refinerModel) {
+                    Text("None").tag("")
+                    ForEach(vm.models) { model in
+                        Text(model.name).tag(model.filename)
+                    }
+                }
+                .labelsHidden()
+                .pickerStyle(.menu)
+                .fixedSize()
+            }
+            .padding(.top, 8)
+            .help("Refiner model. Takes over denoising at the Refiner Start fraction; None disables.")
+
+            HStack {
+                Text("Refiner Start").font(TanqueDS.Font.mono(11.5)).foregroundStyle(DashboardDS.muted2)
+                Spacer()
+                Text(String(format: "%.2f", vm.config.refinerStart))
+                    .font(TanqueDS.Font.mono(11.5)).foregroundStyle(DashboardDS.brass)
+            }
+            .padding(.top, 6)
+            Slider(value: $vm.config.refinerStart, in: 0...1, step: 0.05)
+                .tint(DashboardDS.brass)
+                .help("Fraction of steps after which the refiner takes over. Applies only when a refiner is set.")
         }
     }
 }
 
 // MARK: - Parameters
+
+// MARK: - Canvas Size (ported from GenerateLeftPanel's Canvas Size section)
+
+struct CanvasSizeSection: View {
+    @Bindable var vm: GenerateViewModel
+
+    private let aspectChips: [(label: String, w: Int, h: Int)] = [
+        ("1:1", 1, 1), ("3:4", 3, 4), ("4:3", 4, 3), ("9:16", 9, 16), ("16:9", 16, 9),
+    ]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 5) {
+                ForEach(aspectChips, id: \.label) { chip in
+                    let active = vm.isCurrentRatio(w: chip.w, h: chip.h)
+                    Button {
+                        vm.applyAspectRatio(w: chip.w, h: chip.h)
+                    } label: {
+                        Text(chip.label)
+                            .font(TanqueDS.Font.mono(10.5))
+                            .foregroundStyle(active ? DashboardDS.brass : DashboardDS.muted2)
+                            .padding(.horizontal, 10).padding(.vertical, 4)
+                            .background(active ? DashboardDS.brassSubtle : DashboardDS.surf2, in: Capsule())
+                            .overlay(Capsule().strokeBorder(active ? DashboardDS.brass : DashboardDS.border, lineWidth: 1))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .help("Aspect ratio. Recomputes width \u{00D7} height at the current pixel budget.")
+
+            HStack(spacing: 5) {
+                ForEach(sizeTiers, id: \.label) { tier in
+                    let target = dimensions(forBudget: tier.budget)
+                    let active = vm.config.width == target.w && vm.config.height == target.h
+                    Button {
+                        vm.config.width = target.w
+                        vm.config.height = target.h
+                    } label: {
+                        Text(tier.label)
+                            .font(TanqueDS.Font.mono(10.5))
+                            .foregroundStyle(active ? DashboardDS.brass : DashboardDS.muted2)
+                            .padding(.horizontal, 10).padding(.vertical, 4)
+                            .background(active ? DashboardDS.brassSubtle : DashboardDS.surf2, in: Capsule())
+                            .overlay(Capsule().strokeBorder(active ? DashboardDS.brass : DashboardDS.border, lineWidth: 1))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .help("Size tier. Rescales to a 512\u{00B2} / 1024\u{00B2} / 1536\u{00B2} pixel budget at the current aspect ratio.")
+
+            sizeRow
+        }
+    }
+
+    private let sizeTiers: [(label: String, budget: Int)] = [
+        ("Small", 512 * 512), ("Medium", 1024 * 1024), ("Large", 1536 * 1536),
+    ]
+
+    // Same budget math as applyAspectRatio, holding ratio fixed instead of area.
+    private func dimensions(forBudget budget: Int) -> (w: Int, h: Int) {
+        let ratio = Double(vm.config.width) / Double(max(1, vm.config.height))
+        let h = sqrt(Double(budget) / ratio)
+        let w = ratio * h
+        return (max(64, Int((w / 64).rounded() * 64)),
+                max(64, Int((h / 64).rounded() * 64)))
+    }
+
+    private var sizeRow: some View {
+        HStack {
+            Text("Size").font(TanqueDS.Font.mono(11.5)).foregroundStyle(DashboardDS.muted2)
+            Spacer()
+            TextField("W", value: $vm.config.width, format: .number.grouping(.never))
+                .textFieldStyle(.plain)
+                .multilineTextAlignment(.trailing)
+                .font(TanqueDS.Font.mono(11.5))
+                .foregroundStyle(DashboardDS.brass)
+                .frame(width: 52)
+            Text("\u{00D7}").font(TanqueDS.Font.mono(11.5)).foregroundStyle(DashboardDS.muted2)
+            TextField("H", value: $vm.config.height, format: .number.grouping(.never))
+                .textFieldStyle(.plain)
+                .multilineTextAlignment(.trailing)
+                .font(TanqueDS.Font.mono(11.5))
+                .foregroundStyle(DashboardDS.brass)
+                .frame(width: 52)
+        }
+        .padding(.top, 2)
+        .help("Render width \u{00D7} height in pixels; Draw Things rounds to multiples of 64.")
+    }
+}
 
 struct ParametersSection: View {
     @Bindable var vm: GenerateViewModel
@@ -213,6 +313,38 @@ struct ParametersSection: View {
             fieldRow("CFG", String(format: "%.1f", vm.config.guidanceScale))
             Slider(value: $vm.config.guidanceScale, in: 0.5...20, step: 0.5)
                 .tint(DashboardDS.brass)
+
+            HStack {
+                Text("Sampler").font(TanqueDS.Font.mono(11.5)).foregroundStyle(DashboardDS.muted2)
+                Spacer()
+                Picker("", selection: $vm.config.sampler) {
+                    ForEach(DrawThingsSampler.builtIn) { s in
+                        Text(s.displayName).tag(s.name)
+                    }
+                }
+                .labelsHidden()
+                .pickerStyle(.menu)
+                .fixedSize()
+            }
+            .padding(.top, 6)
+            .help("Denoising sampler algorithm.")
+
+            // cfgZeroStar is Bool? — nil means "TS decides by model heuristic"
+            // (turbo-name detection in convertConfig). Same optional-toggle
+            // bridge precedent as Res. Shift: touching the toggle makes the
+            // choice explicit.
+            HStack {
+                Text("CFG-Zero*").font(TanqueDS.Font.mono(11.5)).foregroundStyle(DashboardDS.muted2)
+                Spacer()
+                Toggle("", isOn: Binding(
+                    get: { vm.config.cfgZeroStar ?? false },
+                    set: { vm.config.cfgZeroStar = $0 }
+                ))
+                .labelsHidden()
+                .tint(DashboardDS.brass)
+            }
+            .padding(.top, 6)
+            .help("CFG-Zero* guidance. Off by default; TS auto-enables for turbo models until set explicitly.")
             fieldRow("Seed", "\(vm.config.seed)")
             Slider(value: Binding(get: { Double(vm.config.seed) }, set: { vm.config.seed = Int($0) }), in: -1...99_999, step: 1)
                 .tint(DashboardDS.brass)
@@ -240,6 +372,25 @@ struct ParametersSection: View {
             }
             .padding(.top, 6)
             .help("Number of sequential renders to run per Generate tap.")
+
+            // Sibling of Renders: batchCount = sequential runs, batchSize =
+            // images per denoising pass. Bound to the real config property but
+            // shipped disabled per the enabled-means-functional policy — the
+            // encoding path hasn't been verified end-to-end. Enabling later is
+            // deleting the .disabled(true) line.
+            HStack {
+                Text("Batch Size").font(TanqueDS.Font.mono(11.5)).foregroundStyle(DashboardDS.muted2)
+                Spacer()
+                Stepper(value: $vm.config.batchSize, in: 1...8) {
+                    Text("\(vm.config.batchSize)")
+                        .font(TanqueDS.Font.mono(11.5))
+                        .foregroundStyle(DashboardDS.muted)
+                        .frame(width: 20, alignment: .trailing)
+                }
+            }
+            .padding(.top, 6)
+            .disabled(true)
+            .help("Images per batch — not yet verified end-to-end; coming in a later release.")
 
             // Advanced params, flattened — GenerateLeftPanel keeps these behind a
             // collapsed "Advanced" section; the Dashboard drawer surfaces them as
