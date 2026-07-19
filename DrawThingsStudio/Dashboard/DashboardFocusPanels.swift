@@ -114,10 +114,6 @@ struct FocusRoomDrawer: View {
 struct PromptSection: View {
     @Bindable var vm: GenerateViewModel
 
-    private let aspectChips: [(label: String, w: Int, h: Int)] = [
-        ("1:1", 1, 1), ("3:4", 3, 4), ("4:3", 4, 3), ("9:16", 9, 16), ("16:9", 16, 9),
-    ]
-
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
@@ -146,23 +142,6 @@ struct PromptSection: View {
                 .padding(8)
                 .background(DashboardDS.surf2, in: RoundedRectangle(cornerRadius: 7))
                 .overlay(RoundedRectangle(cornerRadius: 7).strokeBorder(DashboardDS.border, lineWidth: 1))
-
-            HStack(spacing: 5) {
-                ForEach(aspectChips, id: \.label) { chip in
-                    let active = vm.isCurrentRatio(w: chip.w, h: chip.h)
-                    Button {
-                        vm.applyAspectRatio(w: chip.w, h: chip.h)
-                    } label: {
-                        Text(chip.label)
-                            .font(TanqueDS.Font.mono(10.5))
-                            .foregroundStyle(active ? DashboardDS.brass : DashboardDS.muted2)
-                            .padding(.horizontal, 10).padding(.vertical, 4)
-                            .background(active ? DashboardDS.brassSubtle : DashboardDS.surf2, in: Capsule())
-                            .overlay(Capsule().strokeBorder(active ? DashboardDS.brass : DashboardDS.border, lineWidth: 1))
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
         }
     }
 }
@@ -239,7 +218,35 @@ struct ModelSection: View {
 struct CanvasSizeSection: View {
     @Bindable var vm: GenerateViewModel
 
+    private let aspectChips: [(label: String, w: Int, h: Int)] = [
+        ("1:1", 1, 1), ("3:4", 3, 4), ("4:3", 4, 3), ("9:16", 9, 16), ("16:9", 16, 9),
+    ]
+
     var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 5) {
+                ForEach(aspectChips, id: \.label) { chip in
+                    let active = vm.isCurrentRatio(w: chip.w, h: chip.h)
+                    Button {
+                        vm.applyAspectRatio(w: chip.w, h: chip.h)
+                    } label: {
+                        Text(chip.label)
+                            .font(TanqueDS.Font.mono(10.5))
+                            .foregroundStyle(active ? DashboardDS.brass : DashboardDS.muted2)
+                            .padding(.horizontal, 10).padding(.vertical, 4)
+                            .background(active ? DashboardDS.brassSubtle : DashboardDS.surf2, in: Capsule())
+                            .overlay(Capsule().strokeBorder(active ? DashboardDS.brass : DashboardDS.border, lineWidth: 1))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .help("Aspect ratio. Recomputes width \u{00D7} height at the current pixel budget.")
+
+            sizeRow
+        }
+    }
+
+    private var sizeRow: some View {
         HStack {
             Text("Size").font(TanqueDS.Font.mono(11.5)).foregroundStyle(DashboardDS.muted2)
             Spacer()
