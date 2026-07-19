@@ -23,6 +23,7 @@ struct FocusRoomDrawer: View {
     @State private var promptExpanded = true
     @State private var assistExpanded = false
     @State private var modelExpanded = false
+    @State private var canvasExpanded = false
     @State private var paramsExpanded = false
     @State private var lorasExpanded = false
     @State private var img2imgExpanded = false
@@ -37,6 +38,7 @@ struct FocusRoomDrawer: View {
                         AssistTabView(vm: vm, canvasScale: 1, canvasOffset: .zero, canvasSize: .zero)
                     }
                     section("Model", isExpanded: $modelExpanded) { ModelSection(vm: vm) }
+                    section("Canvas Size", isExpanded: $canvasExpanded) { CanvasSizeSection(vm: vm) }
                     section("Parameters", isExpanded: $paramsExpanded) { ParametersSection(vm: vm) }
                     section("LoRAs", isExpanded: $lorasExpanded) { LoRAsSection(vm: vm) }
                     section("img2img & Moodboard", isExpanded: $img2imgExpanded) { Img2ImgMoodboardSection(vm: vm) }
@@ -196,11 +198,69 @@ struct ModelSection: View {
                 .buttonStyle(.plain)
                 .help(model.name)
             }
+
+            // SDXL refiner — second model takes over at the refinerStart
+            // fraction of the denoise schedule. Empty string = no refiner
+            // (convertConfig maps it to nil on the wire).
+            HStack {
+                Text("Refiner").font(TanqueDS.Font.mono(11.5)).foregroundStyle(DashboardDS.muted2)
+                Spacer()
+                Picker("", selection: $vm.config.refinerModel) {
+                    Text("None").tag("")
+                    ForEach(vm.models) { model in
+                        Text(model.name).tag(model.filename)
+                    }
+                }
+                .labelsHidden()
+                .pickerStyle(.menu)
+                .fixedSize()
+            }
+            .padding(.top, 8)
+            .help("Refiner model. Takes over denoising at the Refiner Start fraction; None disables.")
+
+            HStack {
+                Text("Refiner Start").font(TanqueDS.Font.mono(11.5)).foregroundStyle(DashboardDS.muted2)
+                Spacer()
+                Text(String(format: "%.2f", vm.config.refinerStart))
+                    .font(TanqueDS.Font.mono(11.5)).foregroundStyle(DashboardDS.brass)
+            }
+            .padding(.top, 6)
+            Slider(value: $vm.config.refinerStart, in: 0...1, step: 0.05)
+                .tint(DashboardDS.brass)
+                .help("Fraction of steps after which the refiner takes over. Applies only when a refiner is set.")
         }
     }
 }
 
 // MARK: - Parameters
+
+// MARK: - Canvas Size (ported from GenerateLeftPanel's Canvas Size section)
+
+struct CanvasSizeSection: View {
+    @Bindable var vm: GenerateViewModel
+
+    var body: some View {
+        HStack {
+            Text("Size").font(TanqueDS.Font.mono(11.5)).foregroundStyle(DashboardDS.muted2)
+            Spacer()
+            TextField("W", value: $vm.config.width, format: .number)
+                .textFieldStyle(.plain)
+                .multilineTextAlignment(.trailing)
+                .font(TanqueDS.Font.mono(11.5))
+                .foregroundStyle(DashboardDS.brass)
+                .frame(width: 52)
+            Text("\u{00D7}").font(TanqueDS.Font.mono(11.5)).foregroundStyle(DashboardDS.muted2)
+            TextField("H", value: $vm.config.height, format: .number)
+                .textFieldStyle(.plain)
+                .multilineTextAlignment(.trailing)
+                .font(TanqueDS.Font.mono(11.5))
+                .foregroundStyle(DashboardDS.brass)
+                .frame(width: 52)
+        }
+        .padding(.top, 2)
+        .help("Render width \u{00D7} height in pixels; Draw Things rounds to multiples of 64.")
+    }
+}
 
 struct ParametersSection: View {
     @Bindable var vm: GenerateViewModel
@@ -213,6 +273,38 @@ struct ParametersSection: View {
             fieldRow("CFG", String(format: "%.1f", vm.config.guidanceScale))
             Slider(value: $vm.config.guidanceScale, in: 0.5...20, step: 0.5)
                 .tint(DashboardDS.brass)
+
+            HStack {
+                Text("Sampler").font(TanqueDS.Font.mono(11.5)).foregroundStyle(DashboardDS.muted2)
+                Spacer()
+                Picker("", selection: $vm.config.sampler) {
+                    ForEach(DrawThingsSampler.builtIn) { s in
+                        Text(s.displayName).tag(s.name)
+                    }
+                }
+                .labelsHidden()
+                .pickerStyle(.menu)
+                .fixedSize()
+            }
+            .padding(.top, 6)
+            .help("Denoising sampler algorithm.")
+
+            // cfgZeroStar is Bool? — nil means "TS decides by model heuristic"
+            // (turbo-name detection in convertConfig). Same optional-toggle
+            // bridge precedent as Res. Shift: touching the toggle makes the
+            // choice explicit.
+            HStack {
+                Text("CFG-Zero*").font(TanqueDS.Font.mono(11.5)).foregroundStyle(DashboardDS.muted2)
+                Spacer()
+                Toggle("", isOn: Binding(
+                    get: { vm.config.cfgZeroStar ?? false },
+                    set: { vm.config.cfgZeroStar = $0 }
+                ))
+                .labelsHidden()
+                .tint(DashboardDS.brass)
+            }
+            .padding(.top, 6)
+            .help("CFG-Zero* guidance. Off by default; TS auto-enables for turbo models until set explicitly.")
             fieldRow("Seed", "\(vm.config.seed)")
             Slider(value: Binding(get: { Double(vm.config.seed) }, set: { vm.config.seed = Int($0) }), in: -1...99_999, step: 1)
                 .tint(DashboardDS.brass)
