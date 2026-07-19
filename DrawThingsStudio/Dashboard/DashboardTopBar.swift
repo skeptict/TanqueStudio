@@ -97,8 +97,9 @@ struct DashboardTopBar: View {
     // without returning to the Dashboard first.
     private var persistentNavView: some View {
         HStack(spacing: 18) {
+            navButton("Generate", target: .focus)
             navButton("Project Browser", target: .projects)
-            navButton("Labs", target: .labs, badge: true)
+            navButton("Labs", target: .labs)
             navButton("Settings", target: .settings)
         }
     }

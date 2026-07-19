@@ -224,6 +224,105 @@ struct ParametersSection: View {
                 .help("Roll a fresh seed automatically before every generation.")
                 .padding(.top, 6)
 
+            // Renders — sequential batch count. Mirrors GenerateLeftPanel's
+            // "Renders" Stepper (ported from the classic shell); this fork's
+            // rewritten Parameters accordion had dropped it entirely, leaving
+            // no way to request more than one render per Generate tap.
+            HStack {
+                Text("Renders").font(TanqueDS.Font.mono(11.5)).foregroundStyle(DashboardDS.muted2)
+                Spacer()
+                Stepper(value: $vm.config.batchCount, in: 1...10) {
+                    Text("\(vm.config.batchCount)")
+                        .font(TanqueDS.Font.mono(11.5))
+                        .foregroundStyle(DashboardDS.brass)
+                        .frame(width: 20, alignment: .trailing)
+                }
+            }
+            .padding(.top, 6)
+            .help("Number of sequential renders to run per Generate tap.")
+
+            // Advanced params, flattened — GenerateLeftPanel keeps these behind a
+            // collapsed "Advanced" section; the Dashboard drawer surfaces them as
+            // plain rows instead (Ned's direction: no revived collapse pattern).
+            HStack {
+                Text("Res. Shift").font(TanqueDS.Font.mono(11.5)).foregroundStyle(DashboardDS.muted2)
+                Spacer()
+                Toggle("", isOn: Binding(
+                    get: { vm.config.resolutionDependentShift ?? false },
+                    set: { vm.config.resolutionDependentShift = $0 }
+                ))
+                .labelsHidden()
+                .tint(DashboardDS.brass)
+            }
+            .padding(.top, 6)
+            .help("Compute Shift from render resolution instead of the manual value.")
+
+            let rdsOn = vm.config.resolutionDependentShift == true
+            fieldRow(
+                "Shift",
+                String(
+                    format: "%.2f",
+                    rdsOn
+                        ? DrawThingsGenerationConfig.rdsComputedShift(
+                            width: vm.config.width, height: vm.config.height)
+                        : vm.config.shift))
+            Slider(value: $vm.config.shift, in: 0...10, step: 0.1)
+                .tint(DashboardDS.brass)
+                .disabled(rdsOn)
+                .help(rdsOn ? "Disabled — Res. Shift is computing this value." : "Timestep shift.")
+
+            HStack {
+                Text("Seed Mode").font(TanqueDS.Font.mono(11.5)).foregroundStyle(DashboardDS.muted2)
+                Spacer()
+                Picker("", selection: $vm.config.seedMode) {
+                    ForEach(GenerateLeftPanel.seedModes, id: \.self) { Text($0) }
+                }
+                .labelsHidden()
+                .pickerStyle(.menu)
+                .fixedSize()
+            }
+            .padding(.top, 6)
+
+            fieldRow("SSS", String(format: "%.2f", vm.config.stochasticSamplingGamma))
+            Slider(value: $vm.config.stochasticSamplingGamma, in: 0...1, step: 0.01)
+                .tint(DashboardDS.brass)
+
+            // Frames stays free-form, not a capped slider: DT's own client UI
+            // stops at 121 but the gRPC server accepts more (e.g. 450).
+            HStack {
+                Text("Frames").font(TanqueDS.Font.mono(11.5)).foregroundStyle(DashboardDS.muted2)
+                Spacer()
+                TextField("0", value: $vm.config.numFrames, format: .number)
+                    .textFieldStyle(.plain)
+                    .multilineTextAlignment(.trailing)
+                    .font(TanqueDS.Font.mono(11.5))
+                    .foregroundStyle(DashboardDS.brass)
+                    .frame(width: 52)
+            }
+            .padding(.top, 6)
+            .help("Video models: number of frames to render. 0 or 1 = still image.")
+
+            HStack {
+                Text("FPS").font(TanqueDS.Font.mono(11.5)).foregroundStyle(DashboardDS.muted2)
+                Spacer()
+                TextField("0", value: $vm.config.fps, format: .number)
+                    .textFieldStyle(.plain)
+                    .multilineTextAlignment(.trailing)
+                    .font(TanqueDS.Font.mono(11.5))
+                    .foregroundStyle(DashboardDS.brass)
+                    .frame(width: 52)
+            }
+            .padding(.top, 6)
+            .help("Video playback frame rate. 0 = model default.")
+
+            if vm.config.numFrames > 1 {
+                Text("Video render — \(vm.config.numFrames) frames will be saved as one gallery series.")
+                    .font(TanqueDS.Font.mono(10.5))
+                    .foregroundStyle(DashboardDS.muted)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, 4)
+            }
+
             Button {
                 vm.showConfigPicker = true
             } label: {
