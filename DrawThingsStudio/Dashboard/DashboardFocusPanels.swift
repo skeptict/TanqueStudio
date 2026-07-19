@@ -242,22 +242,55 @@ struct CanvasSizeSection: View {
             }
             .help("Aspect ratio. Recomputes width \u{00D7} height at the current pixel budget.")
 
+            HStack(spacing: 5) {
+                ForEach(sizeTiers, id: \.label) { tier in
+                    let target = dimensions(forBudget: tier.budget)
+                    let active = vm.config.width == target.w && vm.config.height == target.h
+                    Button {
+                        vm.config.width = target.w
+                        vm.config.height = target.h
+                    } label: {
+                        Text(tier.label)
+                            .font(TanqueDS.Font.mono(10.5))
+                            .foregroundStyle(active ? DashboardDS.brass : DashboardDS.muted2)
+                            .padding(.horizontal, 10).padding(.vertical, 4)
+                            .background(active ? DashboardDS.brassSubtle : DashboardDS.surf2, in: Capsule())
+                            .overlay(Capsule().strokeBorder(active ? DashboardDS.brass : DashboardDS.border, lineWidth: 1))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .help("Size tier. Rescales to a 512\u{00B2} / 1024\u{00B2} / 1536\u{00B2} pixel budget at the current aspect ratio.")
+
             sizeRow
         }
+    }
+
+    private let sizeTiers: [(label: String, budget: Int)] = [
+        ("Small", 512 * 512), ("Medium", 1024 * 1024), ("Large", 1536 * 1536),
+    ]
+
+    // Same budget math as applyAspectRatio, holding ratio fixed instead of area.
+    private func dimensions(forBudget budget: Int) -> (w: Int, h: Int) {
+        let ratio = Double(vm.config.width) / Double(max(1, vm.config.height))
+        let h = sqrt(Double(budget) / ratio)
+        let w = ratio * h
+        return (max(64, Int((w / 64).rounded() * 64)),
+                max(64, Int((h / 64).rounded() * 64)))
     }
 
     private var sizeRow: some View {
         HStack {
             Text("Size").font(TanqueDS.Font.mono(11.5)).foregroundStyle(DashboardDS.muted2)
             Spacer()
-            TextField("W", value: $vm.config.width, format: .number)
+            TextField("W", value: $vm.config.width, format: .number.grouping(.never))
                 .textFieldStyle(.plain)
                 .multilineTextAlignment(.trailing)
                 .font(TanqueDS.Font.mono(11.5))
                 .foregroundStyle(DashboardDS.brass)
                 .frame(width: 52)
             Text("\u{00D7}").font(TanqueDS.Font.mono(11.5)).foregroundStyle(DashboardDS.muted2)
-            TextField("H", value: $vm.config.height, format: .number)
+            TextField("H", value: $vm.config.height, format: .number.grouping(.never))
                 .textFieldStyle(.plain)
                 .multilineTextAlignment(.trailing)
                 .font(TanqueDS.Font.mono(11.5))

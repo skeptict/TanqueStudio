@@ -111,7 +111,7 @@ Existing sections: Prompt · Assist · Model · Parameters · LoRAs · img2img &
 
 | Section | Fields |
 |---|---|
-| **Canvas Size** (port from classic) | startWidth, startHeight |
+| **Canvas Size** (port from classic) | startWidth, startHeight. Now the consolidated home for all size controls: aspect-ratio chips (moved from Prompt, budget-preserving `applyAspectRatio`), Small/Medium/Large tier chips (512²/1024²/1536² pixel budgets at the current ratio, rounded to nearest 64), then the numeric W×H row (grouping separators suppressed) |
 | **Parameters** | sampler, batchSize, clipSkip, sharpness, imageGuidanceScale, zeroNegativePrompt, guidanceEmbed + speedUpWithGuidanceEmbed, cfgZeroStar + cfgZeroInitSteps, compressionArtifacts + compressionArtifactsQuality |
 | **Model** | refinerModel, refinerStart, upscaler, upscalerScaleFactor, faceRestoration |
 | **img2img & Moodboard** | maskBlur, maskBlurOutset, preserveOriginalAfterInpaint, controls (ControlNet UI is its own future project; listed for completeness) |
