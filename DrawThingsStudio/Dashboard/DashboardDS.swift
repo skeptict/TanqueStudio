@@ -109,3 +109,34 @@ struct DashboardPrimaryButtonStyle: ButtonStyle {
             .opacity(configuration.isPressed ? 0.8 : 1)
     }
 }
+
+/// Self-drawn checkbox: SwiftUI's native `.checkbox` style combined with
+/// `.tint()` loses its bordered-box look in the unchecked state on this
+/// theme — it renders as a flat, borderless blob barely distinguishable from
+/// the paper background (the bug Ned reported for Res. Shift). Drawing the
+/// box explicitly guarantees a visible border in both states, independent of
+/// AppKit's tint-vs-checkbox interaction.
+struct DashboardCheckboxToggleStyle: ToggleStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        Button {
+            configuration.isOn.toggle()
+        } label: {
+            RoundedRectangle(cornerRadius: 4)
+                .fill(configuration.isOn ? DashboardDS.brass : DashboardDS.surf2)
+                .frame(width: 16, height: 16)
+                .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(DashboardDS.border2, lineWidth: 1))
+                .overlay {
+                    if configuration.isOn {
+                        Image(systemName: "checkmark")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundStyle(DashboardDS.onBrass)
+                    }
+                }
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+extension ToggleStyle where Self == DashboardCheckboxToggleStyle {
+    static var dashboardCheckbox: DashboardCheckboxToggleStyle { DashboardCheckboxToggleStyle() }
+}
