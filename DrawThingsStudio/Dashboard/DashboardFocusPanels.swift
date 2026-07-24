@@ -44,11 +44,19 @@ struct FocusRoomDrawer: View {
                     section("img2img & Moodboard", isExpanded: $img2imgExpanded) { Img2ImgMoodboardSection(vm: vm) }
                     section("Actions", isExpanded: $actionsExpanded) { ActionsSection(vm: vm, modelContext: modelContext) }
                 }
+                // Pin the accordion content to the drawer's width. Without this,
+                // a section whose ideal width mis-measures (vertical-axis
+                // TextField with a long prompt inside DisclosureGroup) blows the
+                // ScrollView content wide, and the oversized content centers —
+                // spilling over the canvas toolbar on one side and past the
+                // window edge on the other.
+                .frame(width: 320)
             }
             generateButton
         }
         .frame(width: 320)
         .frame(maxHeight: .infinity)
+        .clipped()
         .background(DashboardDS.surf1)
         .overlay(alignment: .leading) {
             Rectangle().fill(DashboardDS.border).frame(width: 1)
@@ -150,6 +158,15 @@ struct PromptSection: View {
 
 struct ModelSection: View {
     @Bindable var vm: GenerateViewModel
+    @State private var searchText = ""
+
+    private var filteredModels: [DrawThingsModel] {
+        if searchText.isEmpty { return vm.models }
+        return vm.models.filter {
+            $0.name.localizedCaseInsensitiveContains(searchText) ||
+            $0.filename.localizedCaseInsensitiveContains(searchText)
+        }
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -157,8 +174,36 @@ struct ModelSection: View {
                 Text("No models loaded \u{2014} check Draw Things connection")
                     .font(TanqueDS.Font.mono(11))
                     .foregroundStyle(DashboardDS.muted)
+            } else {
+                HStack(spacing: 6) {
+                    Image(systemName: "magnifyingglass")
+                        .font(.system(size: 10))
+                        .foregroundStyle(DashboardDS.muted)
+                    TextField("Search models\u{2026}", text: $searchText)
+                        .textFieldStyle(.plain)
+                        .font(TanqueDS.Font.mono(11.5))
+                    if !searchText.isEmpty {
+                        Button { searchText = "" } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.system(size: 10))
+                                .foregroundStyle(DashboardDS.muted)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(7)
+                .background(DashboardDS.surf2, in: RoundedRectangle(cornerRadius: 7))
+                .overlay(RoundedRectangle(cornerRadius: 7).strokeBorder(DashboardDS.border, lineWidth: 1))
+                .padding(.bottom, 2)
+
+                if filteredModels.isEmpty {
+                    Text("No models match \u{201C}\(searchText)\u{201D}")
+                        .font(TanqueDS.Font.mono(11))
+                        .foregroundStyle(DashboardDS.muted)
+                        .padding(.vertical, 4)
+                }
             }
-            ForEach(vm.models) { model in
+            ForEach(filteredModels) { model in
                 let selected = vm.config.model == model.filename
                 Button { vm.config.model = model.filename } label: {
                     HStack(spacing: 10) {
@@ -341,7 +386,7 @@ struct ParametersSection: View {
                     set: { vm.config.cfgZeroStar = $0 }
                 ))
                 .labelsHidden()
-                .tint(DashboardDS.brass)
+                .toggleStyle(.dashboardCheckbox)
             }
             .padding(.top, 6)
             .help("CFG-Zero* guidance. Off by default; TS auto-enables for turbo models until set explicitly.")
@@ -403,7 +448,7 @@ struct ParametersSection: View {
                     set: { vm.config.resolutionDependentShift = $0 }
                 ))
                 .labelsHidden()
-                .tint(DashboardDS.brass)
+                .toggleStyle(.dashboardCheckbox)
             }
             .padding(.top, 6)
             .help("Compute Shift from render resolution instead of the manual value.")

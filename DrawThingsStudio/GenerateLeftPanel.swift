@@ -318,6 +318,7 @@ struct GenerateLeftPanel: View {
                 set: { vm.config.resolutionDependentShift = $0 }
             ))
             .labelsHidden()
+            .toggleStyle(.checkbox)
             .tint(TanqueDS.Color.brass)
             .popoverTip(resolutionShiftTip)
         }

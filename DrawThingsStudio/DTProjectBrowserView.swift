@@ -318,19 +318,32 @@ struct DTProjectBrowserView: View {
     }
 
     private var thumbnailScroll: some View {
-        ScrollView {
+        // Snapshot once per body pass — filteredEntries filters on every access.
+        let entries = browser.filteredEntries
+        return ScrollView {
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 120, maximum: 160), spacing: 8)], spacing: 8) {
-                ForEach(browser.filteredEntries) { entry in
-                    if entry.id == browser.filteredEntries.first?.id {
-                        thumbnailCell(entry).popoverTip(multiSelectTip)
-                    } else {
-                        thumbnailCell(entry)
+                ForEach(entries) { entry in
+                    Group {
+                        if entry.id == entries.first?.id {
+                            thumbnailCell(entry).popoverTip(multiSelectTip)
+                        } else {
+                            thumbnailCell(entry)
+                        }
+                    }
+                    // Inside the lazy grid, onAppear fires when the cell scrolls
+                    // near-visible — reaching the last row auto-loads the next
+                    // page (which also prefetches one page ahead, see
+                    // loadNextPage). Outside the grid it would fire immediately.
+                    .onAppear {
+                        if entry.id == entries.last?.id { browser.loadMore() }
                     }
                 }
             }
             .padding(12)
 
             if browser.hasMoreEntries {
+                // Fallback for the case where the last cell appeared while a
+                // load was already in flight and the auto-trigger was skipped.
                 Button {
                     browser.loadMore()
                 } label: {

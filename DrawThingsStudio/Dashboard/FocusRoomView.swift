@@ -59,7 +59,7 @@ struct FocusRoomView: View {
                 } else if vm.canvasMode == .crop {
                     CropLayer(vm: vm, image: image, canvasScale: $canvasScale, canvasOffset: $canvasOffset)
                 } else {
-                    imageFrame
+                    viewModeCanvas
                 }
             } else if vm.isGenerating {
                 // First-ever generate: no image yet, but still show imageFrame's
@@ -117,17 +117,97 @@ struct FocusRoomView: View {
             return true
         } isTargeted: { isDropTargeted = $0 }
         .onChange(of: vm.generatedImage) { _, _ in
-            canvasScale = 1.0
-            canvasOffset = .zero
+            resetCanvasView(animated: false)
             vm.exitEditMode()
         }
         .onChange(of: vm.errorMessage) { _, newError in
             if newError != nil {
-                canvasScale = 1.0
-                canvasOffset = .zero
+                resetCanvasView(animated: false)
                 vm.exitEditMode()
             }
         }
+    }
+
+    // MARK: View-mode pan/zoom
+
+    // The edit layers get pan/zoom from ZoomableEditSurface, where plain drag
+    // must keep painting/selecting (pan is ⌥-drag there). View mode has no
+    // paint action, so plain drag pans directly.
+    @State private var lastCanvasScale: CGFloat = 1.0
+    @State private var lastCanvasOffset: CGSize = .zero
+    @State private var viewDragActive = false
+    @State private var viewPinchActive = false
+
+    private var viewModeCanvas: some View {
+        imageFrame
+            .contentShape(Rectangle())
+            .gesture(viewPanGesture)
+            .simultaneousGesture(viewPinchGesture)
+            .simultaneousGesture(TapGesture(count: 2).onEnded { resetCanvasView(animated: true) })
+            .overlay(alignment: .bottomTrailing) {
+                if abs(canvasScale - 1.0) > 0.01 {
+                    Button { resetCanvasView(animated: true) } label: {
+                        Text("\(Int(canvasScale * 100))%")
+                            .font(.caption.monospacedDigit())
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 6))
+                    }
+                    .buttonStyle(.plain)
+                    .help("Reset zoom to 100% (drag pans, pinch zooms, double-click resets)")
+                    .padding([.bottom, .trailing], 12)
+                }
+            }
+    }
+
+    private var viewPanGesture: some Gesture {
+        DragGesture()
+            .onChanged { v in
+                if !viewDragActive {
+                    viewDragActive = true
+                    lastCanvasOffset = canvasOffset
+                }
+                canvasOffset = CGSize(width: lastCanvasOffset.width + v.translation.width,
+                                      height: lastCanvasOffset.height + v.translation.height)
+            }
+            .onEnded { _ in
+                viewDragActive = false
+                lastCanvasOffset = canvasOffset
+            }
+    }
+
+    private var viewPinchGesture: some Gesture {
+        MagnificationGesture()
+            .onChanged { value in
+                if !viewPinchActive {
+                    viewPinchActive = true
+                    lastCanvasScale = canvasScale
+                }
+                let scaled = lastCanvasScale * value
+                guard scaled.isFinite else { return }
+                canvasScale = min(6.0, max(0.5, scaled))
+            }
+            .onEnded { _ in
+                viewPinchActive = false
+                if abs(canvasScale - 1.0) < 0.05 {
+                    resetCanvasView(animated: true)
+                }
+                lastCanvasScale = canvasScale
+            }
+    }
+
+    private func resetCanvasView(animated: Bool) {
+        if animated {
+            withAnimation(.easeOut(duration: 0.15)) {
+                canvasScale = 1.0
+                canvasOffset = .zero
+            }
+        } else {
+            canvasScale = 1.0
+            canvasOffset = .zero
+        }
+        lastCanvasScale = 1.0
+        lastCanvasOffset = .zero
     }
 
     // MARK: Edit-mode toolbar (Paint / Crop / Color Draw)

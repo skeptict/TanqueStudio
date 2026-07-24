@@ -258,7 +258,10 @@ final class DTProjectBrowserViewModel {
         loadNextPage()
     }
 
-    func loadNextPage() {
+    /// `prefetch: true` marks the automatic one-page-ahead load that chains off
+    /// a completed page; it must not chain again or every selection would
+    /// silently page through the entire database.
+    func loadNextPage(prefetch: Bool = false) {
         guard let project = selectedProject, !isLoading else { return }
         loadTask?.cancel()
         isLoading = true
@@ -293,6 +296,9 @@ final class DTProjectBrowserViewModel {
             self.loadedOffset = offset + result.entries.count
             self.hasMoreEntries = self.loadedOffset < result.totalCount
             self.isLoading = false
+            if !prefetch && self.hasMoreEntries && result.error == nil {
+                self.loadNextPage(prefetch: true)
+            }
         }
     }
 
