@@ -509,6 +509,7 @@ final class GenerateViewModel {
                 self.isGenerating = false
                 self.progress = .failed(error.localizedDescription)
                 self.config.batchCount = count  // restore stepper value
+                self.refreshConnectionStateAfterFailure()
             }
         }
     }
@@ -865,6 +866,7 @@ final class GenerateViewModel {
                 self.errorMessage = error.localizedDescription
                 self.isGenerating = false
                 self.progress = .failed(error.localizedDescription)
+                self.refreshConnectionStateAfterFailure()
             }
         }
     }
@@ -1062,6 +1064,25 @@ final class GenerateViewModel {
                 }
                 self.isLoadingAssets = false
             }
+        }
+    }
+
+    /// Re-probes the server after a failed render and updates the connection badge.
+    ///
+    /// `lastConnectionSucceeded` was only ever written by `loadAssets()`, so once a
+    /// connection had succeeded the badge kept claiming "connected" indefinitely —
+    /// even after the server went away. Combined with renders that report no
+    /// progress, that made a dead connection look exactly like a slow render.
+    ///
+    /// The failure itself can't tell us which it was: the gRPC layer collapses a bad
+    /// sampler, a missing model and a dropped connection all into `requestFailed`.
+    /// So rather than inferring, ask the server directly.
+    private func refreshConnectionStateAfterFailure() {
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            let healthy = await AppSettings.shared.createDrawThingsClient().checkConnection()
+            self.lastConnectionSucceeded = healthy
+            self.lastConnectionCheck = Date()
         }
     }
 

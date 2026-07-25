@@ -117,6 +117,26 @@ final class DrawThingsGRPCClient: DrawThingsProvider {
 
         onProgress?(.starting)
 
+        // Real step progress. GenerationProgress has always had .sampling and
+        // .decoding cases wired through to the progress bar, but nothing ever
+        // emitted them — every render sat at 0% for its whole duration, which
+        // made a slow render indistinguishable from a dead connection.
+        //
+        // The high-level client publishes its stage on `currentProgress`, so the
+        // txt2img/img2img path just needs watching. The inpaint path bypasses
+        // that client and talks to the service directly, so it gets an explicit
+        // progressHandler below instead.
+        let totalSteps = config.steps
+        let progressPoller = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 150_000_000)
+                guard let stage = self?.client?.currentProgress?.stage,
+                      let mapped = Self.mapStage(stage, totalSteps: totalSteps) else { continue }
+                onProgress?(mapped)
+            }
+        }
+        defer { progressPoller.cancel() }
+
         let isImg2Img = sourceImage != nil
         logger.info("Starting \(isImg2Img ? "img2img" : "txt2img") generation")
 
@@ -144,7 +164,11 @@ final class DrawThingsGRPCClient: DrawThingsProvider {
                     image: imageData,
                     mask: maskData,
                     hints: hints,
-                    sharedSecret: sharedSecret
+                    sharedSecret: sharedSecret,
+                    progressHandler: { signpost in
+                        guard let mapped = Self.mapSignpost(signpost, totalSteps: totalSteps) else { return }
+                        await MainActor.run { onProgress?(mapped) }
+                    }
                 )
                 onProgress?(.complete)
                 RequestLogger.shared.logGRPCResponse(imageCount: resultData.count)
@@ -371,6 +395,40 @@ final class DrawThingsGRPCClient: DrawThingsProvider {
     }
 
     // MARK: - Config Conversion
+
+    // MARK: - Progress mapping
+
+    /// Client stage → TanqueStudio progress. Returns nil for stages that carry
+    /// no step count (encoding, face restore, upscale) so the bar holds its last
+    /// value rather than snapping back to 0.
+    private nonisolated static func mapStage(_ stage: GenerationStage, totalSteps: Int) -> GenerationProgress? {
+        switch stage {
+        case .sampling(let step), .secondPassSampling(let step):
+            return .sampling(step: step, totalSteps: max(totalSteps, 1))
+        case .imageDecoding, .secondPassImageDecoding:
+            return .decoding
+        default:
+            return nil
+        }
+    }
+
+    /// Same mapping for the inpaint path, which receives raw signposts off the
+    /// wire instead of the client's digested stage.
+    private nonisolated static func mapSignpost(_ signpost: ImageGenerationSignpostProto?,
+                                                totalSteps: Int) -> GenerationProgress? {
+        guard let signpost = signpost?.signpost else { return nil }
+        switch signpost {
+        // Distinct associated types upstream, so these can't share a case.
+        case .sampling(let sampling):
+            return .sampling(step: Int(sampling.step), totalSteps: max(totalSteps, 1))
+        case .secondPassSampling(let sampling):
+            return .sampling(step: Int(sampling.step), totalSteps: max(totalSteps, 1))
+        case .imageDecoded, .secondPassImageDecoded:
+            return .decoding
+        default:
+            return nil
+        }
+    }
 
     private func convertConfig(_ config: DrawThingsGenerationConfig) -> DrawThingsConfiguration {
         // Map sampler string to SamplerType
