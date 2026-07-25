@@ -93,6 +93,24 @@ SwiftUI clamps harmlessly. **Rejected.**
   make every drawer interaction expensive, which would explain symptoms 1 and 2 together:
   a blocked main thread makes model clicks look inert.
 
+### Key narrowing: Intel-only
+
+**Ned (2026-07-25): this reproduces only on old Intel Macs, never on the current Apple
+Silicon laptops.** He has a repro on an **Intel Mac running macOS 15.7.7**.
+
+That strongly favours the layout-cycle hypothesis and largely rules out anything purely
+load-related — a slow machine is slow everywhere, but a *cycle* either terminates or
+doesn't. The most likely variable is **the SwiftUI implementation, not the CPU**: this dev
+machine runs macOS 26 (Darwin 25.5.0), the repro runs macOS 15.7.7, and SwiftUI's layout
+engine changed substantially between them. A cycle that newer SwiftUI damps out can spin
+indefinitely on the older one. Architecture and OS version travel together on old hardware,
+so they need separating — the cleanest discriminator is an Apple Silicon Mac on macOS 15,
+if one is available.
+
+**Likely related:** the long-standing README backlog item *"Intel Mac launch failure (root
+cause unknown, low priority)"*. Worth investigating as possibly the same root cause rather
+than two unrelated Intel oddities.
+
 ### What's needed to settle it
 
 A spindump or sample from the tester **while it is hung** — that names the spinning frame
