@@ -239,7 +239,13 @@ struct ModelSection: View {
                 }
                 .labelsHidden()
                 .pickerStyle(.menu)
-                .fixedSize()
+                // Same unbounded-width demand that hung ParametersSection on
+                // Intel/macOS 15 — and worse here, since the menu items are
+                // model filenames, which are far longer than sampler names.
+                // This section didn't hang for the tester, but only because he
+                // never expanded it far enough to lay out; the shape is
+                // identical, so it's fixed rather than left latent.
+                .frame(maxWidth: ParametersSection.drawerPickerWidth, alignment: .trailing)
             }
             .padding(.top, 8)
             .help("Refiner model. Takes over denoising at the Refiner Start fraction; None disables.")
@@ -430,6 +436,31 @@ struct HiresFixSection: View {
 struct ParametersSection: View {
     @Bindable var vm: GenerateViewModel
 
+    /// Upper bound for `.menu` Pickers inside the Focus Room drawer.
+    ///
+    /// These previously used `.fixedSize()`, which asks for the picker's ideal
+    /// width unconditionally. Inside the drawer — pinned to `.frame(width: 320)`
+    /// and `.clipped()` by the 0.9.27 overflow fix — a long menu item like
+    /// "Euler Ancestral Trailing" demands more width than the parent can grant,
+    /// and SwiftUI has to reconcile the two every layout pass.
+    ///
+    /// On Intel / macOS 15.7.7 that reconciliation **never terminates**. A
+    /// `sample` taken during the hang put 7,288 of 7,288 samples (100% of a 10s
+    /// window) on one unbroken main-thread stack over 2,400 frames deep, cycling
+    /// `AG::Subgraph::update` → `AG::Graph::update_attribute` and bottoming out
+    /// in AppKit backing-store geometry (`NSViewGetTransformToBacking`,
+    /// `convertSizeToBacking:`, `+[NSScreen _backingScaleFactorForScreen:]`).
+    /// That is pixel-alignment rounding, which is the likeliest reason it is
+    /// machine-specific: old Intel iMacs are typically non-Retina (1× backing
+    /// scale) where the M1 dev machines are 2×, and a width that rounds cleanly
+    /// at 2× can oscillate between two values at 1×.
+    ///
+    /// Bounding the width removes the unbounded demand entirely, so there is
+    /// nothing left to oscillate. 170pt clears the longest sampler name at
+    /// `mono(11.5)`; the `.menu` style truncates rather than overflowing if a
+    /// future entry is longer.
+    static let drawerPickerWidth: CGFloat = 170
+
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             fieldRow("Steps", "\(vm.config.steps)")
@@ -449,7 +480,10 @@ struct ParametersSection: View {
                 }
                 .labelsHidden()
                 .pickerStyle(.menu)
-                .fixedSize()
+                // Was .fixedSize(). See the note on drawerPickerWidth below —
+                // an unbounded width demand inside the drawer's fixed 320pt
+                // frame is what hung 0.9.28 on Intel/macOS 15.
+                .frame(maxWidth: Self.drawerPickerWidth, alignment: .trailing)
             }
             .padding(.top, 6)
             .help("Denoising sampler algorithm.")
@@ -555,7 +589,7 @@ struct ParametersSection: View {
                 }
                 .labelsHidden()
                 .pickerStyle(.menu)
-                .fixedSize()
+                .frame(maxWidth: Self.drawerPickerWidth, alignment: .trailing)
             }
             .padding(.top, 6)
 
