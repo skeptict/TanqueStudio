@@ -74,6 +74,21 @@ struct DashboardRootView: View {
             }
         }
         .background(DashboardDS.bg)
+        // DashboardDS is a hardcoded light "paper" palette (bg #f0ebe0, text
+        // #1a140c) and Info.plist pins no appearance, so the app follows the
+        // system. Under macOS Dark Mode every control that uses a semantic
+        // colour — the model search field, .menu Pickers, any unstyled Text —
+        // resolves to near-white and lands on that cream background: measured
+        // 1.19:1 contrast against DashboardDS.bg and 1.50:1 for control text on
+        // surf2, versus 17.66:1 and 14.00:1 in Light. WCAG's floor for body
+        // text is 4.5:1, so those controls are genuinely unreadable, which is
+        // what a beta tester reported on 0.9.28.
+        //
+        // Pinning light matches what every other view here already does for its
+        // own theme (SettingsView, HelpWindow, WelcomeSheet, GenerateRightPanel
+        // and DTProjectBrowserView all pin .dark). The alternative — making
+        // DashboardDS appearance-aware — is a real design project, not a fix.
+        .preferredColorScheme(.light)
         .overlay(alignment: .bottomTrailing) {
             if let toast {
                 DashboardToastView(toast: toast)
