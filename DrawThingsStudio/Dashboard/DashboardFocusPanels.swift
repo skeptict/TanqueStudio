@@ -542,6 +542,7 @@ struct ParametersSection: View {
                     .padding(.horizontal, 6).padding(.vertical, 3)
                     .background(DashboardDS.surf2, in: RoundedRectangle(cornerRadius: 5))
                     .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(DashboardDS.border, lineWidth: 1))
+                    .accessibilityLabel("Seed")
                 Button {
                     vm.config.seed = Int(UInt32.random(in: 0...UInt32.max))
                 } label: {
@@ -550,8 +551,10 @@ struct ParametersSection: View {
                         .foregroundStyle(DashboardDS.muted2)
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("Roll a new seed")
                 .help("Roll a new seed")
             }
+            .padding(.top, 6)
 
             Toggle("Randomize each run", isOn: $vm.randomizeSeed)
                 .font(TanqueDS.Font.mono(11.5))
