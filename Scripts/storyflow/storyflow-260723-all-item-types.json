@@ -1,0 +1,111 @@
+{
+  "projectName": "TS Phase1 Fixture",
+  "items": [
+    {
+      "type": "prompt",
+      "value": ""
+    },
+    {
+      "type": "note",
+      "value": ""
+    },
+    {
+      "type": "concat",
+      "value": ""
+    },
+    {
+      "type": "wildcard",
+      "value": "{\"wild\":\"shuffle\",\"cards\":[\"aardvark\",\"badger\",\"cat\",\"dog\"]}"
+    },
+    {
+      "type": "sweep",
+      "value": "{\"paramName\":\"steps\",\"wild\":\"loop\",\"cards\":[\"6\",\"7\",\"8\",\"9\"]}"
+    },
+    {
+      "type": "enhance",
+      "value": ""
+    },
+    {
+      "type": "approve",
+      "value": true
+    },
+    {
+      "type": "framesDialog",
+      "value": "{\"wps\":2.4,\"padding\":49,\"generate\":false}"
+    },
+    {
+      "type": "size",
+      "value": "{\"width\":1024,\"height\":1024}"
+    },
+    {
+      "type": "prompt",
+      "value": ""
+    },
+    {
+      "type": "frames",
+      "value": 1
+    },
+    {
+      "type": "frames8",
+      "value": 1
+    },
+    {
+      "type": "moodboardRemove",
+      "value": 0
+    },
+    {
+      "type": "inpaintTools",
+      "value": "{\"strength\":1,\"maskBlur\":0,\"maskBlurOutset\":0,\"preserveOriginalAfterInpaint\":true}"
+    },
+    {
+      "type": "xlMagic",
+      "value": "{\"original\":3,\"target\":4,\"negative\":7}"
+    },
+    {
+      "type": "maskBody",
+      "value": "{\"upper\":false,\"lower\":false,\"clothes\":true,\"neck\":false,\"extra\":5}"
+    },
+    {
+      "type": "adaptSize",
+      "value": "{\"maxWidth\":1664,\"maxHeight\":1664}"
+    },
+    {
+      "type": "moodboardWeights",
+      "value": "{\"index_0\":1,\"index_1\":0,\"index_2\":0,\"index_3\":0,\"index_4\":0,\"index_5\":0}"
+    },
+    {
+      "type": "loop",
+      "value": "{\"loop\":4,\"start\":1}"
+    },
+    {
+      "type": "loopSave",
+      "value": ""
+    },
+    {
+      "type": "loopEnd",
+      "value": true
+    },
+    {
+      "type": "crop",
+      "value": true
+    },
+    {
+      "type": "canvasClear",
+      "value": true
+    },
+    {
+      "type": "interrogate",
+      "value": ""
+    }
+  ],
+  "promptTriggers": {
+    "@hero": "a weathered lighthouse keeper, grey beard, oilskin coat"
+  },
+  "configShortcuts": {
+    "#wan_i2v": "{\"model\":\"wan_v2.2_i2v_a14b_q6p.ckpt\",\"steps\":8}"
+  },
+  "poseJSONShortcuts": {},
+  "wildcardShortcuts": {
+    "$location": "on a cliff|in a harbour|at sea"
+  }
+}

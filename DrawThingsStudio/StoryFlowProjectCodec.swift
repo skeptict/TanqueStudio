@@ -153,8 +153,19 @@ enum StoryFlowProjectCodec {
             step = WorkflowStep(type: .generate)
 
         case "loop":
+            // The editor stores loop as an object string {"loop": N, "start": N}
+            // (ITEM_CONFIGS.loop). Older TS-authored projects store a bare count
+            // string. Accept both, or a 4-repeat loop imports as count
+            // "{"loop":4,...}" and exports as a single pass.
             step = WorkflowStep(type: .loop)
-            step.parameters["count"] = item.value.stringValue ?? "1"
+            let raw = item.value.stringValue ?? "1"
+            if let data = raw.data(using: .utf8),
+               let dict = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] {
+                step.parameters["count"] = String((dict["loop"] as? NSNumber)?.intValue ?? 1)
+                step.parameters["start"] = String((dict["start"] as? NSNumber)?.intValue ?? 0)
+            } else {
+                step.parameters["count"] = raw
+            }
 
         case "loopEnd":
             step = WorkflowStep(type: .endLoop)
@@ -287,7 +298,11 @@ enum StoryFlowProjectCodec {
             return [StoryFlowItem(type: "moodboardAdd", value: .string(step.parameters["imageVar"] ?? ""))]
 
         case .loop:
-            return [StoryFlowItem(type: "loop", value: .string(step.parameters["count"] ?? "1"))]
+            // Emit the editor's object shape so a TS-authored loop reopens in the
+            // StoryFlow Editor with its count and start intact.
+            let count = Int(step.parameters["count"] ?? "1") ?? 1
+            let start = Int(step.parameters["start"] ?? "0") ?? 0
+            return [StoryFlowItem(type: "loop", value: .string("{\"loop\":\(count),\"start\":\(start)}"))]
 
         case .endLoop:
             return [StoryFlowItem(type: "loopEnd", value: .bool(true))]
@@ -450,10 +465,17 @@ enum StoryFlowProjectCodec {
 
             case "loop":
                 // DT pipeline expects loop value as an object: {loop: N, start: N}.
-                // TS stores the count as a plain string; start defaults to 0.
-                let countStr = item.value.stringValue ?? "1"
-                let loopCount = Int(countStr) ?? 1
-                result.append(["loop": ["loop": loopCount, "start": 0] as [String: Any]])
+                // The item value is either that object already (editor-authored)
+                // or a bare count string (older TS-authored projects).
+                let raw = item.value.stringValue ?? "1"
+                if let data = raw.data(using: .utf8),
+                   let dict = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] {
+                    let loopCount = (dict["loop"] as? NSNumber)?.intValue ?? 1
+                    let start = (dict["start"] as? NSNumber)?.intValue ?? 0
+                    result.append(["loop": ["loop": loopCount, "start": start] as [String: Any]])
+                } else {
+                    result.append(["loop": ["loop": Int(raw) ?? 1, "start": 0] as [String: Any]])
+                }
 
             case "loopEnd":
                 result.append(["loopEnd": true])
@@ -467,11 +489,41 @@ enum StoryFlowProjectCodec {
             case "moodboardClear":
                 result.append(["moodboardClear": true])
 
+            case "frames8":
+                // Editor-only distinction: frames8 is the 25fps (LTX) slider,
+                // frames the 16fps (Wan) one. Both export to the pipeline as
+                // "frames" — there is no frames8 key in allowedKeys, so emitting
+                // it verbatim fails preflight as an unknown instruction.
+                // Kept as frames8 in the project format, which is where the
+                // fps distinction lives.
+                switch item.value {
+                case .int(let i):    result.append(["frames": i])
+                case .double(let d): result.append(["frames": d])
+                case .string(let s): result.append(["frames": Int(s) ?? 1])
+                case .bool:          result.append(["frames": 1])
+                }
+
             default:
-                // Unknown / passthrough: emit {type: value} verbatim
+                // Unknown / passthrough: emit {type: value}.
+                //
+                // Object-valued instructions (wildcard, sweep, size, inpaintTools,
+                // framesDialog, xlMagic, maskBody, adaptSize, moodboardWeights, …)
+                // are stored by the editor as a JSON *string*, but the pipeline's
+                // allowedKeys table types them as "object" and rejects a string at
+                // preflight. Parse before emitting — same treatment `config` and
+                // `moveScale` already get above.
                 switch item.value {
                 case .bool(let b):   result.append([item.type: b])
-                case .string(let s): result.append([item.type: s])
+                case .int(let i):    result.append([item.type: i])
+                case .double(let d): result.append([item.type: d])
+                case .string(let s):
+                    if let data = s.data(using: .utf8),
+                       let obj = try? JSONSerialization.jsonObject(with: data),
+                       obj is [String: Any] || obj is [Any] {
+                        result.append([item.type: obj])
+                    } else {
+                        result.append([item.type: s])
+                    }
                 }
             }
         }
