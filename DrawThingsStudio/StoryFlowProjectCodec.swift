@@ -335,6 +335,12 @@ enum StoryFlowProjectCodec {
         }
     }
 
+    /// Collapse runs of whitespace to single spaces, matching the editor's
+    /// `.replace(/\s+/g, ' ')` on pipeline export for note/interrogate/enhance.
+    private static func collapsingWhitespace(_ s: String) -> String {
+        s.split(whereSeparator: { $0.isWhitespace }).joined(separator: " ")
+    }
+
     /// Format a Double as an integer string when it is a whole number, otherwise as a decimal.
     /// Keeps moveScale JSON values like `0` and `576` matching the editor's output.
     private static func fmtNum(_ d: Double) -> String {
@@ -392,7 +398,36 @@ enum StoryFlowProjectCodec {
             switch item.type {
 
             case "note":
-                result.append(["note": item.value.stringValue ?? ""])
+                // The editor collapses whitespace runs to single spaces for
+                // note/interrogate/enhance on pipeline export
+                // (StoryflowEditor_260725.html:2283), but deliberately does NOT
+                // for prompt/negPrompt/concat, which keep their newlines.
+                result.append(["note": collapsingWhitespace(item.value.stringValue ?? "")])
+
+            case "sweep":
+                // Editor 260725 coerces numeric-looking sweep cards to real JSON
+                // numbers on export (StoryflowEditor_260725.html:2296-2306). The
+                // form stores every card as a string, so without this a numeric
+                // parameter is assigned a string — the pipeline does
+                // `configuration[paramName] = pickedValue` with no coercion of
+                // its own. The project format keeps the strings; only the export
+                // converts. Non-numeric cards (model filenames) stay strings.
+                if let json = item.value.stringValue,
+                   let data = json.data(using: .utf8),
+                   var obj = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] {
+                    if let cards = obj["cards"] as? [Any] {
+                        obj["cards"] = cards.map { card -> Any in
+                            guard let s = card as? String else { return card }
+                            let trimmed = s.trimmingCharacters(in: .whitespaces)
+                            guard !trimmed.isEmpty, let n = Double(trimmed) else { return card }
+                            return n.truncatingRemainder(dividingBy: 1) == 0 && abs(n) < 1e15
+                                ? Int(n) as Any : n as Any
+                        }
+                    }
+                    result.append(["sweep": obj])
+                } else {
+                    result.append(["sweep": item.value.stringValue ?? ""])
+                }
 
             case "canvasClear":
                 result.append(["canvasClear": true])

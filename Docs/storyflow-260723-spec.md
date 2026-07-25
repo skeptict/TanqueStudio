@@ -310,7 +310,7 @@ All read from the real editor and pipeline, and exercised by `Scripts/storyflow/
 
 1. **Object values are JSON strings in the project format**, real JSON objects in the pipeline format. The editor's form builder writes `container.dataset.jsonValue = JSON.stringify(...)`. Phase 1 made the pipeline export parse before emitting; the forms must write the same stringified shape back.
 2. **Exactly three item types are JSON numbers**: `frames`, `frames8`, `moodboardRemove`. Everything else is string or bool. Confirmed by driving the real editor, not by reading the docs.
-3. **`sweep` cards are always strings**, even for numeric parameters — the editor's array input splits a textarea by line (`input.value.split("\n")`), so `steps` sweeps arrive as `["6","7","8","9"]`. Harmless in DT's untyped JS (`configuration[paramName] = pickedValue`), but **Phase 3's native executor must coerce**, and Phase 2's form should not pretend the cards are typed.
+3. **`sweep` cards are strings in the project format, numbers in the export.** The editor's array input splits a textarea by line (`input.value.split("\n")`), so cards are stored as `["6","7","8","9"]`. **Editor 260725 added numeric coercion at pipeline-export time** (`StoryflowEditor_260725.html:2296-2306`): numeric-looking cards become real JSON numbers, non-numeric ones (model filenames) stay strings. This matters because the pipeline does `configuration[paramName] = pickedValue` with no coercion of its own, so a string would land in a numeric config field. **Tanque Studio matches this as of `a5f9dc1`** — verified against the author's own export (§8.6). Phase 2's form should still not pretend the cards are typed; the coercion belongs at export.
 4. **`frames8` is editor-only.** It exports to the pipeline as `frames` (handled in Phase 1); the 16fps/25fps distinction exists only in the project format, for the editor's duration readout.
 5. **`maskBody` is typed `flag` in `allowedKeys` but is really an object.** Upstream mislabel; preflight skips validation for flag-typed keys, so the object passes and `setBodyparts` needs it. Emit the object.
 6. **`wild` has exactly four values**: `loop`, `once`, `shuffle`, `random` — semantics in `WildcardTracker.getNextCard` (`StoryflowPipeline_260723.js:386-414`). Phase 2 only needs the picklist; Phase 3 ports the tracker.
@@ -330,3 +330,58 @@ Keeping them separate means Phase 2 ships without needing that decision, and the
 5. **End-to-end verification** — author a project in Tanque Studio using the new instructions, export it, and run it in Draw Things' pipeline. This is the real exit criterion; a green round-trip test is necessary but not sufficient.
 
 **Exit:** a Tanque Studio-authored 260723 project runs correctly in Draw Things, verified by actually running it — not by inspection.
+
+---
+
+## 9. Editor 260725 + reference-export validation (2026-07-25)
+
+Ned received a second drop from the format's author: `misc/Storyflow_EditorPipeline_260725/`
+plus a real example project, **Juxtapolooza Dark Art**, supplied as *both* an editor project
+(`.json`) and the author's own pipeline export (`.txt`).
+
+### 9.1 260725 is an Editor-only patch
+
+`StoryflowPipeline_260723.js` is **byte-identical** between the two drops (same SHA-256), so
+the 49-key instruction universe, the executor semantics and everything in §1–§3 stand
+unchanged. Only `StoryflowEditor_*.html` differs, by **35 lines**: the version string, and a
+fix to `sweep` export.
+
+**The sweep fix:** numeric-looking cards are now coerced from strings to real JSON numbers
+on export (`["0.0","0.1"]` → `[0, 0.1]`). Non-numeric cards are left alone. `wildcard` was
+split out of the shared branch and keeps its previous string behaviour — correctly, since
+wildcard cards are prompt text.
+
+This confirms the sweep-typing concern recorded in §8.3 was real, and that upstream chose to
+fix it at the export boundary rather than in the form.
+
+### 9.2 The codec now matches the author's own export exactly
+
+Running `toPipelineArray` on the supplied project and diffing against the author's `.txt`
+gave **20 of 20 instructions, identical keys, identical order**, with two value differences —
+both real bugs on our side, both now fixed:
+
+1. **`sweep` cards** were exported as strings. Fixed to mirror 260725's coercion, including
+   emitting whole numbers as integers rather than floats.
+2. **`note` whitespace** was preserved verbatim; the editor collapses runs to single spaces
+   for `note`/`interrogate`/`enhance` on export (`:2283`) while deliberately *not* doing so
+   for `prompt`/`negPrompt`/`concat`, which keep their newlines. Fixed to match.
+
+After both, the comparison is **0 differences across all 20 instructions**.
+
+This is the strongest correctness signal the codec has had: not self-consistency, but
+agreement with the reference implementation, on a real project that exercises `concat`×4,
+`wildcard`×5, `sweep`, `size`, `xlMagic`, `negPrompt` and a loop.
+
+### 9.3 Checked in as a permanent regression guard
+
+- `Scripts/storyflow/juxtapolooza-dark-art-260725.json` — the author's project
+- `Scripts/storyflow/juxtapolooza-dark-art-260725.pipeline.json` — the author's export
+- `verify-storyflow-roundtrip.swift` gained check 7, which re-runs the comparison
+- The project is also in `TanqueStudioTests/Fixtures/`, so the XCTest fixture sweep covers it
+
+Phase 2 must keep this green. As instructions graduate from passthrough to first-class
+handling, this catches any drift from the reference implementation immediately — which is
+exactly the failure mode a hand-built export path is prone to.
+
+**Note `misc/` is gitignored**, so the original drops are not in the repo; the two files
+above are the tracked copies.

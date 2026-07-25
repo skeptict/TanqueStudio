@@ -127,6 +127,47 @@ struct VerifyStoryFlowRoundTrip {
         let framesKeys = instructions.compactMap { $0.keys.first }.filter { $0.hasPrefix("frames") }
         check("frames8 collapses to frames on export", !framesKeys.contains("frames8"), framesKeys.joined(separator: ", "))
 
+        // 7. Authoritative check: our pipeline export must match, instruction for
+        //    instruction, the export the StoryFlow Editor itself produced for the
+        //    same project. The .json/.pipeline.json pair was supplied by the
+        //    format's author (StoryFlow 260725), so this is a reference
+        //    implementation comparison rather than a self-consistency check —
+        //    the strongest correctness signal available for the codec.
+        let refBase = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+        let refProjectURL = refBase.appendingPathComponent("juxtapolooza-dark-art-260725.json")
+        let refExportURL = refBase.appendingPathComponent("juxtapolooza-dark-art-260725.pipeline.json")
+
+        if let projData = try? Data(contentsOf: refProjectURL),
+           let refData = try? Data(contentsOf: refExportURL),
+           let refProject = try? JSONDecoder().decode(StoryFlowProject.self, from: projData),
+           let reference = (try? JSONSerialization.jsonObject(with: refData)) as? [[String: Any]] {
+
+            let ours = StoryFlowProjectCodec.toPipelineArray(refProject)
+            check("reference export: instruction count", ours.count == reference.count,
+                  "editor \(reference.count), ours \(ours.count)")
+
+            var mismatches: [String] = []
+            for (i, refInstruction) in reference.enumerated() where i < ours.count {
+                guard let refKey = refInstruction.keys.first,
+                      let ourKey = ours[i].keys.first else { continue }
+                if refKey != ourKey {
+                    mismatches.append("[\(i)] key: editor \(refKey), ours \(ourKey)")
+                    continue
+                }
+                // Compare canonicalised JSON so dictionary ordering doesn't matter.
+                let a = try? JSONSerialization.data(withJSONObject: [refInstruction[refKey]!],
+                                                    options: [.sortedKeys])
+                let b = try? JSONSerialization.data(withJSONObject: [ours[i][ourKey]!],
+                                                    options: [.sortedKeys])
+                if a != b { mismatches.append("[\(i)] \(refKey) value") }
+            }
+            check("reference export: every instruction matches the editor's",
+                  mismatches.isEmpty, mismatches.joined(separator: "; "))
+        } else {
+            check("reference export fixtures present", false,
+                  "expected juxtapolooza-dark-art-260725.json + .pipeline.json beside this script")
+        }
+
         print(failures == 0 ? "\nALL CHECKS PASSED" : "\n\(failures) CHECK(S) FAILED")
         exit(failures == 0 ? 0 : 1)
 
