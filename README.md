@@ -272,10 +272,19 @@ DrawThingsStudio/
 
 In priority order:
 
-1. [ ] **README polish** — screenshots, demo GIF
+1. [ ] **StoryFlow 260723 Phase 1 — load without failing** — projects containing `frames`, `frames8` or `moodboardRemove` currently fail to load outright (their values are JSON numbers; the item decoder handles only strings and bools), which means no Editor-saved video project has ever opened. Fix the decoder, verify passthrough survives the new instructions, add a round-trip fixture. Spec: `Docs/storyflow-260723-spec.md`
+2. [ ] **Land the Draw Things client bump** (`chore/bump-drawthings-client`) — gates config-parity Batch D. Release notes must call out that seedMode 2/3 encoding changes output for the same seed, and that the default seed mode is Scale Alike
+3. [ ] **StoryFlow 260723 Phase 2 — author the new instructions** — `concat`, `wildcard`, `sweep`, `enhance`, `approve`, `framesDialog`, `size`, plus the long-passthrough backlog (`negPrompt`, `frames`, `adaptSize`, moodboard weights/remove, `inpaintTools`, `xlMagic`, mask and loop file ops). Takes authorable coverage from 14 of 49 instructions to ~38. Export-only — these run in Draw Things. `interrogate` is deliberately excluded and stays passthrough-only
+4. [ ] **Video handling** — make a frame series read as one thing rather than N loose images. In the DT Project Browser, collapse a series into a single frame-count-badged reference that expands in place to show its frames (the app's own gallery already groups on shared batch ID; whether DT's project database exposes an equivalent key is the open question). Plus a general pass over video handling
+5. [ ] **Config parity Batch D — tiling** (8 fields), after the client bump
+6. [ ] **StoryFlow 260723 Phase 3 — native execution** — run the DT-model-free subset in-app: run-time wildcards and parameter sweeps (stateful loop/once/shuffle/random trackers), `size`, `frames`, `framesDialog`, `negPrompt`, `adaptSize`, moodboard weights, `inpaintTools`, and a human-in-the-loop `approve` sheet. Adopts the new `concat` accumulator, which retires the export re-emit hack
+7. [ ] **Config parity Batch F — SDXL conditioning** — also what StoryFlow's `xlMagic` needs
+8. [ ] **README polish** — screenshots, demo GIF
 
 ### Backlog
 
+- [ ] StoryFlow 260723 Phase 4 — LLM-backed `enhance` / `interrogate` executed natively, routed through Tanque Studio's own LLM stack rather than Draw Things' answer model (`interrogate` additionally needs a multimodal model and image attachment). Deferred until the rest is farther along
+- [ ] StoryFlow 260723 Phase 5 — Vision-framework canvas ops (`faceZoom`, `removeBkgd`, foreground/background/body masks, depth extraction, pose extraction). No gRPC path exists for any of these; reimplementing them on Apple's Vision framework is its own project
 - [ ] StoryFlow polish — promptInstruction replace-mode toggle, image-variable drag-drop import, end-to-end UX testing
 - [ ] Patterns Studio integration — WKWebView panel or PNG export feeding img2img
 - [ ] Gallery collections / organization
