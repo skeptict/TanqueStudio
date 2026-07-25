@@ -511,9 +511,47 @@ struct ParametersSection: View {
             }
             .padding(.top, 6)
             .help("CFG-Zero* guidance. Off by default; TS auto-enables for turbo models until set explicitly.")
-            fieldRow("Seed", "\(vm.config.seed)")
-            Slider(value: Binding(get: { Double(vm.config.seed) }, set: { vm.config.seed = Int($0) }), in: -1...99_999, step: 1)
-                .tint(DashboardDS.brass)
+            // DIAGNOSTIC + real fix. Two reasons this is no longer a Slider:
+            //
+            // 1. It was bounded -1...99_999 with step 1 — 100,001 discrete
+            //    positions, where every other slider here has ≤150 — while real
+            //    seeds come from Int(UInt32.random(in: 0...UInt32.max)) and reach
+            //    4.29 billion. So the bound value sat ~43,000x outside the range:
+            //    the readout showed the true seed, the knob pinned at max, and
+            //    nudging it silently clamped the seed and destroyed
+            //    reproducibility of that render.
+            // 2. Slider knob positioning converts to device pixels, and the
+            //    Intel/macOS 15 hang bottoms out in exactly that code
+            //    (convertSizeToBacking:, _backingScaleFactorForScreen:). An
+            //    earlier measurement appeared to clear the slider, but it was
+            //    taken on macOS 26 — the OS that does NOT hang — so it never
+            //    applied to the machine in question.
+            //
+            // A numeric field plus a dice button is what the classic
+            // GenerateLeftPanel already uses, holds the full UInt32 range, and
+            // removes the 100k-step control entirely.
+            HStack {
+                Text("Seed").font(TanqueDS.Font.mono(11.5)).foregroundStyle(DashboardDS.muted2)
+                Spacer()
+                TextField("0", value: $vm.config.seed, format: .number.grouping(.never))
+                    .textFieldStyle(.plain)
+                    .font(TanqueDS.Font.mono(11.5))
+                    .foregroundStyle(DashboardDS.text)
+                    .multilineTextAlignment(.trailing)
+                    .frame(width: 92)
+                    .padding(.horizontal, 6).padding(.vertical, 3)
+                    .background(DashboardDS.surf2, in: RoundedRectangle(cornerRadius: 5))
+                    .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(DashboardDS.border, lineWidth: 1))
+                Button {
+                    vm.config.seed = Int(UInt32.random(in: 0...UInt32.max))
+                } label: {
+                    Image(systemName: "die.face.5")
+                        .font(.system(size: 12))
+                        .foregroundStyle(DashboardDS.muted2)
+                }
+                .buttonStyle(.plain)
+                .help("Roll a new seed")
+            }
 
             Toggle("Randomize each run", isOn: $vm.randomizeSeed)
                 .font(TanqueDS.Font.mono(11.5))
