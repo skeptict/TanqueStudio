@@ -456,10 +456,17 @@ struct ParametersSection: View {
     /// at 2× can oscillate between two values at 1×.
     ///
     /// Bounding the width removes the unbounded demand entirely, so there is
-    /// nothing left to oscillate. 170pt clears the longest sampler name at
-    /// `mono(11.5)`; the `.menu` style truncates rather than overflowing if a
-    /// future entry is longer.
-    static let drawerPickerWidth: CGFloat = 170
+    /// nothing left to oscillate — the cap is always satisfiable by the parent,
+    /// where `.fixedSize()`'s demand was not.
+    ///
+    /// Sized to clear the longest menu entry rather than guessed: "Euler
+    /// Ancestral Trailing" measures ~171pt at `mono(11.5)`, and a macOS pop-up
+    /// button spends a further ~26pt on its chevron and internal padding, so
+    /// 170 would have truncated it. The drawer offers 288pt of content width
+    /// (320 less the section's 16pt horizontal padding each side), of which the
+    /// "Sampler" label takes ~57pt, so 210 fits comfortably and still leaves the
+    /// cap well inside what the parent can grant.
+    static let drawerPickerWidth: CGFloat = 210
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
