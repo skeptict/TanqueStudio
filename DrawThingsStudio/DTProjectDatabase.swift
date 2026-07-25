@@ -69,6 +69,8 @@ struct DTGenerationEntry: Identifiable, Hashable {
 private struct FBReader {
     let data: Data
 
+    // vtable slot = 4 + 2 * fieldIndex over `table TensorHistoryNode` in tensor_history.fbs
+    // declaration order; deprecated fields still occupy a slot.
     static let VT_START_WIDTH: Int = 8
     static let VT_START_HEIGHT: Int = 10
     static let VT_SEED: Int = 12
@@ -84,7 +86,7 @@ private struct FBReader {
     static let VT_PREVIEW_ID: Int = 86
     static let VT_SCALE_FACTOR_BY_120: Int = 92
     static let VT_SHIFT: Int = 136
-    static let VT_RESOLUTION_DEPENDENT_SHIFT: Int = 146
+    static let VT_RESOLUTION_DEPENDENT_SHIFT: Int = 182
     static let VT_TEXT_PROMPT: Int = 200
     static let VT_NEG_TEXT_PROMPT: Int = 202
 
