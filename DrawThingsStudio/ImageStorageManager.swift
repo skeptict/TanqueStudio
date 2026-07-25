@@ -301,6 +301,19 @@ enum ImageStorageManager {
         if config.seed >= 0 { v2["seed"] = config.seed }
         if config.numFrames > 0 { v2["numFrames"] = config.numFrames }
         if config.fps > 0       { v2["fps"]       = config.fps }
+        // Same key names and units DT uses in its own config JSON — hiresFix
+        // dims in raw pixels (verified against community_models_configs.json,
+        // e.g. 640x384 first pass for a 1280x768 render), NOT the flatbuffer
+        // schema's ÷64 hiresFixStartWidth/Height.
+        v2["maskBlur"]       = config.maskBlur
+        v2["maskBlurOutset"] = config.maskBlurOutset
+        v2["preserveOriginalAfterInpaint"] = config.preserveOriginalAfterInpaint
+        if config.hiresFix {
+            v2["hiresFix"]         = true
+            v2["hiresFixWidth"]    = config.hiresFixWidth
+            v2["hiresFixHeight"]   = config.hiresFixHeight
+            v2["hiresFixStrength"] = config.hiresFixStrength
+        }
         if !config.negativePrompt.isEmpty {
             v2["negativePrompt"] = config.negativePrompt
         }
@@ -373,6 +386,20 @@ enum ImageStorageManager {
         dict["negativePrompt"] = config.negativePrompt
         if config.numFrames > 0 { dict["numFrames"] = config.numFrames }
         if config.fps > 0       { dict["fps"]       = config.fps }
+        // Inpainting group — always emitted, matching DT's own configs (which
+        // carry maskBlur/maskBlurOutset unconditionally).
+        dict["maskBlur"]       = config.maskBlur
+        dict["maskBlurOutset"] = config.maskBlurOutset
+        dict["preserveOriginalAfterInpaint"] = config.preserveOriginalAfterInpaint
+        // Hires Fix — only when on, so untouched configs keep their previous
+        // metadata shape (same rule DT follows: the dims appear only on the
+        // handful of configs that actually enable it).
+        if config.hiresFix {
+            dict["hiresFix"]         = true
+            dict["hiresFixWidth"]    = config.hiresFixWidth
+            dict["hiresFixHeight"]   = config.hiresFixHeight
+            dict["hiresFixStrength"] = config.hiresFixStrength
+        }
         if !config.loras.isEmpty {
             dict["loras"] = config.loras.map { ["file": $0.file, "weight": $0.weight] }
         }

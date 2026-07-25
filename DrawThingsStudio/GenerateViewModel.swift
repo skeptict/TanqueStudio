@@ -984,6 +984,13 @@ final class GenerateViewModel {
         if let v = dtConfig.refinerStart                        { config.refinerStart            = v }
         if let v = dtConfig.resolutionDependentShift            { config.resolutionDependentShift = v }
         if let v = dtConfig.cfgZeroStar                         { config.cfgZeroStar             = v }
+        if let v = dtConfig.maskBlur                            { config.maskBlur                = v }
+        if let v = dtConfig.maskBlurOutset                      { config.maskBlurOutset          = v }
+        if let v = dtConfig.preserveOriginalAfterInpaint        { config.preserveOriginalAfterInpaint = v }
+        if let v = dtConfig.hiresFix                            { config.hiresFix                = v }
+        if let v = dtConfig.hiresFixWidth                       { config.hiresFixWidth           = v }
+        if let v = dtConfig.hiresFixHeight                      { config.hiresFixHeight          = v }
+        if let v = dtConfig.hiresFixStrength                    { config.hiresFixStrength        = v }
         if !dtConfig.loras.isEmpty                              { config.loras                   = dtConfig.loras }
         warnIfModelUnknown(config.model)
     }

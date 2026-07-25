@@ -24,6 +24,13 @@ struct DTCustomConfig: Identifiable {
     let refinerStart: Double?
     let resolutionDependentShift: Bool?
     let cfgZeroStar: Bool?
+    let maskBlur: Double?
+    let maskBlurOutset: Int?
+    let preserveOriginalAfterInpaint: Bool?
+    let hiresFix: Bool?
+    let hiresFixWidth: Int?         // raw pixels, as DT stores them
+    let hiresFixHeight: Int?
+    let hiresFixStrength: Double?
 }
 
 // MARK: - DTConfigImporter
@@ -100,7 +107,14 @@ enum DTConfigImporter {
             refinerModel:            cfg["refinerModel"]            as? String,
             refinerStart:            (cfg["refinerStart"]            as? NSNumber)?.doubleValue,
             resolutionDependentShift: cfg["resolutionDependentShift"] as? Bool,
-            cfgZeroStar:             cfg["cfgZeroStar"]             as? Bool
+            cfgZeroStar:             cfg["cfgZeroStar"]             as? Bool,
+            maskBlur:                (cfg["maskBlur"]                as? NSNumber)?.doubleValue,
+            maskBlurOutset:          (cfg["maskBlurOutset"]          as? NSNumber)?.intValue,
+            preserveOriginalAfterInpaint: cfg["preserveOriginalAfterInpaint"] as? Bool,
+            hiresFix:                cfg["hiresFix"]                as? Bool,
+            hiresFixWidth:           (cfg["hiresFixWidth"]           as? NSNumber)?.intValue,
+            hiresFixHeight:          (cfg["hiresFixHeight"]          as? NSNumber)?.intValue,
+            hiresFixStrength:        (cfg["hiresFixStrength"]        as? NSNumber)?.doubleValue
         )
     }
 }
@@ -144,7 +158,19 @@ enum DTConfigExporter {
             "refinerModel":            config.refinerModel,
             "refinerStart":            config.refinerStart,
             "cfgZeroStar":             config.cfgZeroStar ?? false,
+            "maskBlur":                config.maskBlur,
+            "maskBlurOutset":          config.maskBlurOutset,
+            "preserveOriginalAfterInpaint": config.preserveOriginalAfterInpaint,
         ]
+        // Hires Fix dims travel in raw pixels, matching DT's clipboard schema.
+        // Emitted only when enabled so a pasted config doesn't carry stale
+        // first-pass dimensions that DT would ignore anyway.
+        if config.hiresFix {
+            dict["hiresFix"]         = true
+            dict["hiresFixWidth"]    = config.hiresFixWidth
+            dict["hiresFixHeight"]   = config.hiresFixHeight
+            dict["hiresFixStrength"] = config.hiresFixStrength
+        }
         if let rds = config.resolutionDependentShift {
             dict["resolutionDependentShift"] = rds
         }
@@ -196,6 +222,13 @@ enum DTConfigExporter {
         if let v = (dict["refinerStart"]           as? NSNumber)?.doubleValue { config.refinerStart = v }
         if let v = (dict["cfgZeroStar"]            as? NSNumber)?.boolValue   { config.cfgZeroStar = v }
         if let v = (dict["resolutionDependentShift"] as? NSNumber)?.boolValue { config.resolutionDependentShift = v }
+        if let v = (dict["maskBlur"]              as? NSNumber)?.doubleValue { config.maskBlur = v }
+        if let v = (dict["maskBlurOutset"]        as? NSNumber)?.intValue    { config.maskBlurOutset = v }
+        if let v = (dict["preserveOriginalAfterInpaint"] as? NSNumber)?.boolValue { config.preserveOriginalAfterInpaint = v }
+        if let v = (dict["hiresFix"]              as? NSNumber)?.boolValue   { config.hiresFix = v }
+        if let v = (dict["hiresFixWidth"]         as? NSNumber)?.intValue    { config.hiresFixWidth = v }
+        if let v = (dict["hiresFixHeight"]        as? NSNumber)?.intValue    { config.hiresFixHeight = v }
+        if let v = (dict["hiresFixStrength"]      as? NSNumber)?.doubleValue { config.hiresFixStrength = v }
 
         // LoRAs: [{file, weight}]
         if let rawLoras = dict["loras"] as? [[String: Any]] {

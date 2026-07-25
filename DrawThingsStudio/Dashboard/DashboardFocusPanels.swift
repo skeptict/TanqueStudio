@@ -24,6 +24,7 @@ struct FocusRoomDrawer: View {
     @State private var assistExpanded = false
     @State private var modelExpanded = false
     @State private var canvasExpanded = false
+    @State private var hiresFixExpanded = false
     @State private var paramsExpanded = false
     @State private var lorasExpanded = false
     @State private var img2imgExpanded = false
@@ -39,6 +40,7 @@ struct FocusRoomDrawer: View {
                     }
                     section("Model", isExpanded: $modelExpanded) { ModelSection(vm: vm) }
                     section("Canvas Size", isExpanded: $canvasExpanded) { CanvasSizeSection(vm: vm) }
+                    section("Hires Fix", isExpanded: $hiresFixExpanded) { HiresFixSection(vm: vm) }
                     section("Parameters", isExpanded: $paramsExpanded) { ParametersSection(vm: vm) }
                     section("LoRAs", isExpanded: $lorasExpanded) { LoRAsSection(vm: vm) }
                     section("img2img & Moodboard", isExpanded: $img2imgExpanded) { Img2ImgMoodboardSection(vm: vm) }
@@ -347,6 +349,84 @@ struct CanvasSizeSection: View {
     }
 }
 
+// MARK: - Hires Fix (parity Batch C)
+
+/// Two-pass rendering: DT generates at a smaller first-pass size, then upscales
+/// and re-diffuses at the full canvas size with `hiresFixStrength`. Useful for
+/// getting large renders without the duplicated-subject artifacts that models
+/// produce when generating far above their trained resolution.
+struct HiresFixSection: View {
+    @Bindable var vm: GenerateViewModel
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("Hires Fix").font(TanqueDS.Font.mono(11.5)).foregroundStyle(DashboardDS.muted2)
+                Spacer()
+                Toggle("", isOn: Binding(
+                    get: { vm.config.hiresFix },
+                    set: { on in
+                        vm.config.hiresFix = on
+                        // Seed sensible first-pass dims on first enable rather than
+                        // sending 0x0. Half the canvas (floored to /64) matches the
+                        // ratio DT's own bundled configs use (640x384 for 1280x768).
+                        if on && (vm.config.hiresFixWidth == 0 || vm.config.hiresFixHeight == 0) {
+                            vm.config.hiresFixWidth  = Self.floor64(vm.config.width / 2)
+                            vm.config.hiresFixHeight = Self.floor64(vm.config.height / 2)
+                        }
+                    }
+                ))
+                .labelsHidden()
+                .toggleStyle(.dashboardCheckbox)
+            }
+            .help("Render at a smaller size first, then upscale and re-diffuse to the full canvas size.")
+
+            if vm.config.hiresFix {
+                HStack {
+                    Text("First Pass").font(TanqueDS.Font.mono(11.5)).foregroundStyle(DashboardDS.muted2)
+                    Spacer()
+                    TextField("W", value: $vm.config.hiresFixWidth, format: .number.grouping(.never))
+                        .textFieldStyle(.plain)
+                        .multilineTextAlignment(.trailing)
+                        .font(TanqueDS.Font.mono(11.5))
+                        .foregroundStyle(DashboardDS.brass)
+                        .frame(width: 52)
+                    Text("\u{00D7}").font(TanqueDS.Font.mono(11.5)).foregroundStyle(DashboardDS.muted2)
+                    TextField("H", value: $vm.config.hiresFixHeight, format: .number.grouping(.never))
+                        .textFieldStyle(.plain)
+                        .multilineTextAlignment(.trailing)
+                        .font(TanqueDS.Font.mono(11.5))
+                        .foregroundStyle(DashboardDS.brass)
+                        .frame(width: 52)
+                }
+                .padding(.top, 2)
+                .help("First-pass size in pixels. Draw Things floors each to a multiple of 64.")
+
+                HStack {
+                    Text("Strength").font(TanqueDS.Font.mono(11.5)).foregroundStyle(DashboardDS.muted2)
+                    Spacer()
+                    Text(String(format: "%.2f", vm.config.hiresFixStrength))
+                        .font(TanqueDS.Font.mono(11.5)).foregroundStyle(DashboardDS.brass)
+                }
+                .padding(.top, 6)
+                Slider(value: $vm.config.hiresFixStrength, in: 0...1, step: 0.05)
+                    .tint(DashboardDS.brass)
+                    .help("How much the second pass is allowed to change the upscaled first pass.")
+
+                if vm.config.hiresFixWidth >= vm.config.width || vm.config.hiresFixHeight >= vm.config.height {
+                    Text("First pass isn\u{2019}t smaller than the canvas \u{2014} Hires Fix has nothing to upscale.")
+                        .font(TanqueDS.Font.mono(10.5))
+                        .foregroundStyle(DashboardDS.orange)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.top, 2)
+                }
+            }
+        }
+    }
+
+    private static func floor64(_ v: Int) -> Int { max(64, (v / 64) * 64) }
+}
+
 struct ParametersSection: View {
     @Bindable var vm: GenerateViewModel
 
@@ -640,7 +720,47 @@ struct Img2ImgMoodboardSection: View {
                 Slider(value: $vm.config.strength, in: 0...1, step: 0.05).tint(DashboardDS.brass)
             }
 
-            Text("MOODBOARD").font(TanqueDS.Font.mono(10)).tracking(1.0).foregroundStyle(DashboardDS.muted).padding(.top, 4)
+            // Inpainting group (parity Batch B). These apply to the mask painted
+            // in Paint mode, not to plain img2img, so they're grouped separately
+            // and shown regardless of whether a source image is loaded — a mask
+            // can be painted on any generated image from the canvas.
+            Text("INPAINTING").font(TanqueDS.Font.mono(10)).tracking(1.0).foregroundStyle(DashboardDS.muted).padding(.top, 8)
+
+            HStack {
+                Text("Mask Blur").font(TanqueDS.Font.mono(11.5)).foregroundStyle(DashboardDS.muted2)
+                Spacer()
+                Text(String(format: "%.1f", vm.config.maskBlur))
+                    .font(TanqueDS.Font.mono(11.5)).foregroundStyle(DashboardDS.brass)
+            }
+            .padding(.top, 2)
+            Slider(value: $vm.config.maskBlur, in: 0...10, step: 0.1)
+                .tint(DashboardDS.brass)
+                .help("Feathers the mask edge so inpainted pixels blend into the original. 0 = hard edge.")
+
+            HStack {
+                Text("Mask Outset").font(TanqueDS.Font.mono(11.5)).foregroundStyle(DashboardDS.muted2)
+                Spacer()
+                Stepper(value: $vm.config.maskBlurOutset, in: -64...64) {
+                    Text("\(vm.config.maskBlurOutset)")
+                        .font(TanqueDS.Font.mono(11.5))
+                        .foregroundStyle(DashboardDS.brass)
+                        .frame(width: 28, alignment: .trailing)
+                }
+            }
+            .padding(.top, 6)
+            .help("Grows (positive) or shrinks (negative) the mask by this many pixels before blurring.")
+
+            HStack {
+                Text("Preserve Original").font(TanqueDS.Font.mono(11.5)).foregroundStyle(DashboardDS.muted2)
+                Spacer()
+                Toggle("", isOn: $vm.config.preserveOriginalAfterInpaint)
+                    .labelsHidden()
+                    .toggleStyle(.dashboardCheckbox)
+            }
+            .padding(.top, 6)
+            .help("Keeps pixels outside the mask exactly as they were instead of re-encoding the whole image.")
+
+            Text("MOODBOARD").font(TanqueDS.Font.mono(10)).tracking(1.0).foregroundStyle(DashboardDS.muted).padding(.top, 10)
             VStack(spacing: 8) {
                 ForEach(vm.moodboardEntries) { entry in
                     HStack(spacing: 10) {

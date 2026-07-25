@@ -91,6 +91,23 @@ struct DrawThingsGenerationConfig: Codable {
     var refinerModel: String
     var refinerStart: Double
 
+    // Inpainting group. Defaults mirror the client wrapper's own init defaults —
+    // TanqueStudio previously didn't pass these at all, so the client silently
+    // applied exactly these values. Keeping them identical means surfacing the
+    // fields changes no existing render.
+    var maskBlur: Double
+    var maskBlurOutset: Int
+    var preserveOriginalAfterInpaint: Bool
+
+    // Hires Fix group. Width/height are RAW PIXELS, not the schema's ÷64 units —
+    // the client wrapper takes pixels and does the ÷64 itself at encode (and
+    // rounds down to a multiple of 64). DT's own config JSON uses pixels here
+    // too, so pixels are the consistent unit across the whole chain.
+    var hiresFix: Bool
+    var hiresFixWidth: Int
+    var hiresFixHeight: Int
+    var hiresFixStrength: Double
+
     struct LoRAConfig: Codable {
         var file: String
         var weight: Double
@@ -136,6 +153,13 @@ struct DrawThingsGenerationConfig: Codable {
         cfgZeroStar             = try c.decodeIfPresent(Bool.self,   forKey: .cfgZeroStar)
         refinerModel            = try c.decodeIfPresent(String.self, forKey: .refinerModel) ?? ""
         refinerStart            = try c.decodeIfPresent(Double.self, forKey: .refinerStart) ?? 0.7
+        maskBlur                = try c.decodeIfPresent(Double.self, forKey: .maskBlur)     ?? 1.5
+        maskBlurOutset          = try c.decodeIfPresent(Int.self,    forKey: .maskBlurOutset) ?? 0
+        preserveOriginalAfterInpaint = try c.decodeIfPresent(Bool.self, forKey: .preserveOriginalAfterInpaint) ?? true
+        hiresFix                = try c.decodeIfPresent(Bool.self,   forKey: .hiresFix)     ?? false
+        hiresFixWidth           = try c.decodeIfPresent(Int.self,    forKey: .hiresFixWidth) ?? 0
+        hiresFixHeight          = try c.decodeIfPresent(Int.self,    forKey: .hiresFixHeight) ?? 0
+        hiresFixStrength        = try c.decodeIfPresent(Double.self, forKey: .hiresFixStrength) ?? 0.7
     }
 
     init(
@@ -159,7 +183,14 @@ struct DrawThingsGenerationConfig: Codable {
         resolutionDependentShift: Bool? = nil,
         cfgZeroStar: Bool? = nil,
         refinerModel: String = "",
-        refinerStart: Double = 0.7
+        refinerStart: Double = 0.7,
+        maskBlur: Double = 1.5,
+        maskBlurOutset: Int = 0,
+        preserveOriginalAfterInpaint: Bool = true,
+        hiresFix: Bool = false,
+        hiresFixWidth: Int = 0,
+        hiresFixHeight: Int = 0,
+        hiresFixStrength: Double = 0.7
     ) {
         self.width = width
         self.height = height
@@ -182,6 +213,13 @@ struct DrawThingsGenerationConfig: Codable {
         self.cfgZeroStar = cfgZeroStar
         self.refinerModel = refinerModel
         self.refinerStart = refinerStart
+        self.maskBlur = maskBlur
+        self.maskBlurOutset = maskBlurOutset
+        self.preserveOriginalAfterInpaint = preserveOriginalAfterInpaint
+        self.hiresFix = hiresFix
+        self.hiresFixWidth = hiresFixWidth
+        self.hiresFixHeight = hiresFixHeight
+        self.hiresFixStrength = hiresFixStrength
     }
 
     /// Returns true if the model name identifies a video-generation model

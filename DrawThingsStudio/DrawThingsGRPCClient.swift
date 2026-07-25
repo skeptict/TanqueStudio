@@ -455,9 +455,18 @@ final class DrawThingsGRPCClient: DrawThingsProvider {
             batchSize: Int32(config.batchSize),
             strength: Float(config.strength),
             cfgZeroStar: useCfgZeroStar,
+            maskBlur: Float(config.maskBlur),
+            maskBlurOutset: Int32(config.maskBlurOutset),
+            preserveOriginalAfterInpaint: config.preserveOriginalAfterInpaint,
             stochasticSamplingGamma: Float(config.stochasticSamplingGamma),
             resolutionDependentShift: useResolutionDependentShift,
             t5TextEncoder: useT5,
+            // Raw pixels — the client divides by 64 and floors to a multiple of
+            // 64 on its own at encode time.
+            hiresFix: config.hiresFix,
+            hiresFixWidth: Int32(config.hiresFixWidth),
+            hiresFixHeight: Int32(config.hiresFixHeight),
+            hiresFixStrength: Float(config.hiresFixStrength),
             fps: config.fps > 0 ? Int32(config.fps) : 5,
             numFrames: config.numFrames > 0 ? Int32(config.numFrames) : 14,
             refinerModel: config.refinerModel.isEmpty ? nil : config.refinerModel,

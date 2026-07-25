@@ -17,7 +17,15 @@ final class RequestLogger {
         .appendingPathComponent("TanqueStudio/request_log.txt")
 
     private init() {
-        if let url = logFileURL, !FileManager.default.fileExists(atPath: url.path) {
+        guard let url = logFileURL else { return }
+        // Don't rely on ImageStorageManager having created the shared
+        // "TanqueStudio" directory first as a side effect of saving an image —
+        // on a first run the first request is logged before any image is saved,
+        // and every write here is a silent try?, so that first entry would just
+        // vanish.
+        try? FileManager.default.createDirectory(
+            at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        if !FileManager.default.fileExists(atPath: url.path) {
             try? "TanqueStudio Request Log\n".write(to: url, atomically: true, encoding: .utf8)
         }
     }
@@ -68,6 +76,18 @@ final class RequestLogger {
         entry += "resolutionDependentShift: \(config.resolutionDependentShift)\n"
         entry += "cfgZeroStar:              \(config.cfgZeroStar)\n"
         entry += "stochasticSamplingGamma:  \(config.stochasticSamplingGamma)\n"
+        entry += "maskBlur:                 \(config.maskBlur)\n"
+        entry += "maskBlurOutset:           \(config.maskBlurOutset)\n"
+        entry += "preserveOriginalAfterInpaint: \(config.preserveOriginalAfterInpaint)\n"
+        entry += "hiresFix:                 \(config.hiresFix)\n"
+        if config.hiresFix {
+            // Read back from the client's own properties — its didSet floors each
+            // to a multiple of 64, so this logs what actually goes on the wire,
+            // not what we asked for.
+            entry += "hiresFixWidth:            \(config.hiresFixWidth)\n"
+            entry += "hiresFixHeight:           \(config.hiresFixHeight)\n"
+            entry += "hiresFixStrength:         \(config.hiresFixStrength)\n"
+        }
         if !config.loras.isEmpty {
             entry += "loras:\n"
             for lora in config.loras {
