@@ -237,9 +237,13 @@ Every clip's declared `count` matched the frames actually found; indices were co
 
 Measured on 600 real rows from `serious stuff`: the field at 146 is absent in every row, so TS falls through to its `?? true` default and reports RDS **enabled** for every entry — while the actual value at 182 is `false` in all 600. So it is currently wrong ~100% of the time.
 
-**Currently latent**: `DTGenerationEntry.resolutionDependentShift` is decoded but never displayed and never used by Send to Generate (which only propagates `shift`). So nothing visibly misbehaves today — but it would the moment that field is surfaced or propagated. One-constant fix, 146 → 182.
+**Currently latent**: `DTGenerationEntry.resolutionDependentShift` is decoded but never displayed and never used by Send to Generate (which only propagates `shift`). So nothing visibly misbehaves today — but it would the moment that field is surfaced or propagated.
 
-This also validates the offset-derivation method used for `clip_id`/`index_in_a_clip` above: the same cross-check that produced 204/206 is what caught this.
+**FIXED** on branch `claude/fervent-feynman-wobdri` (`82ab923`, from a parallel session), verified and built here (`55850bf`): re-run against real data gives `{0: 600}` at slot 182, old reader `{True: 600}` vs new `{False: 600}`. Builds clean. That session also found the failure mode is worse than a wrong default where the slot *is* populated — `readUInt8` on a `ushort` returns its low byte, so a tile width of 10 decodes as `true` and 256 as `false`; arbitrary, not merely wrong.
+
+**Related gap, measured and deliberately left**: `DTGenerationEntry.stochasticSamplingGamma` is hardcoded to `0.3` at `DTProjectDatabase.swift:330` and never decoded (its real slot is 152). Measured across 2698 rows in three databases: slot 152 is absent in every one, so the value always equals its schema default — the hardcode is correct for all real data seen, and the field has no consumer either. Benign today, but a silent lie the moment anyone sets a non-default gamma. Worth decoding properly; low priority.
+
+This also validates the offset-derivation method used for `clip_id`/`index_in_a_clip` above: the same cross-check that produced 204/206 is what caught this. **Any future field added to `FBReader` should be derived that way — mechanically, over the whole table — not eyeballed.**
 
 ---
 
