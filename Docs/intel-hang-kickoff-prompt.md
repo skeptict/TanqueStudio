@@ -1,190 +1,114 @@
-# Kickoff — reproduce the 0.9.28 Parameters hang on Intel / macOS 15
+# Intel / macOS 15 hang — VERIFY THE FIX
 
-**Paste this whole file into a fresh Claude Code session on the Intel iMac.** It is
-self-contained: no Open Brain, no memory files, no repo history needed to get started.
+**Status: diagnosed and fixed on `main`. This document is now a verification brief.**
+Paste it into a Claude Code session on the Intel iMac. Self-contained — no Open Brain,
+no memory files needed.
 
----
-
-## The situation
-
-Tanque Studio v0.9.28 (macOS app, SwiftUI, Draw Things companion). A beta tester reports
-three problems. **They reproduce only on old Intel Macs, never on current Apple Silicon
-laptops** — which is why you are on this machine.
-
-1. Clicking **Parameters** in the Focus Room drawer shows the spinning beachball and never
-   recovers. Force Quit required.
-2. **Model picker**: the search box finds a model by name, but clicking the result does
-   nothing.
-3. **White text on a light background**, almost impossible to read.
-
-Development happens on an M1 MacBook Pro running macOS 26, where none of this reproduces.
-This machine is Intel on macOS 15.7.7.
-
-## Your job
-
-Get a `sample` during the hang, identify the spinning frame, and confirm or kill the two
-remaining hypotheses. Symptom 3 is already solved (below) — don't re-investigate it.
+The original diagnosis run is complete; its findings are summarised below as context.
+**Your job is to confirm the fix works, not to re-diagnose.**
 
 ---
 
-## Symptom 3 is SOLVED — do not re-investigate
+## First: confirm the machine
 
-**Cause: the app follows the system appearance, and the tester is in Dark Mode.**
-
-`DashboardDS` is a hardcoded light "paper" palette (`bg #f0ebe0`, `text #1a140c`) and
-`Info.plist` pins no appearance key. Under Dark Mode every control that uses a *semantic*
-colour — the model search `TextField`, `.menu` `Picker`s, unstyled `Text` — resolves to
-near-white and lands on that cream background.
-
-Measured contrast (via `NSAppearance.performAsCurrentDrawingAppearance`):
-
-| | `labelColor` vs `bg` | `controlTextColor` vs `surf2` |
-|---|---|---|
-| Light | 17.66:1 | 14.00:1 |
-| **Dark** | **1.19:1** | **1.50:1** |
-
-WCAG's floor for body text is 4.5:1. Fixed on the dev machine with
-`.preferredColorScheme(.light)` on `DashboardRootView` — **that fix is not on this machine
-unless you build from a pushed `main`** (see "What's on this machine" below).
-
-Do confirm the tester's setting, since it's one command and it validates the diagnosis:
-
-```bash
-defaults read -g AppleInterfaceStyle 2>/dev/null || echo "Light Mode"
-```
-
----
-
-## Two hypotheses already TESTED AND REJECTED — do not re-propose these
-
-Both looked strong. Both were measured with a standalone `NSHostingView` +
-`layoutSubtreeIfNeeded()` + `display()` timing harness. Neither survived.
-
-**Rejected — the seed slider's step count.** `ParametersSection` has
-`Slider(… in: -1...99_999, step: 1)` = 100,001 discrete steps, where every other slider in
-the app is ≤150. Looked like a classic AppKit tick-mark blowup.
-
-| steps | build+layout+display |
-|---|---|
-| 152 | 80.1 ms |
-| 10,001 | 136.8 ms |
-| 100,001 | 164.3 ms |
-
-~2×, not a hang.
-
-**Rejected — an out-of-range bound value.** `randomizeSeed` is on by default and rolls
-`Int(UInt32.random(in: 0...UInt32.max))`, so after any generate `config.seed` reaches
-~4.29 billion, roughly 43,000× the slider's upper bound. Attractive because it's
-*state-dependent*, which would explain why the dev machine never sees it.
-
-| bound value | time |
-|---|---|
-| 500 | 160.9 ms |
-| 99,999 | 159.1 ms |
-| 100,000 | 159.1 ms |
-| 4,294,967,295 | 156.8 ms |
-
-SwiftUI clamps harmlessly. No difference.
-
-**Both were measured on macOS 26 / arm64.** If the `sample` points back at the slider, it
-is worth re-running those same measurements *here*, because the whole premise is that this
-OS's SwiftUI behaves differently. But don't start there.
-
----
-
-## Live hypotheses, in priority order
-
-**1. A layout cycle from `.fixedSize()` inside the fixed-width drawer.** The drawer pins
-content to `.frame(width: 320)` and `.clipped()` (added in 0.9.27 to fix a long-prompt
-overflow). The Sampler `Picker` in `ParametersSection` uses `.fixedSize()` with menu items
-as long as `"Euler Ancestral Trailing"`. A `.fixedSize()` child demanding more width than a
-fixed-width parent is a known source of repeated layout passes.
-`ParametersSection` holds 3 of the drawer's 5 `.fixedSize()` calls — which correlates with
-the reported section. **This is the leading theory**: a layout cycle either terminates or
-it doesn't, which fits "hangs forever on one OS, fine on another" far better than anything
-load-related.
-
-**2. Eager construction of all nine accordion sections.** `DisclosureGroup` builds its
-content closure even while collapsed, and the nine sections sit in a plain `VStack`, so
-toggling any one invalidates and rebuilds all of them. `ModelSection`'s `ForEach(vm.models)`
-is **not** lazy. With a large model inventory every drawer interaction gets expensive —
-which would explain symptoms 1 and 2 together, since a blocked main thread makes model
-clicks look inert.
-
-Relevant files (all under `DrawThingsStudio/Dashboard/`):
-- `DashboardFocusPanels.swift` — `FocusRoomDrawer` (~line 33), `section()` helper (~line 77),
-  `ModelSection` (~161), `ParametersSection` (~430)
-- `DashboardDS.swift` — the palette
-- `DashboardRootView.swift` — app root
-
----
-
-## What to run
-
-**First, confirm the machine** (the last session was told it had moved and hadn't):
+A previous session was told it had moved to this machine and had not. Verify before
+anything else:
 
 ```bash
 uname -m; sw_vers; hostname
 ```
 
-Expect `x86_64` and `15.7.7`. If you see `arm64` or macOS 26, stop and say so.
+Expect `x86_64` and `15.7.7`. **If you see `arm64` or macOS 26, stop and say so** — the
+bug's entire trigger condition is being on this machine, so a run on the wrong host
+produces confidently meaningless results.
 
-**Then get the sample.** This is the single most valuable artifact — it names the spinning
-frame and ends the guessing. Launch the app, click Parameters to trigger the hang, then:
-
-```bash
-sample "Tanque Studio" 10 -file ~/Desktop/tanque-hang.txt
-```
-
-Read the result and look for a deep repeating frame stack — repeated
-`layoutSubtreeIfNeeded` / `NSView` layout / SwiftUI `AG::Graph` frames indicate a cycle
-(hypothesis 1); heavy `ForEach`/view-construction frames indicate hypothesis 2.
-
-Also worth collecting:
+Also worth recording, because it may be the real discriminator:
 
 ```bash
-defaults read -g AppleInterfaceStyle 2>/dev/null || echo "Light Mode"   # symptom 3 check
-defaults read tanque.org.TanqueStudio 2>/dev/null | grep -i "dtHost\|dtPort"
+system_profiler SPDisplaysDataType | grep -iE "resolution|retina"
 ```
 
-And ask Ned: does the hang hit other drawer sections, or only Parameters? How many models
-does his Draw Things server report?
+The hang bottoms out in backing-scale rounding, so a **1× (non-Retina)** display is the
+suspected trigger. Note what this machine has.
 
----
+## Get the build
 
-## What's on this machine
+`main` is pushed and current. Pull and build Debug:
 
-**The dev machine's `main` was NOT pushed as of this handoff.** Everything from 2026-07-25
-— four branch merges, a StoryFlow passthrough fix, the Dark Mode fix, the triage docs — is
-local to the M1. So:
+```bash
+cd ~/Documents/GitHub/TanqueStudio    # clone if absent
+git pull origin main
+git log --oneline -1                  # expect ca6909f or later
+xcodebuild -project TanqueStudio.xcodeproj -scheme TanqueStudio \
+           -configuration Debug -derivedDataPath .build build
+```
 
-- **To reproduce only:** you want the **released 0.9.28** from GitHub Releases. That's what
-  the tester has, and an unfixed build is *better* for reproduction. No repo needed.
-- **To test fixes:** the repo must be cloned/pulled *after* Ned pushes `main`. Confirm with
-  him before assuming a clone here is current — an older clone will not have any of it.
+If `/Applications/Tanque Studio.app` is also running, by-name AppleScript will land on the
+wrong instance — launch the built binary directly so the PID is unambiguous.
 
-Note the released build is notarized and hardened; if you need to attach a debugger or run
-an instrumented build, build locally instead.
+## What to verify
 
-## Gotchas from previous sessions on this project
+1. **The hang is gone.** Open a Focus Room, expand **Parameters**. It should render
+   immediately. Previously this pinned the main thread at 100% forever, needing Force Quit.
+2. **If it still hangs**, capture a fresh sample and compare against the old stack:
+   ```bash
+   sample "Tanque Studio" 10 -file ~/Desktop/tanque-hang-after.txt
+   ```
+   Report whether it's the same `AG::Subgraph::update` / backing-store cycle or something
+   new. Do **not** start over from scratch — see "already ruled out" below.
+3. **The pickers still look right.** Sampler, Seed Mode (Parameters) and Refiner (Model)
+   are now capped at 210pt instead of `.fixedSize()`. Check the longest sampler name —
+   **"Euler Ancestral Trailing"** — is not truncated, and nothing overflows the drawer.
+   This is the specific regression risk of the fix: 170pt was measured to clip it, hence
+   210. Screenshots welcome if permissions allow.
+4. **Model rows respond to clicks again.** Expand Model, search, click a result — the row
+   should highlight. This is expected to have been a *downstream* symptom of the pinned
+   main thread rather than its own bug; confirming it closes that question.
+5. **Nothing else in the drawer regressed** — expand every section once.
 
-- **Building locally while `/Applications/Tanque Studio.app` is also running** makes
-  by-name AppleScript land on the wrong instance. Use a distinct
-  `PRODUCT_BUNDLE_IDENTIFIER` override plus a dedicated `-derivedDataPath .build`, and
-  launch the binary directly so the PID is known.
-- **A fresh build can take ~15s to show its first window** (SwiftData setup against a large
-  store). `sample` showing the main thread in `App.main()` at that stage is normal, not a
-  hang. Don't conclude "broken" before ~15s.
-- **The UI smoke test** (`xcodebuild test -only-testing:TanqueStudioUITests`) frequently
-  fails with "Timed out while enabling automation mode" — an automation-permission issue,
-  not a code failure.
-- **`screencapture` and System Events may be permission-blocked**, and System Events can
-  hang rather than error. Don't build a plan that depends on screenshots without checking
-  first.
-- The test target is `TanqueStudioUITests`; the *directory* is `DrawThingsStudioUITests`.
+## What was already established — don't redo this
+
+**Confirmed cause.** A sample taken during the hang put **7,288 of 7,288 samples (100% of a
+10s window)** on one unbroken main-thread stack, 2,400+ frames deep, actively recursing
+`AG::Subgraph::update` → `AG::Graph::update_attribute` → `AG::Graph::UpdateStack::update`
+and bottoming out in AppKit backing-store geometry (`NSViewGetTransformToBacking`,
+`convertSizeToBacking:`, `+[NSScreen _backingScaleFactorForScreen:]`). A genuine
+non-terminating SwiftUI layout cycle. Other threads idle.
+
+**The fix.** The drawer's `.menu` Pickers used `.fixedSize()`, demanding their ideal width
+unconditionally inside a drawer pinned to `.frame(width: 320)` + `.clipped()` (the 0.9.27
+overflow fix). A long entry wants more than the parent can give, and on this machine the
+reconciliation never converges. Replaced with a bounded `.frame(maxWidth: 210)` on all
+three pickers, so the demand is always satisfiable and there is nothing left to oscillate.
+
+**Do not "fix" this by removing the drawer's 320pt frame** — that frame is itself a fix for
+a real overflow bug.
+
+**Already ruled out — do not re-propose:**
+- *Eager construction of the nine accordion sections / non-lazy `ModelSection` ForEach* —
+  zero `ForEach` / `ModelSection` / `DisclosureGroup` frames anywhere in the 14k-line
+  sample, on any thread.
+- *The seed slider's 100,001 steps* — measured 164ms vs 80ms for a normal slider. ~2×, not
+  a hang.
+- *An out-of-range slider value* (seeds reach 4.29 billion against a 99,999 bound) —
+  measured 156.8ms. SwiftUI clamps harmlessly.
+
+## Separately: two loose ends (not blockers)
+
+- **Symptom 3, white-on-light text**, is diagnosed and fixed on `main`
+  (`.preferredColorScheme(.light)` on `DashboardRootView`; Dark Mode measured 1.19:1
+  contrast against a WCAG floor of 4.5:1). It needs an *eyeball in Dark Mode*, which you
+  can do here regardless of architecture:
+  ```bash
+  defaults write -g AppleInterfaceStyle Dark    # remember to undo afterwards
+  ```
+  Confirm the drawer stays readable. **Undo with `defaults delete -g AppleInterfaceStyle`.**
+- The **tester's own** Dark Mode setting is still unconfirmed — that needs the tester, not
+  this machine.
 
 ## Report back
 
-The `sample` output (or the key repeating frames), which hypothesis it supports, the Dark
-Mode answer, and the model count. If the sample is inconclusive, the next step is bisecting
-the drawer — comment out sections in `FocusRoomDrawer` until the hang stops.
+Whether the hang is gone; whether the pickers truncate; whether model clicks work; the
+display's backing scale; and the Dark Mode eyeball. **A release is gated on this** — 0.9.29
+is staged but deliberately not cut until the fix is confirmed, so that the release notes
+don't claim a fix that was never tested.
