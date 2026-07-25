@@ -19,12 +19,20 @@
 			remoteGlobalIDString = FD31E3D72F184A4D003E0C4C;
 			remoteInfo = TanqueStudio;
 		};
+		FDB1A00B2F400001003E0C4C /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = FD31E3D02F184A4C003E0C4C /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = FD31E3D72F184A4D003E0C4C;
+			remoteInfo = TanqueStudio;
+		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
 		FD02B0062F900001003E0C4C /* LLMOperations */ = {isa = PBXFileReference; lastKnownFileType = folder; path = LLMOperations; sourceTree = "<group>"; };
 		FD31E3D82F184A4D003E0C4C /* Tanque Studio.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Tanque Studio.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		FDA09D562F36EABE003D7DF0 /* TanqueStudioUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = TanqueStudioUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		FDB1A0022F400001003E0C4C /* TanqueStudioTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = TanqueStudioTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -55,6 +63,11 @@
 			path = DrawThingsStudioUITests;
 			sourceTree = "<group>";
 		};
+		FDB1A0032F400001003E0C4C /* TanqueStudioTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = TanqueStudioTests;
+			sourceTree = "<group>";
+		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -67,6 +80,13 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		FDA09D532F36EABE003D7DF0 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		FDB1A0052F400001003E0C4C /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -90,6 +110,7 @@
 			children = (
 				FD31E3DA2F184A4D003E0C4C /* DrawThingsStudio */,
 				FDA09D572F36EABE003D7DF0 /* DrawThingsStudioUITests */,
+				FDB1A0032F400001003E0C4C /* TanqueStudioTests */,
 				FD31E3D92F184A4D003E0C4C /* Products */,
 				FD02C0012F900001003E0C4C /* LLMOperations */,
 			);
@@ -100,6 +121,7 @@
 			children = (
 				FD31E3D82F184A4D003E0C4C /* Tanque Studio.app */,
 				FDA09D562F36EABE003D7DF0 /* TanqueStudioUITests.xctest */,
+				FDB1A0022F400001003E0C4C /* TanqueStudioTests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -153,6 +175,29 @@
 			productReference = FDA09D562F36EABE003D7DF0 /* TanqueStudioUITests.xctest */;
 			productType = "com.apple.product-type.bundle.ui-testing";
 		};
+		FDB1A0012F400001003E0C4C /* TanqueStudioTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = FDB1A0092F400001003E0C4C /* Build configuration list for PBXNativeTarget "TanqueStudioTests" */;
+			buildPhases = (
+				FDB1A0042F400001003E0C4C /* Sources */,
+				FDB1A0052F400001003E0C4C /* Frameworks */,
+				FDB1A0062F400001003E0C4C /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				FDB1A00A2F400001003E0C4C /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				FDB1A0032F400001003E0C4C /* TanqueStudioTests */,
+			);
+			name = TanqueStudioTests;
+			packageProductDependencies = (
+			);
+			productName = TanqueStudioTests;
+			productReference = FDB1A0022F400001003E0C4C /* TanqueStudioTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -167,6 +212,10 @@
 						CreatedOnToolsVersion = 26.2;
 					};
 					FDA09D552F36EABE003D7DF0 = {
+						CreatedOnToolsVersion = 26.2;
+						TestTargetID = FD31E3D72F184A4D003E0C4C;
+					};
+					FDB1A0012F400001003E0C4C = {
 						CreatedOnToolsVersion = 26.2;
 						TestTargetID = FD31E3D72F184A4D003E0C4C;
 					};
@@ -190,6 +239,7 @@
 			projectRoot = "";
 			targets = (
 				FD31E3D72F184A4D003E0C4C /* TanqueStudio */,
+				FDB1A0012F400001003E0C4C /* TanqueStudioTests */,
 				FDA09D552F36EABE003D7DF0 /* TanqueStudioUITests */,
 			);
 		};
@@ -205,6 +255,13 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		FDA09D542F36EABE003D7DF0 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		FDB1A0062F400001003E0C4C /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -228,6 +285,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		FDB1A0042F400001003E0C4C /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -235,6 +299,11 @@
 			isa = PBXTargetDependency;
 			target = FD31E3D72F184A4D003E0C4C /* TanqueStudio */;
 			targetProxy = FDA09D5C2F36EABE003D7DF0 /* PBXContainerItemProxy */;
+		};
+		FDB1A00A2F400001003E0C4C /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = FD31E3D72F184A4D003E0C4C /* TanqueStudio */;
+			targetProxy = FDB1A00B2F400001003E0C4C /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -484,6 +553,53 @@
 			};
 			name = Release;
 		};
+		FDB1A0072F400001003E0C4C /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 21;
+				DEVELOPMENT_TEAM = AKR62MZF3K;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 0.9.28;
+				PRODUCT_BUNDLE_IDENTIFIER = tanque.org.TanqueStudioTests;
+				PRODUCT_NAME = TanqueStudioTests;
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Tanque Studio.app/Contents/MacOS/Tanque Studio";
+				TEST_TARGET_NAME = TanqueStudio;
+			};
+			name = Debug;
+		};
+		FDB1A0082F400001003E0C4C /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Manual;
+				CURRENT_PROJECT_VERSION = 21;
+				DEVELOPMENT_TEAM = "";
+				"DEVELOPMENT_TEAM[sdk=macosx*]" = AKR62MZF3K;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 0.9.28;
+				PRODUCT_BUNDLE_IDENTIFIER = tanque.org.TanqueStudioTests;
+				PRODUCT_NAME = TanqueStudioTests;
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Tanque Studio.app/Contents/MacOS/Tanque Studio";
+				TEST_TARGET_NAME = TanqueStudio;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -510,6 +626,15 @@
 			buildConfigurations = (
 				FDA09D5E2F36EABE003D7DF0 /* Debug */,
 				FDA09D5F2F36EABE003D7DF0 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		FDB1A0092F400001003E0C4C /* Build configuration list for PBXNativeTarget "TanqueStudioTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				FDB1A0072F400001003E0C4C /* Debug */,
+				FDB1A0082F400001003E0C4C /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
