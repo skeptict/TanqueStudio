@@ -185,7 +185,7 @@ The parked roadmap after v0.9.28 was: Batch D (blocked on the client bump) → B
 1. **Export target version.** Adopting `concat` (§3.2) means exports stop working in pre-260723 pipelines. Options: (a) always emit 260723, (b) a legacy/modern toggle on export, (c) auto-detect from what the project contains. My recommendation is (a) with a clear note in the UI — maintaining two emitters for a format whose consumer Ned controls is not worth the cost — but this affects anyone he shares exports with, so it's his call. **Needed before Phase 3**, not before Phase 2.
 2. **Where the new authoring UI lives.** StoryFlow is still badged Labs and predates the Dashboard + Focus Rooms merge. Phase 2 roughly doubles the step-type count — worth deciding whether that lands in the existing three-column `StoryFlowView` or gets a pass in the Dashboard's design language first. **Needed before Phase 2 implementation begins.**
 3. **`fileLoad` / "add pipeline".** The Editor inlines an external exported pipeline at load time and warns that the user must re-link the file each session. Whether Tanque Studio should support it, and whether it should inline eagerly (losing the reference) or keep a security-scoped bookmark like the LLM Operations folder does, is undecided.
-4. **Where the video workstream (§7) sits relative to Phase 2.** Ned raised it as a priority over the LLM work but sequenced Phase 2 explicitly, so it's parked after Phase 2 below. Easy to reorder — it shares no code with the StoryFlow phases.
+4. **Where the video workstream (§7) sits relative to Phase 2.** Ned raised it as a priority over the LLM work but sequenced Phase 2 explicitly, so it's parked after Phase 2 below. Easy to reorder — it shares no code with the StoryFlow phases. *(The prerequisite that was blocking it is now resolved — see §7.1. Draw Things has a real series key, so this is ready to build whenever it's sequenced.)*
 
 ---
 
@@ -195,10 +195,51 @@ Separate from StoryFlow adoption, though adjacent: Phase 1's bug is literally th
 
 **Goal:** make it visually obvious that a set of frames is one series rather than N unrelated images, and stop series from flooding grids.
 
-- **DT Project Browser — collapse frame series into a single reference.** Today the browser lists Draw Things' stored images flat. A rendered video arrives as many frames that read as separate results. Target behaviour: one representative cell per series, badged with the frame count, expandable in place to view the individual frames. The app's own gallery already does the equivalent grouping — `GalleryStripView.buildEntries` groups on shared `batchID` and shows a ▶ badge, mirrored into the Focus Room filmstrip — so the interaction pattern exists; the open question is whether DT's project database exposes an equivalent grouping key. **Investigate first:** `DTProjectDatabase.swift` reads DT's project-database FlatBuffer, which is a different and larger table than the gRPC config table; whether it carries a batch/series identifier at all is unverified and determines whether grouping is real or heuristic (e.g. by timestamp proximity + identical config).
+- **DT Project Browser — collapse frame series into a single reference.** Today the browser lists Draw Things' stored images flat. A rendered video arrives as many frames that read as separate results. Target behaviour: one representative cell per series, badged with the frame count, expandable in place to view the individual frames. The app's own gallery already does the equivalent grouping — `GalleryStripView.buildEntries` groups on shared `batchID` and shows a ▶ badge, mirrored into the Focus Room filmstrip — so the interaction pattern exists.
 - **General video-handling cleanup.** Scope to be pinned down with Ned. Known existing pieces: `VideoAssembler.swift`, the frame scrubber, Export Frames / Export Video / Delete Series context menu items, and the `numFrames` plumbing unclamped beyond the client defaults.
 
-**Prerequisite finding:** whether DT's project database has a series key. If it doesn't, collapsing is a heuristic and needs Ned's sign-off on the heuristic before it ships.
+### 7.1 PREREQUISITE RESOLVED — Draw Things has a real series key. No heuristic needed.
+
+Answered from Draw Things' own source (`draw-things-community`, checked out locally) and verified against Ned's real project databases.
+
+**The schema.** `Libraries/History/Sources/tensor_history.fbs` — `TensorHistoryNode` carries:
+
+| Field | Type | Meaning |
+|---|---|---|
+| `clip_id` | `long = -1` | which video clip this frame belongs to; `-1`/absent = a still image |
+| `index_in_a_clip` | `int = 0` | the frame's position within its clip |
+
+And there is a dedicated `Clip` table (`clip.fbs`) keyed by `clip_id`, carrying `count`, `frames_per_second`, `width`, `height` — so the frame count and fps come free, no counting required.
+
+**Draw Things itself uses `clip_id >= 0` as its definition of "this is a video"** (`ImageHistoryManager.swift:635`, `:1025`), writes one row per frame with a shared clip id and sequential index (`:984-985`, `clipId: clipId, indexInAClip: clipId.map { _ in Int32(i) }`), and queries frames back by `TensorHistoryNode.clipId == clip.clipId` (`:510`). The grouping Tanque Studio wants is the grouping Draw Things already performs internally.
+
+**Verified against real data** — three of Ned's project databases, decoding the FlatBuffer directly:
+
+| Database | Clips | Frames per clip | Indices | Still images |
+|---|---|---|---|---|
+| `serious stuff` | 5 | 257 each @ 25fps, 1024×576 | contiguous 0…256 | 151 |
+| `z - del` | 4 | 257 / 121 / 121 / 369 @ 25fps | contiguous from 0 | 104 |
+| `2024` | 1 | 257 @ 25fps, 1280×768 | contiguous 0…256 | 33 |
+
+Every clip's declared `count` matched the frames actually found; indices were contiguous from zero in every case; stills correctly carried no clip id. `serious stuff` reconciles exactly: 5 × 257 + 151 = 1436 = the table's full row count.
+
+**This quantifies the problem.** In `serious stuff`, **1285 of 1436 browser entries are video frames** — the browser is showing 1285 loose thumbnails where it should show 5 video entries and 151 stills. That is the friction Ned described, measured.
+
+**Implementation notes:**
+- `clip_id` is at **vtable offset 204**, `index_in_a_clip` at **206** (slot = `4 + 2×fieldIndex`; validated by recomputing 17 other offsets and matching every constant `DTProjectDatabase.swift` already uses).
+- A `clip` table exists in the sqlite file **only if that project has ever contained a video** (`ImageHistoryManager.swift:1032` includes `Clip.self` in the created schema conditionally). Probe for it rather than assuming — 6 of Ned's 11 databases have no `clip` table at all.
+- Newer Draw Things builds write more fields than the local `draw-things-community` checkout (2026-01-09) declares — observed vtable sizes of 232 vs the schema's 222. FlatBuffers appends, so existing offsets stay valid, but don't assume the local schema is complete.
+- Grouping must happen **before** pagination, not after. `fetchEntries` currently pages with `LIMIT/OFFSET` over raw rows; a 369-frame clip would otherwise span pages and collapse inconsistently. This is the main structural change in `DTProjectBrowserViewModel`.
+
+### 7.2 Bug found during this investigation — wrong vtable offset for `resolutionDependentShift`
+
+`DTProjectDatabase.swift:87` declares `VT_RESOLUTION_DEPENDENT_SHIFT = 146`. Offset 146 is actually **`decoding_tile_width`** (a `ushort`); `resolution_dependent_shift` lives at **182**.
+
+Measured on 600 real rows from `serious stuff`: the field at 146 is absent in every row, so TS falls through to its `?? true` default and reports RDS **enabled** for every entry — while the actual value at 182 is `false` in all 600. So it is currently wrong ~100% of the time.
+
+**Currently latent**: `DTGenerationEntry.resolutionDependentShift` is decoded but never displayed and never used by Send to Generate (which only propagates `shift`). So nothing visibly misbehaves today — but it would the moment that field is surfaced or propagated. One-constant fix, 146 → 182.
+
+This also validates the offset-derivation method used for `clip_id`/`index_in_a_clip` above: the same cross-check that produced 204/206 is what caught this.
 
 ---
 
