@@ -359,6 +359,42 @@ struct SettingsView: View {
                         .strokeBorder(TanqueDS.Color.surfaceBorder, lineWidth: 1))
                 }
 
+                // MARK: Diagnostics
+                // RequestLogger has always written this file and has always had an
+                // openLog() — it just had no caller anywhere, so the log was
+                // effectively unreachable. It lives inside the app's sandbox
+                // container, which nothing outside the app can browse to, so this
+                // button is the only practical way to read it.
+                VStack(alignment: .leading, spacing: TanqueDS.Spacing.sm) {
+                    Text("DIAGNOSTICS").tanqueSectionLabel()
+                    VStack(spacing: 0) {
+                        HStack {
+                            Text("Request log")
+                                .font(TanqueDS.Font.body)
+                                .foregroundStyle(TanqueDS.Color.textSecondary)
+                            Spacer()
+                            Button("Open\u{2026}") { RequestLogger.shared.openLog() }
+                                .help("Opens the request log in your default text editor.")
+                        }
+                        .padding(.horizontal, TanqueDS.Spacing.md)
+                        .padding(.vertical, TanqueDS.Spacing.sm)
+                        .background(TanqueDS.Color.surface1)
+
+                        Rectangle().fill(TanqueDS.Color.surfaceBorder).frame(height: 1)
+
+                        Text("Every request sent to Draw Things, with the exact parameters used. Useful when a render doesn't match the settings you chose.")
+                            .font(TanqueDS.Font.bodySmall)
+                            .foregroundStyle(TanqueDS.Color.textMuted)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, TanqueDS.Spacing.md)
+                            .padding(.vertical, TanqueDS.Spacing.sm)
+                            .background(TanqueDS.Color.surface1)
+                    }
+                    .clipShape(RoundedRectangle(cornerRadius: TanqueDS.Layout.panelCornerRadius))
+                    .overlay(RoundedRectangle(cornerRadius: TanqueDS.Layout.panelCornerRadius)
+                        .strokeBorder(TanqueDS.Color.surfaceBorder, lineWidth: 1))
+                }
+
                 // MARK: Appearance
                 VStack(alignment: .leading, spacing: TanqueDS.Spacing.sm) {
                     Text("APPEARANCE").tanqueSectionLabel()
