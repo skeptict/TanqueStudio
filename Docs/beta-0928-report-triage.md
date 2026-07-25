@@ -42,7 +42,51 @@ eyeballing in Dark Mode before release.
 
 ---
 
-## 1 & 2. The hang and the dead model rows — UNRESOLVED
+## 1 & 2. The hang — DIAGNOSED AND FIXED (`3844289`); symptom 2 is downstream
+
+**Settled by a `sample` taken on Intel / macOS 15.7.7 while the app was beachballed.**
+
+- **7,288 of 7,288 samples** — 100% of a 10-second window — on **one unbroken main-thread
+  stack**, over **2,400 frames deep**.
+- Not blocked on a syscall: actively recursing through `AG::Subgraph::update` →
+  `AG::Graph::update_attribute` → `AG::Graph::UpdateStack::update`, with a ~10-frame
+  SwiftUICore motif repeating hundreds of times.
+- Bottoms out in AppKit backing-store geometry: `NSViewGetTransformToBacking`,
+  `convertSizeToBacking:`, `+[NSScreen _backingScaleFactorForScreen:]`, bouncing against
+  the view-root lookup and never resolving.
+- Other threads (`NSEventThread`, dispatch manager) idle in `mach_msg`. Only main is pinned.
+
+A genuine, non-terminating layout cycle — **hypothesis 1 confirmed**.
+
+**Hypothesis 2 is ruled out:** zero `ForEach` / `ModelSection` / `DisclosureGroup` frames
+anywhere in the 14k-line sample, on any thread. No view-construction work is involved. That
+also explains why expanding the section is the trigger: `DisclosureGroup` *builds* its
+content while collapsed but doesn't *lay it out*, and this is a layout cycle.
+
+**Why it's machine-specific.** The backing-store frames are pixel-alignment rounding. Old
+Intel iMacs are typically non-Retina (1× backing scale) where the M1 dev machines are 2× — a
+width that rounds cleanly at 2× can oscillate between two values at 1×. Worth testing the
+fix on a 1× display specifically.
+
+**Fix (`3844289`):** the drawer's `.menu` Pickers used `.fixedSize()`, demanding their ideal
+width unconditionally inside a drawer pinned to `.frame(width: 320)` + `.clipped()` by the
+0.9.27 overflow fix. Replaced with a bounded `.frame(maxWidth: 170)`, which removes the
+unbounded demand so there is nothing to oscillate. Applied to all three — Sampler and Seed
+Mode in `ParametersSection`, and Refiner in `ModelSection`, which has the identical shape and
+longer content (model filenames) and was spared only because it never got laid out.
+
+**Not verified** — the hang cannot reproduce on arm64/macOS 26, which is the point of it.
+Needs a re-test on the Intel Mac.
+
+### Symptom 2 (model clicks do nothing) needs no separate explanation
+
+With the main thread 100% pinned for the entire sample window, nothing can respond to a
+click. The tester's "search finds the name" almost certainly happened *before* he expanded
+Parameters; everything after that was frozen. **Re-test once the cycle fix is confirmed
+before treating it as a separate bug.** This also makes the Draw Things model count moot as
+a diagnostic — it was only ever a test of hypothesis 2, which is now dead.
+
+## Original hypotheses, for the record
 
 Two plausible theories were tested and **both rejected**. Recording them so they aren't
 re-proposed.
