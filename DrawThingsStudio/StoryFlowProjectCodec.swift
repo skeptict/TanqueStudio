@@ -320,17 +320,18 @@ enum StoryFlowProjectCodec {
         case .passthrough:
             // Re-emit the original item verbatim
             let itemType = step.parameters["itemType"] ?? "unknown"
+            // Decode through StoryFlowItemValue itself rather than re-implementing
+            // its type ladder here. The hand-rolled version tried only Bool then
+            // String and fell back to `true`, so numeric items (frames, frames8,
+            // moodboardRemove) came back as `true` — a frame count of 1 became a
+            // flag, and moodboardRemove 0 became true. Delegating keeps this in
+            // step with the enum automatically.
             guard let rawJSON = step.parameters["rawValueJSON"],
-                  let data = rawJSON.data(using: .utf8) else {
+                  let data = rawJSON.data(using: .utf8),
+                  let value = try? decoder.decode(StoryFlowItemValue.self, from: data) else {
                 return [StoryFlowItem(type: itemType, value: .bool(true))]
             }
-            if let b = try? decoder.decode(Bool.self, from: data) {
-                return [StoryFlowItem(type: itemType, value: .bool(b))]
-            }
-            if let s = try? decoder.decode(String.self, from: data) {
-                return [StoryFlowItem(type: itemType, value: .string(s))]
-            }
-            return [StoryFlowItem(type: itemType, value: .bool(true))]
+            return [StoryFlowItem(type: itemType, value: value)]
         }
     }
 
