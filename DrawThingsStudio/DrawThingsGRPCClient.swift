@@ -519,6 +519,19 @@ final class DrawThingsGRPCClient: DrawThingsProvider {
             stochasticSamplingGamma: Float(config.stochasticSamplingGamma),
             resolutionDependentShift: useResolutionDependentShift,
             t5TextEncoder: useT5,
+            // Tiling is the OPPOSITE of hires fix below: the client passes tile
+            // dimensions through to the wire unchanged, so the ÷64 is ours to do.
+            // (Configuration.swift: `configT.decodingTileWidth = UInt16(decodingTileWidth)`,
+            // versus `configT.hiresFixStartWidth = UInt16(hiresFixWidth / 64)`.)
+            // Floored to at least one tile unit so a small value can't encode as 0.
+            tiledDiffusion: config.tiledDiffusion,
+            diffusionTileWidth: Self.tileUnits(config.diffusionTileWidth),
+            diffusionTileHeight: Self.tileUnits(config.diffusionTileHeight),
+            diffusionTileOverlap: Self.tileUnits(config.diffusionTileOverlap),
+            tiledDecoding: config.tiledDecoding,
+            decodingTileWidth: Self.tileUnits(config.decodingTileWidth),
+            decodingTileHeight: Self.tileUnits(config.decodingTileHeight),
+            decodingTileOverlap: Self.tileUnits(config.decodingTileOverlap),
             // Raw pixels — the client divides by 64 and floors to a multiple of
             // 64 on its own at encode time.
             hiresFix: config.hiresFix,
@@ -531,6 +544,17 @@ final class DrawThingsGRPCClient: DrawThingsProvider {
             refinerStart: Float(config.refinerStart),
             seedMode: mapSeedMode(config.seedMode)
         )
+    }
+
+    /// Pixels → the wire's units of 64, clamped to at least 1 so a sub-64 value
+    /// encodes as one tile rather than zero.
+    ///
+    /// Internal and static so it can be asserted directly: this conversion is the
+    /// entire risk surface of the tiling group, and getting it wrong is silent —
+    /// a 1024 sent unconverted means 65,536 pixels, and a 32 rounding to 0 means
+    /// "no tile". See `TilingConfigTests`.
+    static func tileUnits(_ pixels: Int) -> Int32 {
+        Int32(max(1, pixels / 64))
     }
 
     private func mapSampler(_ name: String) -> SamplerType {

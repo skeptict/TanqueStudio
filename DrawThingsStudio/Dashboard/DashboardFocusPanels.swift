@@ -25,6 +25,7 @@ struct FocusRoomDrawer: View {
     @State private var modelExpanded = false
     @State private var canvasExpanded = false
     @State private var hiresFixExpanded = false
+    @State private var tilingExpanded = false
     @State private var paramsExpanded = false
     @State private var lorasExpanded = false
     @State private var img2imgExpanded = false
@@ -41,6 +42,7 @@ struct FocusRoomDrawer: View {
                     section("Model", isExpanded: $modelExpanded) { ModelSection(vm: vm) }
                     section("Canvas Size", isExpanded: $canvasExpanded) { CanvasSizeSection(vm: vm) }
                     section("Hires Fix", isExpanded: $hiresFixExpanded) { HiresFixSection(vm: vm) }
+                    section("Tiling", isExpanded: $tilingExpanded) { TilingSection(vm: vm) }
                     section("Parameters", isExpanded: $paramsExpanded) { ParametersSection(vm: vm) }
                     section("LoRAs", isExpanded: $lorasExpanded) { LoRAsSection(vm: vm) }
                     section("img2img & Moodboard", isExpanded: $img2imgExpanded) { Img2ImgMoodboardSection(vm: vm) }
@@ -431,6 +433,104 @@ struct HiresFixSection: View {
     }
 
     private static func floor64(_ v: Int) -> Int { max(64, (v / 64) * 64) }
+}
+
+// MARK: - Tiling (parity Batch D)
+
+/// Render large canvases in overlapping tiles instead of all at once, trading
+/// time for peak memory. Two independent passes: `tiledDiffusion` tiles the
+/// sampling loop, `tiledDecoding` tiles the VAE decode — decoding is the one
+/// that usually blows up first, which is why real projects often enable it alone.
+///
+/// All six dimensions are in **pixels** here and are divided by 64 at the gRPC
+/// boundary, since the client passes tile values straight through to the wire
+/// (unlike Hires Fix, where the client does the division itself). Pixels match
+/// Draw Things' own config JSON, its scripting parameters, and StoryFlow projects.
+struct TilingSection: View {
+    @Bindable var vm: GenerateViewModel
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            group(
+                title: "Tiled Diffusion",
+                help: "Tile the sampling loop. Cuts peak memory on large canvases; slower.",
+                isOn: $vm.config.tiledDiffusion,
+                width: $vm.config.diffusionTileWidth,
+                height: $vm.config.diffusionTileHeight,
+                overlap: $vm.config.diffusionTileOverlap
+            )
+
+            group(
+                title: "Tiled Decoding",
+                help: "Tile the VAE decode. Usually the first thing to run out of memory on big renders.",
+                isOn: $vm.config.tiledDecoding,
+                width: $vm.config.decodingTileWidth,
+                height: $vm.config.decodingTileHeight,
+                overlap: $vm.config.decodingTileOverlap
+            )
+        }
+    }
+
+    @ViewBuilder
+    private func group(title: String,
+                       help: String,
+                       isOn: Binding<Bool>,
+                       width: Binding<Int>,
+                       height: Binding<Int>,
+                       overlap: Binding<Int>) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text(title).font(TanqueDS.Font.mono(11.5)).foregroundStyle(DashboardDS.muted2)
+                Spacer()
+                Toggle("", isOn: isOn)
+                    .labelsHidden()
+                    .toggleStyle(.dashboardCheckbox)
+            }
+            .help(help)
+
+            if isOn.wrappedValue {
+                HStack {
+                    Text("Tile").font(TanqueDS.Font.mono(11.5)).foregroundStyle(DashboardDS.muted2)
+                    Spacer()
+                    numberField(width, placeholder: "W")
+                    Text("\u{00D7}").font(TanqueDS.Font.mono(11.5)).foregroundStyle(DashboardDS.muted2)
+                    numberField(height, placeholder: "H")
+                }
+                .padding(.top, 2)
+                .help("Tile size in pixels. Draw Things works in units of 64, so each is floored to a multiple of 64.")
+
+                HStack {
+                    Text("Overlap").font(TanqueDS.Font.mono(11.5)).foregroundStyle(DashboardDS.muted2)
+                    Spacer()
+                    numberField(overlap, placeholder: "px")
+                }
+                .padding(.top, 2)
+                .help("How far neighbouring tiles overlap, in pixels. More overlap hides seams and costs time.")
+
+                // DT skips tiling entirely unless the canvas exceeds the tile in at
+                // least one dimension (ImageConverter.swift:1187). Say so rather than
+                // clamping the values — it's DT's rule, and the canvas may yet change.
+                if width.wrappedValue >= vm.config.width && height.wrappedValue >= vm.config.height {
+                    Text("Tile is at least as large as the canvas \u{2014} Draw Things will skip tiling.")
+                        .font(TanqueDS.Font.mono(10.5))
+                        .foregroundStyle(DashboardDS.orange)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.top, 2)
+                }
+            }
+        }
+    }
+
+    /// Numeric entry, deliberately not a Slider: a high-step-count Slider in this
+    /// drawer is what hung Intel/macOS 15 in 0.9.28 (see the seed field).
+    private func numberField(_ value: Binding<Int>, placeholder: String) -> some View {
+        TextField(placeholder, value: value, format: .number.grouping(.never))
+            .textFieldStyle(.plain)
+            .multilineTextAlignment(.trailing)
+            .font(TanqueDS.Font.mono(11.5))
+            .foregroundStyle(DashboardDS.brass)
+            .frame(width: 52)
+    }
 }
 
 struct ParametersSection: View {

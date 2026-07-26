@@ -31,6 +31,14 @@ struct DTCustomConfig: Identifiable {
     let hiresFixWidth: Int?         // raw pixels, as DT stores them
     let hiresFixHeight: Int?
     let hiresFixStrength: Double?
+    let tiledDecoding: Bool?
+    let decodingTileWidth: Int?     // raw pixels, as DT stores them
+    let decodingTileHeight: Int?
+    let decodingTileOverlap: Int?
+    let tiledDiffusion: Bool?
+    let diffusionTileWidth: Int?
+    let diffusionTileHeight: Int?
+    let diffusionTileOverlap: Int?
 }
 
 // MARK: - DTConfigImporter
@@ -114,7 +122,15 @@ enum DTConfigImporter {
             hiresFix:                cfg["hiresFix"]                as? Bool,
             hiresFixWidth:           (cfg["hiresFixWidth"]           as? NSNumber)?.intValue,
             hiresFixHeight:          (cfg["hiresFixHeight"]          as? NSNumber)?.intValue,
-            hiresFixStrength:        (cfg["hiresFixStrength"]        as? NSNumber)?.doubleValue
+            hiresFixStrength:        (cfg["hiresFixStrength"]        as? NSNumber)?.doubleValue,
+            tiledDecoding:           cfg["tiledDecoding"]           as? Bool,
+            decodingTileWidth:       (cfg["decodingTileWidth"]       as? NSNumber)?.intValue,
+            decodingTileHeight:      (cfg["decodingTileHeight"]      as? NSNumber)?.intValue,
+            decodingTileOverlap:     (cfg["decodingTileOverlap"]     as? NSNumber)?.intValue,
+            tiledDiffusion:          cfg["tiledDiffusion"]          as? Bool,
+            diffusionTileWidth:      (cfg["diffusionTileWidth"]      as? NSNumber)?.intValue,
+            diffusionTileHeight:     (cfg["diffusionTileHeight"]     as? NSNumber)?.intValue,
+            diffusionTileOverlap:    (cfg["diffusionTileOverlap"]    as? NSNumber)?.intValue
         )
     }
 }
@@ -170,6 +186,19 @@ enum DTConfigExporter {
             dict["hiresFixWidth"]    = config.hiresFixWidth
             dict["hiresFixHeight"]   = config.hiresFixHeight
             dict["hiresFixStrength"] = config.hiresFixStrength
+        }
+        // Tiling — same rule, same unit (raw pixels, as DT's clipboard schema has them).
+        if config.tiledDecoding {
+            dict["tiledDecoding"]       = true
+            dict["decodingTileWidth"]   = config.decodingTileWidth
+            dict["decodingTileHeight"]  = config.decodingTileHeight
+            dict["decodingTileOverlap"] = config.decodingTileOverlap
+        }
+        if config.tiledDiffusion {
+            dict["tiledDiffusion"]       = true
+            dict["diffusionTileWidth"]   = config.diffusionTileWidth
+            dict["diffusionTileHeight"]  = config.diffusionTileHeight
+            dict["diffusionTileOverlap"] = config.diffusionTileOverlap
         }
         if let rds = config.resolutionDependentShift {
             dict["resolutionDependentShift"] = rds
@@ -229,6 +258,14 @@ enum DTConfigExporter {
         if let v = (dict["hiresFixWidth"]         as? NSNumber)?.intValue    { config.hiresFixWidth = v }
         if let v = (dict["hiresFixHeight"]        as? NSNumber)?.intValue    { config.hiresFixHeight = v }
         if let v = (dict["hiresFixStrength"]      as? NSNumber)?.doubleValue { config.hiresFixStrength = v }
+        if let v = (dict["tiledDecoding"]         as? NSNumber)?.boolValue   { config.tiledDecoding = v }
+        if let v = (dict["decodingTileWidth"]     as? NSNumber)?.intValue    { config.decodingTileWidth = v }
+        if let v = (dict["decodingTileHeight"]    as? NSNumber)?.intValue    { config.decodingTileHeight = v }
+        if let v = (dict["decodingTileOverlap"]   as? NSNumber)?.intValue    { config.decodingTileOverlap = v }
+        if let v = (dict["tiledDiffusion"]        as? NSNumber)?.boolValue   { config.tiledDiffusion = v }
+        if let v = (dict["diffusionTileWidth"]    as? NSNumber)?.intValue    { config.diffusionTileWidth = v }
+        if let v = (dict["diffusionTileHeight"]   as? NSNumber)?.intValue    { config.diffusionTileHeight = v }
+        if let v = (dict["diffusionTileOverlap"]  as? NSNumber)?.intValue    { config.diffusionTileOverlap = v }
 
         // LoRAs: [{file, weight}]
         if let rawLoras = dict["loras"] as? [[String: Any]] {

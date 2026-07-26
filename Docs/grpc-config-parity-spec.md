@@ -1,16 +1,16 @@
 # gRPC Config Parity Audit & Spec
 
-**Totals: 84 fields in the gRPC `GenerationConfiguration` schema — 19 surfaced in the Focus Room drawer, 1 surfaced-disabled (batchSize, pending encoding verification), 0 modeled-but-hidden, 64 not-modeled.** (Updated after Batch A, 2026-07-18; t5TextEncoder reclassified modeled-but-hidden → not-modeled, see its row.)
+**Totals: 84 fields in the gRPC `GenerationConfiguration` schema — 34 surfaced in the Focus Room drawer, 1 surfaced-disabled (batchSize, pending encoding verification), 0 modeled-but-hidden, 49 not-modeled.** (Recounted 2026-07-26 after Batch D; the previous total was stale — it still counted Batches B, C and D as not-modeled. Surfaced = 12 `S` + 7 `S*` + 3 `✅ B` + 4 `✅ C` + 8 `✅ D`. t5TextEncoder reclassified modeled-but-hidden → not-modeled, see its row.)
 
 - **Audited at:** DT-gRPC-Swift-Client revision `c8f8493` (upstream main tip), read via `git show` — main's pin is `9218530`; the bump is parked on `chore/bump-drawthings-client` pending verification.
 - **Bump LANDED on main 2026-07-25** (cherry-picked `9798dd2` as `e855790`; the `chore/bump-drawthings-client` branch itself was stale — branched before v0.9.26/27/28 — so it was never merged). Package resolves and builds clean at `c8f8493`; the app launches and runs.
 - **Release-notes item, now traced end-to-end rather than assumed.** TS's `mapSeedMode` (`DrawThingsGRPCClient.swift:599`) returns a raw `Int32` — `2` for Scale Alike, which is also its `default:` fallback. That `Int32` reaches the client's `Configuration.swift:376`, which runs it through `mapSeedModeToEnum`. At the **old** pin that function was `case 0: .legacy; case 1, 2: .torchcpucompatible; default: .torchcpucompatible` — so **seed mode 2 and 3 both collapsed to 1 on the wire**. Meaning: every default-config Tanque Studio render has been sending torchCpuCompatible, not the Scale Alike the UI reported. The bump makes the mapping 1:1, so **same-seed output changes for default-config users** — not just for anyone who picked an exotic mode. **Not yet confirmed at runtime**: no before/after same-seed render comparison has been done (needs Ned's pass; the app was pointed at `localhost` while DT was answering on `192.168.1.34`).
 - **Also still owed a manual re-test**: the paint-mode inpaint-cancel flow, since cancellation propagation (upstream PR #19) rides in with this bump.
-- **Schema difference between the two pins: none.** `config_generated.swift` is byte-identical at `9218530` and `c8f8493` (verified by full-file diff). The bump changes *encoding behavior*, not the field set: `cd5a7ca` fixes seedMode 2/3 wire values, `a564321` switches tile params to raw pixels with ÷64 at encode, `f1cc454` sanitizes empty-string `upscaler`/`faceRestoration`/`refinerModel` to nil, `12b223d` drops the implicit echo-override. Dependencies flagged in §4.
+- **Schema difference between the two pins: none.** `config_generated.swift` is byte-identical at `9218530` and `c8f8493` (verified by full-file diff). The bump changes *encoding behavior*, not the field set: `cd5a7ca` fixes seedMode 2/3 wire values, `a564321` switches **Hires Fix** params to raw pixels with ÷64 at encode (**not** the tile params — see Batch D in §4; that misreading survived into the matrix and was only caught when D was built), `f1cc454` sanitizes empty-string `upscaler`/`faceRestoration`/`refinerModel` to nil, `12b223d` drops the implicit echo-override. Dependencies flagged in §4.
 - **Cross-checks:** TS `DrawThingsGRPCClient.convertConfig` → client `DrawThingsConfiguration` (the request-building path); `DrawThingsGenerationConfig` (TS model, `DrawThingsProvider.swift`); `DTProjectBrowser`'s `DTProjectDatabase.swift` FBReader. **Caveat:** `DTProjectDatabase` decodes DT's *project-database* table (prompts at VT 200/202, tensor/preview ids, wall clock) — a different, larger FlatBuffer than the gRPC config table; field *names* corroborate, byte offsets do not.
 - **UI policy (Ned, 2026-07-18):** gRPC-surface parity is the goal; settings live in existing collapsed category sections; **enabled means functional** — unwired fields render as disabled rows with a "not yet wired" tooltip, never as live controls that discard input.
 
-Status legend — **S** surfaced (Focus Room drawer control binds it, file noted) · **S\*** surfaced via `fix/dashboard-parity-round-2` (merged to main 2026-07-18) · **SD** surfaced-disabled (control exists, `.disabled(true)` pending verification) · **M** modeled-but-hidden (on `DrawThingsGenerationConfig` and encoded into requests; no drawer binding) · **N** not-modeled (TS has no field).
+Status legend — **✅ B/C/D** surfaced by that parity batch · **S** surfaced (Focus Room drawer control binds it, file noted) · **S\*** surfaced via `fix/dashboard-parity-round-2` (merged to main 2026-07-18) · **SD** surfaced-disabled (control exists, `.disabled(true)` pending verification) · **M** modeled-but-hidden (on `DrawThingsGenerationConfig` and encoded into requests; no drawer binding) · **N** not-modeled (TS has no field).
 
 ## 1–2. Field universe & status matrix
 
@@ -27,17 +27,17 @@ Status legend — **S** surfaced (Focus Room drawer control binds it, file noted
 | 9 | sampler (20) | SamplerType(Int8) | sampler enum, 18 cases | dpmpp2mkarras | S | Sampler picker, ParametersSection (Batch A); TS maps name→enum in `mapSampler` |
 | 10 | batchCount (22) | UInt32 | sequential renders | 1 | S\* | Renders stepper, parity branch `6128ad8` |
 | 11 | batchSize (24) | UInt32 | images per batch | 1 | SD | Batch Size stepper, ParametersSection, `.disabled(true)` — verification gate: encoding path unverified end-to-end; enabling = delete one line (Batch A) |
-| 12 | hiresFix (26) | Bool | enable two-pass hires fix | false | N | — |
-| 13 | hiresFixStartWidth (28) | UInt16 | first-pass width, px ÷ 64 | 0 | N | — |
-| 14 | hiresFixStartHeight (30) | UInt16 | first-pass height, px ÷ 64 | 0 | N | — |
-| 15 | hiresFixStrength (32) | Float | second-pass strength | 0.7 | N | — |
+| 12 | hiresFix (26) | Bool | enable two-pass hires fix | false | ✅ C | HiresFixSection toggle |
+| 13 | hiresFixStartWidth (28) | UInt16 | first-pass width, px ÷ 64 | 0 | ✅ C | TS stores px; **client** does the ÷64 here |
+| 14 | hiresFixStartHeight (30) | UInt16 | first-pass height, px ÷ 64 | 0 | ✅ C | TS stores px; **client** does the ÷64 here |
+| 15 | hiresFixStrength (32) | Float | second-pass strength | 0.7 | ✅ C | HiresFixSection slider |
 | 16 | upscaler (34) | String | upscaler model filename | nil | N | bump's `f1cc454` sanitizes empty→nil |
 | 17 | imageGuidanceScale (36) | Float | pix2pix image CFG | 1.5 | N | — |
 | 18 | seedMode (38) | SeedMode(Int8) | 0 legacy · 1 torchCpu · 2 scaleAlike · 3 nvidia | legacy | S\* | Seed Mode picker, parity branch `68142bc`; bump's `cd5a7ca` fixes 2/3 wire encoding |
 | 19 | clipSkip (40) | UInt32 | CLIP layers to skip | 1 | N | — |
 | 20 | controls (42) | [Control] | ControlNet sub-table vector (file, weight, guidance window, mode, input type) | [] | N | TS moodboard uses request-level *hints*, not config controls |
 | 21 | loras (44) | [LoRA] | LoRA sub-table vector (file, weight, mode) | [] | S | LoRAsSection, DashboardFocusPanels.swift |
-| 22 | maskBlur (46) | Float | inpaint mask blur radius | 0 | N | — |
+| 22 | maskBlur (46) | Float | inpaint mask blur radius | 0 | ✅ B | INPAINTING group, Img2ImgMoodboardSection; TS default 1.5 = the client's own, not the schema's 0 |
 | 23 | faceRestoration (48) | String | face-restore model | nil | N | `f1cc454` note as №16 |
 | — | *(50, 52)* | — | absent from schema — deprecated slots | — | — | gap noted for completeness |
 | 24 | clipWeight (54) | Float | CLIP embedding weight | 1.0 | N | — |
@@ -62,22 +62,22 @@ Status legend — **S** surfaced (Focus Room drawer control binds it, file noted
 | 43 | condAug (92) | Float | SVD conditioning noise aug | 0.02 | N | client names it `guidingFrameNoise` |
 | 44 | startFrameCfg (94) | Float | SVD first-frame CFG | 1.0 | N | client names it `startFrameGuidance` |
 | 45 | numFrames (96) | UInt32 | video frame count | 14 | S\* | Frames field, parity branch (0→sentinel 14 at encode; free-form by design, server accepts >121) |
-| 46 | maskBlurOutset (98) | Int32 | inpaint mask outset, px | 0 | N | — |
+| 46 | maskBlurOutset (98) | Int32 | inpaint mask outset, px | 0 | ✅ B | INPAINTING group |
 | 47 | sharpness (100) | Float | sharpness conditioning | 0 | N | — |
 | 48 | shift (102) | Float | sigma/timestep shift | 1.0 | S\* | Shift slider, parity branch; RDS-computed override preserved |
 | 49 | stage2Steps (104) | UInt32 | 2nd-stage steps (cascade/Wurstchen) | 10 | N | — |
 | 50 | stage2Cfg (106) | Float | 2nd-stage CFG | 1.0 | N | client names it `stage2Guidance` |
 | 51 | stage2Shift (108) | Float | 2nd-stage shift | 1.0 | N | — |
-| 52 | tiledDecoding (110) | Bool | tile the VAE decode | false | N | — |
-| 53 | decodingTileWidth (112) | UInt16 | decode tile W, **px ÷ 64** | 10 (=640px) | N | bump `a564321`: client now takes raw px, converts | 
-| 54 | decodingTileHeight (114) | UInt16 | decode tile H, px ÷ 64 | 10 | N | — |
-| 55 | decodingTileOverlap (116) | UInt16 | decode overlap, px ÷ 64 | 2 | N | — |
+| 52 | tiledDecoding (110) | Bool | tile the VAE decode | false | ✅ D | Tiling section |
+| 53 | decodingTileWidth (112) | UInt16 | decode tile W, **px ÷ 64** | 10 (=640px) | ✅ D | **The bump note here was WRONG** — `a564321` made the client take raw px *for Hires Fix only*. Tile values pass through unconverted (`configT.decodingTileWidth = UInt16(decodingTileWidth)`), so **TS stores pixels and divides by 64 itself** in `convertConfig` | 
+| 54 | decodingTileHeight (114) | UInt16 | decode tile H, px ÷ 64 | 10 | ✅ D | TS stores px, ÷64 at encode |
+| 55 | decodingTileOverlap (116) | UInt16 | decode overlap, px ÷ 64 | 2 | ✅ D | TS stores px, ÷64 at encode |
 | 56 | stochasticSamplingGamma (118) | Float | SSS gamma | 0.3 | S\* | SSS slider, parity branch |
-| 57 | preserveOriginalAfterInpaint (120) | Bool | keep unmasked pixels verbatim | true | N | — |
-| 58 | tiledDiffusion (122) | Bool | tile the diffusion pass | false | N | — |
-| 59 | diffusionTileWidth (124) | UInt16 | diffusion tile W, px ÷ 64 | 16 (=1024px) | N | — |
-| 60 | diffusionTileHeight (126) | UInt16 | diffusion tile H, px ÷ 64 | 16 | N | — |
-| 61 | diffusionTileOverlap (128) | UInt16 | diffusion overlap, px ÷ 64 | 2 | N | — |
+| 57 | preserveOriginalAfterInpaint (120) | Bool | keep unmasked pixels verbatim | true | ✅ B | INPAINTING group |
+| 58 | tiledDiffusion (122) | Bool | tile the diffusion pass | false | ✅ D | Tiling section |
+| 59 | diffusionTileWidth (124) | UInt16 | diffusion tile W, px ÷ 64 | 16 (=1024px) | ✅ D | TS stores px, ÷64 at encode |
+| 60 | diffusionTileHeight (126) | UInt16 | diffusion tile H, px ÷ 64 | 16 | ✅ D | TS stores px, ÷64 at encode |
+| 61 | diffusionTileOverlap (128) | UInt16 | diffusion overlap, px ÷ 64 | 2 | ✅ D | TS stores px, ÷64 at encode |
 | 62 | upscalerScaleFactor (130) | UInt8 | upscale multiplier, 0 = model default | 0 | N | — |
 | 63 | t5TextEncoder (132) | Bool | use T5 encoder (SD3/Flux family) | true | N | **Reclassified 2026-07-18 (was M — misclassified):** no `DrawThingsGenerationConfig` property exists; `convertConfig` derives it per model family at encode time. Wiring it is a not-modeled task |
 | 64 | separateClipL (134) | Bool | separate CLIP-L prompt on | false | N | — |
@@ -134,13 +134,26 @@ Existing sections: Prompt · Assist · Model · Parameters · LoRAs · img2img &
 
 **Batch C — Hires Fix group** (4 fields): new section; plumbing + UI.
 
-**Batch D — Tiling group** (8 fields): **depends on the parked client bump** — `a564321` changed the client to accept raw pixels (÷64 at encode); wiring against the old pin would bake in unit-of-64 values that silently change meaning when the bump lands. Land `chore/bump-drawthings-client` first.
+**Batch D — Tiling group** (8 fields): **COMPLETE 2026-07-26.** New Tiling drawer section (two independent groups: Tiled Diffusion, Tiled Decoding — each a toggle plus tile W×H and overlap), all four plumbing surfaces, plus request-log lines and `TanqueStudioTests/TilingConfigTests`.
+
+**The unit convention here is the opposite of Hires Fix, and the matrix note above was wrong about it.** Verified by reading three sources rather than assuming:
+
+| Layer | Unit |
+|---|---|
+| Tanque Studio config, DT config JSON, DT metadata, StoryFlow projects | **pixels** |
+| Client wrapper (`DrawThingsConfiguration`) and the FlatBuffer wire | **÷64 units** |
+
+`a564321` gave *Hires Fix* raw-pixel inputs with the client doing the division (`configT.hiresFixStartWidth = UInt16(hiresFixWidth / 64)`). Tile values were never included — the client assigns them straight through (`configT.decodingTileWidth = UInt16(decodingTileWidth)`), and its defaults of 10/10/2 and 16/16/2 are themselves ÷64 units. So **TS stores pixels and converts at the gRPC boundary** (`DrawThingsGRPCClient.tileUnits`, floored to ≥1 so a sub-64 value can't encode as "no tile").
+
+Pixels is right for storage independent of that: Draw Things' own JSON multiplies back up (`json["decoding_tile_width"] = decodingTileWidth * 64`, `ImageConverter.swift:1192`), its scripting parameters are pixels (`Invocation.swift:162` divides on the way in), and real StoryFlow projects carry pixels.
+
+Two behaviours worth knowing: DT **skips tiling entirely** unless the canvas exceeds the tile in at least one dimension (`ImageConverter.swift:1187`) — surfaced as an inline hint rather than enforced; and defaults match what the client was already applying implicitly, so surfacing the group changes no existing render.
 
 **Batch E — Text Encoders + SDXL Conditioning** (13 + 10 fields): plumbing-heavy, mostly niche; disabled rows acceptable long-term per policy.
 
 **Batch F — Video extras + Performance** (motionBucketId, condAug, startFrameCfg, stage2\*, causal\*, teaCache\*): lowest priority; SVD-era and perf knobs.
 
-Batches B, C, E, F have no dependency on the client bump (schema identical across pins). Batch A depends on the parity branch; Batch D depends on the bump. Upscaler/faceRestoration rows (Batch A/Model) get cleaner empty-string semantics after the bump (`f1cc454`) but TS already nil-maps empties itself, so no hard dependency.
+Batches B, C, E, F have no dependency on the client bump (schema identical across pins). Batch A depends on the parity branch; Batch D depended on the bump, which has landed (`c8f8493`) — D is complete. Upscaler/faceRestoration rows (Batch A/Model) get cleaner empty-string semantics after the bump (`f1cc454`) but TS already nil-maps empties itself, so no hard dependency.
 
 ## 5. Investigation: search box (`DashboardTopBar.submitSearch`, lines 138–149)
 

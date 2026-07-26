@@ -88,6 +88,21 @@ final class RequestLogger {
             entry += "hiresFixHeight:           \(config.hiresFixHeight)\n"
             entry += "hiresFixStrength:         \(config.hiresFixStrength)\n"
         }
+        // Tiling values here are the client's, i.e. already in units of 64 — the
+        // pixel figure is what the UI shows. Logged both ways so the ÷64 boundary
+        // is verifiable from the log rather than inferred.
+        entry += "tiledDiffusion:           \(config.tiledDiffusion)\n"
+        if config.tiledDiffusion {
+            entry += "diffusionTile:            \(config.diffusionTileWidth)\u{00D7}\(config.diffusionTileHeight) units "
+            entry += "(\(config.diffusionTileWidth * 64)\u{00D7}\(config.diffusionTileHeight * 64) px)\n"
+            entry += "diffusionTileOverlap:     \(config.diffusionTileOverlap) units (\(config.diffusionTileOverlap * 64) px)\n"
+        }
+        entry += "tiledDecoding:            \(config.tiledDecoding)\n"
+        if config.tiledDecoding {
+            entry += "decodingTile:             \(config.decodingTileWidth)\u{00D7}\(config.decodingTileHeight) units "
+            entry += "(\(config.decodingTileWidth * 64)\u{00D7}\(config.decodingTileHeight * 64) px)\n"
+            entry += "decodingTileOverlap:      \(config.decodingTileOverlap) units (\(config.decodingTileOverlap * 64) px)\n"
+        }
         if !config.loras.isEmpty {
             entry += "loras:\n"
             for lora in config.loras {

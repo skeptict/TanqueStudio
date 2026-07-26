@@ -993,6 +993,14 @@ final class GenerateViewModel {
         if let v = dtConfig.hiresFixWidth                       { config.hiresFixWidth           = v }
         if let v = dtConfig.hiresFixHeight                      { config.hiresFixHeight          = v }
         if let v = dtConfig.hiresFixStrength                    { config.hiresFixStrength        = v }
+        if let v = dtConfig.tiledDecoding                       { config.tiledDecoding           = v }
+        if let v = dtConfig.decodingTileWidth                   { config.decodingTileWidth       = v }
+        if let v = dtConfig.decodingTileHeight                  { config.decodingTileHeight      = v }
+        if let v = dtConfig.decodingTileOverlap                 { config.decodingTileOverlap     = v }
+        if let v = dtConfig.tiledDiffusion                      { config.tiledDiffusion          = v }
+        if let v = dtConfig.diffusionTileWidth                  { config.diffusionTileWidth      = v }
+        if let v = dtConfig.diffusionTileHeight                 { config.diffusionTileHeight     = v }
+        if let v = dtConfig.diffusionTileOverlap                { config.diffusionTileOverlap    = v }
         if !dtConfig.loras.isEmpty                              { config.loras                   = dtConfig.loras }
         warnIfModelUnknown(config.model)
     }

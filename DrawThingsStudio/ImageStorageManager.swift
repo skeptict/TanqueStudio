@@ -314,6 +314,20 @@ enum ImageStorageManager {
             v2["hiresFixHeight"]   = config.hiresFixHeight
             v2["hiresFixStrength"] = config.hiresFixStrength
         }
+        // Tiling — same only-when-on rule, and in pixels, matching DT's own
+        // metadata (ImageConverter.swift multiplies the ÷64 wire value back up).
+        if config.tiledDecoding {
+            v2["tiledDecoding"]       = true
+            v2["decodingTileWidth"]   = config.decodingTileWidth
+            v2["decodingTileHeight"]  = config.decodingTileHeight
+            v2["decodingTileOverlap"] = config.decodingTileOverlap
+        }
+        if config.tiledDiffusion {
+            v2["tiledDiffusion"]       = true
+            v2["diffusionTileWidth"]   = config.diffusionTileWidth
+            v2["diffusionTileHeight"]  = config.diffusionTileHeight
+            v2["diffusionTileOverlap"] = config.diffusionTileOverlap
+        }
         if !config.negativePrompt.isEmpty {
             v2["negativePrompt"] = config.negativePrompt
         }
@@ -399,6 +413,19 @@ enum ImageStorageManager {
             dict["hiresFixWidth"]    = config.hiresFixWidth
             dict["hiresFixHeight"]   = config.hiresFixHeight
             dict["hiresFixStrength"] = config.hiresFixStrength
+        }
+        // Tiling — same only-when-on rule, in pixels.
+        if config.tiledDecoding {
+            dict["tiledDecoding"]       = true
+            dict["decodingTileWidth"]   = config.decodingTileWidth
+            dict["decodingTileHeight"]  = config.decodingTileHeight
+            dict["decodingTileOverlap"] = config.decodingTileOverlap
+        }
+        if config.tiledDiffusion {
+            dict["tiledDiffusion"]       = true
+            dict["diffusionTileWidth"]   = config.diffusionTileWidth
+            dict["diffusionTileHeight"]  = config.diffusionTileHeight
+            dict["diffusionTileOverlap"] = config.diffusionTileOverlap
         }
         if !config.loras.isEmpty {
             dict["loras"] = config.loras.map { ["file": $0.file, "weight": $0.weight] }

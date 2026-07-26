@@ -108,6 +108,31 @@ struct DrawThingsGenerationConfig: Codable {
     var hiresFixHeight: Int
     var hiresFixStrength: Double
 
+    // Tiling group. Stored in RAW PIXELS, like Hires Fix above — but note the
+    // conversion happens on OUR side here, not the client's. The client wrapper
+    // takes hires-fix dimensions in pixels and divides by 64 itself, while it
+    // takes tile dimensions already in ÷64 units and passes them straight through
+    // (Configuration.swift: `configT.decodingTileWidth = UInt16(decodingTileWidth)`,
+    // defaults 10/10/2 and 16/16/2 = 640/640/128 and 1024/1024/128 px). So
+    // `convertConfig` divides these by 64 at the boundary.
+    //
+    // Pixels is the right storage unit regardless: Draw Things' own config JSON
+    // uses pixels (`json["decoding_tile_width"] = decodingTileWidth * 64`,
+    // ImageConverter.swift:1192), its scripting parameters are pixels, and so are
+    // the tile values in real StoryFlow projects.
+    //
+    // Draw Things only actually tiles when the canvas exceeds the tile in at least
+    // one dimension (ImageConverter.swift:1187) — surfaced as an inline hint rather
+    // than enforced, since it's DT's rule to apply.
+    var tiledDecoding: Bool
+    var decodingTileWidth: Int
+    var decodingTileHeight: Int
+    var decodingTileOverlap: Int
+    var tiledDiffusion: Bool
+    var diffusionTileWidth: Int
+    var diffusionTileHeight: Int
+    var diffusionTileOverlap: Int
+
     struct LoRAConfig: Codable {
         var file: String
         var weight: Double
@@ -160,6 +185,16 @@ struct DrawThingsGenerationConfig: Codable {
         hiresFixWidth           = try c.decodeIfPresent(Int.self,    forKey: .hiresFixWidth) ?? 0
         hiresFixHeight          = try c.decodeIfPresent(Int.self,    forKey: .hiresFixHeight) ?? 0
         hiresFixStrength        = try c.decodeIfPresent(Double.self, forKey: .hiresFixStrength) ?? 0.7
+        // Defaults are the client's own, expressed in pixels (its 10/10/2 and 16/16/2
+        // are ÷64 units), so surfacing these changes no existing render.
+        tiledDecoding           = try c.decodeIfPresent(Bool.self,   forKey: .tiledDecoding)  ?? false
+        decodingTileWidth       = try c.decodeIfPresent(Int.self,    forKey: .decodingTileWidth)   ?? 640
+        decodingTileHeight      = try c.decodeIfPresent(Int.self,    forKey: .decodingTileHeight)  ?? 640
+        decodingTileOverlap     = try c.decodeIfPresent(Int.self,    forKey: .decodingTileOverlap) ?? 128
+        tiledDiffusion          = try c.decodeIfPresent(Bool.self,   forKey: .tiledDiffusion) ?? false
+        diffusionTileWidth      = try c.decodeIfPresent(Int.self,    forKey: .diffusionTileWidth)   ?? 1024
+        diffusionTileHeight     = try c.decodeIfPresent(Int.self,    forKey: .diffusionTileHeight)  ?? 1024
+        diffusionTileOverlap    = try c.decodeIfPresent(Int.self,    forKey: .diffusionTileOverlap) ?? 128
     }
 
     init(
@@ -190,7 +225,15 @@ struct DrawThingsGenerationConfig: Codable {
         hiresFix: Bool = false,
         hiresFixWidth: Int = 0,
         hiresFixHeight: Int = 0,
-        hiresFixStrength: Double = 0.7
+        hiresFixStrength: Double = 0.7,
+        tiledDecoding: Bool = false,
+        decodingTileWidth: Int = 640,
+        decodingTileHeight: Int = 640,
+        decodingTileOverlap: Int = 128,
+        tiledDiffusion: Bool = false,
+        diffusionTileWidth: Int = 1024,
+        diffusionTileHeight: Int = 1024,
+        diffusionTileOverlap: Int = 128
     ) {
         self.width = width
         self.height = height
@@ -220,6 +263,14 @@ struct DrawThingsGenerationConfig: Codable {
         self.hiresFixWidth = hiresFixWidth
         self.hiresFixHeight = hiresFixHeight
         self.hiresFixStrength = hiresFixStrength
+        self.tiledDecoding = tiledDecoding
+        self.decodingTileWidth = decodingTileWidth
+        self.decodingTileHeight = decodingTileHeight
+        self.decodingTileOverlap = decodingTileOverlap
+        self.tiledDiffusion = tiledDiffusion
+        self.diffusionTileWidth = diffusionTileWidth
+        self.diffusionTileHeight = diffusionTileHeight
+        self.diffusionTileOverlap = diffusionTileOverlap
     }
 
     /// Returns true if the model name identifies a video-generation model
