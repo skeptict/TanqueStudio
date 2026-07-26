@@ -317,7 +317,9 @@ One table entry per instruction replaces eight switch cases. A single generic st
 | `framesDialog` | `{wps, padding, generate}` | wps number (≈1.5–3.0), padding number, generate toggle |
 | `size` | `{width, height}` | two number fields |
 
-**Long-passthrough backlog, equally cheap in the same pass:** `negPrompt`, `frames`, `frames8`, `adaptSize`, `moodboardWeights`, `moodboardRemove`, `moodboardAdd`, `inpaintTools`, `xlMagic`, `maskBody`, `maskClear`, `maskLoad`, `maskGet`, `maskBkgd`, `maskFG`, `depthExtract`, `depthCanvas`, `depthToCanvas`, `faceZoom`, `removeBkgd`, `poseExtract`, `loopLoad`, `loopSave`, `loopAddMB`, `loopLoadMask`.
+**Long-passthrough backlog, equally cheap in the same pass:** `negPrompt`, `frames`, `frames8`, `adaptSize`, `moodboardWeights`, `moodboardRemove`, `inpaintTools`, `xlMagic`, `maskBody`, `maskClear`, `maskLoad`, `maskGet`, `maskBkgd`, `maskFG`, `maskAsk`, `depthExtract`, `depthCanvas`, `depthToCanvas`, `poseExtract`, `poseJSON`, `faceZoom`, `removeBkgd`, `askZoom`, `loopLoad`, `loopSave`, `loopAddMB`, `loopLoadMask`.
+
+*Two corrections to this list, both forced by building it (2026-07-26):* **`moodboardAdd` is removed** — the codec has imported it as a first-class step since 260225, so listing it here would have given one instruction two competing homes. And **`askZoom`, `maskAsk` and `poseJSON` are added** — they are in the 49-key universe, they were passthrough-only, and omitting them left instructions with nowhere to live. With those changes the table plus the 14 first-class types plus the two deliberate exclusions (`interrogate`, `end`) account for the universe exactly, which is now asserted rather than asserted-about.
 
 Note these include the Vision-framework family (`maskBkgd`, `faceZoom`, …). Authoring them is free — they run in Draw Things. Only *executing* them natively is Phase 5.
 
@@ -330,6 +332,10 @@ All read from the real editor and pipeline, and exercised by `TanqueStudioTests/
 3. **`sweep` cards are strings in the project format, numbers in the export.** The editor's array input splits a textarea by line (`input.value.split("\n")`), so cards are stored as `["6","7","8","9"]`. **Editor 260725 added numeric coercion at pipeline-export time** (`StoryflowEditor_260725.html:2296-2306`): numeric-looking cards become real JSON numbers, non-numeric ones (model filenames) stay strings. This matters because the pipeline does `configuration[paramName] = pickedValue` with no coercion of its own, so a string would land in a numeric config field. **Tanque Studio matches this as of `65d4430`** — verified against the author's own export (§9). Phase 2's form should still not pretend the cards are typed; the coercion belongs at export.
 4. **`frames8` is editor-only.** It exports to the pipeline as `frames` (handled in Phase 1); the 16fps/25fps distinction exists only in the project format, for the editor's duration readout.
 5. **`maskBody` is typed `flag` in `allowedKeys` but is really an object.** Upstream mislabel; preflight skips validation for flag-typed keys, so the object passes and `setBodyparts` needs it. Emit the object.
+7. **`poseJSON` is free text that emits an object.** In the editor it is a paste-or-`#shortcut` field like `config`, and the export resolves shortcuts then emits `{"poseJSON": <object>}`. So its *authoring* shape and its *pipeline* type genuinely differ — which is why `StoryFlowItemSchema.pipelineType` is stored rather than derived from the shape. Deriving it would have typed `poseJSON` "string" and produced exports that fail preflight. Note also that an **empty** `poseJSON` has nothing to parse and emits a bare string; the editor has the same hole (it emits the syntactically invalid `{"poseJSON": }`), so this is a property of an unfilled instruction rather than a codec bug.
+
+8. **`maskBody`'s stored pipeline type is `object`, not the `flag` in `allowedKeys`** — see §8.3.5. Worth stating separately because transcribing `allowedKeys` mechanically gets this wrong, and the resulting export drops the body-part keys `setBodyparts()` reads.
+
 6. **`wild` has exactly four values**: `loop`, `once`, `shuffle`, `random` — semantics in `WildcardTracker.getNextCard` (`StoryflowPipeline_260723.js:386-414`). Phase 2 only needs the picklist; Phase 3 ports the tracker.
 
 ### 8.4 The `concat` question is deferred, deliberately
@@ -341,6 +347,7 @@ The decision it was waiting on — export target version — is now **settled** 
 ### 8.5 Work breakdown
 
 1. **Schema table + generic step card** — `StoryFlowItemSchema` plus one table entry per instruction in §8.2, and a single form view that renders any entry. The bulk of the work, and the only part with design risk.
+   - **Table DONE 2026-07-26** — `DrawThingsStudio/StoryFlowItemSchema.swift`, 34 entries, transcribed from the editor rather than invented, with `TanqueStudioTests/StoryFlowItemSchemaTests` asserting the defaults verbatim against `ITEM_CONFIGS`, the stored pipeline types against `allowedKeys`, and a project built from every default round-tripping and exporting clean. The **generic card view is deliberately not built yet** — it is the part with design risk, and it needs eyes on it.
 2. **Wire the table into the step-add UI** — the "add item" menu currently lists `WorkflowStepType` cases; it needs to list table entries too, grouped the way the editor's drawer groups them (prompt / config / canvas / moodboard / mask / loop).
 3. **Editor-asset parity** — the editor's Assets tabs cover prompt triggers, config shortcuts, wildcards and pose JSON. Tanque Studio models the first three as `WorkflowVariable`s; `poseJSONShortcuts` is preserved but not editable. Add a pose-JSON asset editor, or explicitly leave it preserve-only.
 4. **Round-trip coverage** — extend `TanqueStudioTests/StoryFlowPipelineExportTests` so each newly authorable instruction is asserted, not just carried. The fixture already contains all of them.
