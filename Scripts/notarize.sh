@@ -9,8 +9,10 @@ set -euo pipefail
 
 # ─── Config ──────────────────────────────────────────────────────────────────
 VERSION="${1:?Usage: $0 <version>  e.g. $0 0.9.15}"
-PROJECT="/Users/skeptict/Documents/GitHub/TanqueStudio/TanqueStudio.xcodeproj"
-PROJECT_DIR="/Users/skeptict/Documents/GitHub/TanqueStudio"
+# Resolved from this script's own location, so the script works from any checkout —
+# a worktree, a second machine, a fresh clone — rather than one hardcoded home directory.
+PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+PROJECT="${PROJECT_DIR}/TanqueStudio.xcodeproj"
 SCHEME="TanqueStudio"
 APP_DISPLAY_NAME="Tanque Studio"      # CFBundleDisplayName — what xcodebuild actually exports
 ARCHIVE="/tmp/TanqueStudio.xcarchive"
