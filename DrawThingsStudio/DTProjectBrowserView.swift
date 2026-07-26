@@ -3,7 +3,13 @@
 //  TanqueStudio
 //
 //  3-column browser for Draw Things project databases.
-//  Adapted from v0.9.x: neumorphic styles replaced with plain SwiftUI, old ViewModels replaced.
+//
+//  On the Dashboard's paper palette since 2026-07-26. It was the last screen
+//  still asking for `.preferredColorScheme(.dark)` while being hosted inside the
+//  Dashboard's light shell, which is not a cosmetic mismatch: a `Text` with no
+//  explicit colour resolved its primary for LIGHT mode and landed on this view's
+//  near-black background, so the project names were invisible. Painting the
+//  browser in DashboardDS removes the conflict rather than patching each Text.
 //
 
 import SwiftUI
@@ -28,8 +34,7 @@ struct DTProjectBrowserView: View {
                 emptyState
             }
         }
-        .background(TanqueDS.Color.surface0)
-        .preferredColorScheme(.dark)
+        .background(DashboardDS.bg)
         .alert("Delete Generation?", isPresented: $showDeleteConfirmation, presenting: entryToDelete) { entry in
             Button("Cancel", role: .cancel) { entryToDelete = nil }
             Button("Delete", role: .destructive) {
@@ -66,19 +71,20 @@ struct DTProjectBrowserView: View {
         VStack(spacing: 20) {
             Image(systemName: "cylinder.split.1x2")
                 .font(.system(size: 48))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(DashboardDS.muted)
             Text("Browse Draw Things Projects")
                 .font(.title2)
                 .fontWeight(.semibold)
+                .foregroundStyle(DashboardDS.text)
             Text("Select a folder containing .sqlite3 project files.")
-                .foregroundStyle(.secondary)
+                .foregroundStyle(DashboardDS.muted2)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: 420)
 
             HStack(spacing: 6) {
                 Text(Self.defaultDTDocumentsPath)
-                    .font(.system(.caption, design: .monospaced))
-                    .foregroundStyle(.tertiary)
+                    .font(TanqueDS.Font.mono(11))
+                    .foregroundStyle(DashboardDS.muted)
                     .lineLimit(1)
                     .truncationMode(.middle)
                 Button {
@@ -88,7 +94,7 @@ struct DTProjectBrowserView: View {
                 } label: {
                     Image(systemName: "doc.on.doc")
                 }
-                .buttonStyle(.borderless)
+                .buttonStyle(.storyFlowHeaderIcon)
                 .help("Copy the default Draw Things documents path")
             }
             .frame(maxWidth: 420)
@@ -97,7 +103,7 @@ struct DTProjectBrowserView: View {
                 Button(action: { browser.addFolder() }) {
                     Label("Add Folder…", systemImage: "folder.badge.plus")
                 }
-                .controlSize(.large)
+                .buttonStyle(DashboardPrimaryButtonStyle())
                 HelpTopicLink(title: "Learn more…", topic: HelpTopicID.dtBrowser, font: .callout)
             }
         }
@@ -125,30 +131,23 @@ struct DTProjectBrowserView: View {
 
     private var projectListColumn: some View {
         VStack(spacing: 0) {
-            HStack {
-                Text("Projects")
-                    .font(.headline)
-                    .foregroundStyle(TanqueDS.Color.textPrimary)
-                Spacer()
+            StoryFlowPanelHeader(title: "Projects") {
                 Button { browser.addFolder() } label: {
                     Image(systemName: "folder.badge.plus")
                 }
-                .buttonStyle(.borderless)
+                .buttonStyle(.storyFlowHeaderIcon)
                 .help("Add folder")
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 10)
-            Divider()
 
             if browser.projects.isEmpty {
                 Spacer()
                 VStack(spacing: 8) {
                     Image(systemName: "questionmark.folder")
                         .font(.system(size: 28))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(DashboardDS.muted)
                     Text("No .sqlite3 files found")
                         .font(.callout)
-                        .foregroundStyle(TanqueDS.Color.textSecondary)
+                        .foregroundStyle(DashboardDS.muted2)
                 }
                 Spacer()
             } else {
@@ -168,6 +167,7 @@ struct DTProjectBrowserView: View {
                 }
             }
         }
+        .background(DashboardDS.surf1)
     }
 
     private func folderSection(_ folder: DTBookmarkedFolder) -> some View {
@@ -175,18 +175,18 @@ struct DTProjectBrowserView: View {
             HStack(spacing: 6) {
                 Image(systemName: folder.isAvailable ? "folder.fill" : "externaldrive.badge.xmark")
                     .font(.caption)
-                    .foregroundStyle(folder.isAvailable ? Color.accentColor : .orange)
+                    .foregroundStyle(folder.isAvailable ? DashboardDS.brass : DashboardDS.orange)
                 Text(folder.label)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(folder.isAvailable ? Color.accentColor : .orange)
+                    .font(TanqueDS.Font.monoSemiBold(10.5))
+                    .foregroundStyle(folder.isAvailable ? DashboardDS.brass : DashboardDS.orange)
                     .lineLimit(1)
                 Spacer()
                 Button { browser.removeFolder(folder) } label: {
                     Image(systemName: "xmark.circle")
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(DashboardDS.muted)
                 }
-                .buttonStyle(.borderless)
+                .buttonStyle(.plain)
                 .help("Remove folder")
             }
             .padding(.horizontal, 10)
@@ -195,7 +195,7 @@ struct DTProjectBrowserView: View {
             if !folder.isAvailable {
                 Label("Volume not available", systemImage: "exclamationmark.triangle.fill")
                     .font(.caption2)
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(DashboardDS.orange)
                     .padding(.horizontal, 10)
                     .padding(.bottom, 4)
             }
@@ -204,7 +204,7 @@ struct DTProjectBrowserView: View {
             if folderProjects.isEmpty && folder.isAvailable {
                 Text("No databases found")
                     .font(.caption2)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(DashboardDS.muted)
                     .padding(.horizontal, 10)
                     .padding(.bottom, 4)
             } else {
@@ -217,24 +217,19 @@ struct DTProjectBrowserView: View {
         let isSelected = browser.selectedProject == project
         return HStack {
             VStack(alignment: .leading, spacing: 2) {
-                // Explicit colours rather than the semantic ones. This view asks for
-                // `.preferredColorScheme(.dark)` and paints a near-black background, but
-                // it is hosted inside the Dashboard's light shell — so `Text` resolved
-                // its primary colour for LIGHT mode and rendered near-black on near-black.
-                // The project names were effectively invisible.
                 Text(project.name)
-                    .font(.callout)
-                    .foregroundStyle(isSelected ? TanqueDS.Color.brass : TanqueDS.Color.textPrimary)
+                    .font(TanqueDS.Font.mono(12))
+                    .foregroundStyle(isSelected ? DashboardDS.brass : DashboardDS.text)
                     .lineLimit(1)
                 Text(DTProjectBrowserViewModel.formatFileSize(project.fileSize))
-                    .font(.caption2)
-                    .foregroundStyle(TanqueDS.Color.textSecondary)
+                    .font(TanqueDS.Font.mono(10))
+                    .foregroundStyle(DashboardDS.muted)
             }
             Spacer()
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
-        .background(isSelected ? Color.accentColor.opacity(0.15) : Color.clear)
+        .background(isSelected ? DashboardDS.brassSubtle : Color.clear)
         .clipShape(RoundedRectangle(cornerRadius: 6))
         .contentShape(Rectangle())
         .onTapGesture { browser.selectProject(project) }
@@ -244,43 +239,47 @@ struct DTProjectBrowserView: View {
 
     private var thumbnailGridColumn: some View {
         VStack(spacing: 0) {
-            HStack {
+            HStack(spacing: 6) {
                 Image(systemName: "magnifyingglass")
-                    .foregroundStyle(.secondary)
+                    .font(.system(size: 11))
+                    .foregroundStyle(DashboardDS.muted)
                 TextField("Search prompts…", text: $browser.searchText)
-                    .textFieldStyle(.plain)
+                    .storyFlowFieldChrome()
                 if !browser.searchText.isEmpty {
                     Button { browser.searchText = "" } label: {
                         Image(systemName: "xmark.circle.fill")
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(DashboardDS.muted)
                     }
-                    .buttonStyle(.borderless)
+                    .buttonStyle(.plain)
                 }
             }
             .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-            .background(.bar)
-
-            Divider()
+            .padding(.vertical, 7)
+            .background(DashboardDS.surf2)
+            .overlay(alignment: .bottom) {
+                Rectangle().fill(DashboardDS.border).frame(height: 1)
+            }
 
             if browser.selectedProject == nil {
                 Spacer()
                 Text("Select a project")
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(DashboardDS.muted2)
                 Spacer()
             } else if browser.isLoading && browser.entries.isEmpty {
                 Spacer()
                 ProgressView("Loading…")
+                    .tint(DashboardDS.brass)
+                    .foregroundStyle(DashboardDS.muted2)
                 Spacer()
             } else if let msg = browser.errorMessage, browser.entries.isEmpty {
                 Spacer()
                 VStack(spacing: 8) {
                     Image(systemName: "exclamationmark.triangle")
                         .font(.title2)
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(DashboardDS.orange)
                     Text(msg)
                         .font(.callout)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(DashboardDS.muted2)
                         .multilineTextAlignment(.center)
                         .frame(maxWidth: 280)
                 }
@@ -289,6 +288,7 @@ struct DTProjectBrowserView: View {
                 thumbnailGrid
             }
         }
+        .background(DashboardDS.bg)
     }
 
     // Selection status + export actions. ⌘-click thumbnails to multi-select.
@@ -297,40 +297,47 @@ struct DTProjectBrowserView: View {
             Text(browser.selectedEntryIDs.isEmpty
                  ? "\(browser.entryCount) image\(browser.entryCount == 1 ? "" : "s")"
                  : "\(browser.selectedEntryIDs.count) selected")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+                .font(TanqueDS.Font.mono(11))
+                .foregroundStyle(DashboardDS.muted2)
             Spacer()
             if browser.isExporting {
                 ProgressView()
                     .controlSize(.small)
-                Button("Cancel") { browser.cancelExport() }
-                    .buttonStyle(.borderless)
-                    .font(.caption)
+                    .tint(DashboardDS.brass)
+                toolbarAction("Cancel") { browser.cancelExport() }
             } else {
                 if !browser.selectedEntryIDs.isEmpty {
-                    Button("Deselect") { browser.clearEntrySelection() }
-                        .buttonStyle(.borderless)
-                        .font(.caption)
-                    Button("Export Selected…") { chooseFolderAndExport(.selected) }
-                        .buttonStyle(.borderless)
-                        .font(.caption)
+                    toolbarAction("Deselect") { browser.clearEntrySelection() }
+                    toolbarAction("Export Selected…") { chooseFolderAndExport(.selected) }
                 }
-                Button("Export All…") { chooseFolderAndExport(.all) }
-                    .buttonStyle(.borderless)
-                    .font(.caption)
+                toolbarAction("Export All…") { chooseFolderAndExport(.all) }
                     .disabled(browser.entryCount == 0)
                     .help("Export every image in this project database (⌘-click thumbnails to export a subset)")
             }
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
-        .background(.bar)
+        .background(DashboardDS.surf2)
+        .overlay(alignment: .bottom) {
+            Rectangle().fill(DashboardDS.border).frame(height: 1)
+        }
+    }
+
+    /// Text action in the export toolbar. `.borderless` would take its colour
+    /// from the system accent, which is whatever the user picked in System
+    /// Settings and reads as a foreign blue against the paper palette.
+    private func toolbarAction(_ title: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(TanqueDS.Font.monoSemiBold(11))
+                .foregroundStyle(DashboardDS.brass)
+        }
+        .buttonStyle(.plain)
     }
 
     private var thumbnailGrid: some View {
         VStack(spacing: 0) {
             exportToolbar
-            Divider()
             thumbnailScroll
         }
         .alert("Export", isPresented: Binding(
@@ -376,12 +383,14 @@ struct DTProjectBrowserView: View {
                     if browser.isLoading {
                         ProgressView()
                             .scaleEffect(0.7)
+                            .tint(DashboardDS.brass)
                     } else {
                         Text("Load more (\(browser.entryCount - browser.entries.count) remaining)")
-                            .font(.callout)
+                            .font(TanqueDS.Font.monoSemiBold(11.5))
+                            .foregroundStyle(DashboardDS.brass)
                     }
                 }
-                .buttonStyle(.borderless)
+                .buttonStyle(.plain)
                 .padding(.bottom, 16)
                 .disabled(browser.isLoading)
             }
@@ -391,63 +400,73 @@ struct DTProjectBrowserView: View {
     private func thumbnailCell(_ entry: DTGenerationEntry) -> some View {
         let isSelected = browser.selectedEntry == entry
         let isChecked = browser.selectedEntryIDs.contains(entry.id)
+        let frameCount = browser.frameCount(for: entry)
         return VStack(spacing: 4) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 6)
-                    .fill(Color.secondary.opacity(0.1))
-                if let img = entry.thumbnail {
-                    Image(nsImage: img)
-                        .resizable()
-                        .aspectRatio(contentMode: .fill)
-                        .clipped()
-                } else {
-                    Image(systemName: "photo")
-                        .foregroundStyle(.tertiary)
+            // The square is established by an empty base view, and everything
+            // else — thumbnail, badge, checkmark, selection ring — is an overlay
+            // on top of it. An overlay never contributes to its parent's size, so
+            // every corner alignment lands on an edge you can see.
+            //
+            // ORDER IS THE WHOLE FIX, not the choice of container. The previous
+            // shape overlaid the badge on a ZStack and only then applied
+            // `.aspectRatio(1, contentMode: .fit)`. Both shapes measure the same
+            // from outside — 140 x 157 in a 140pt column — which is why this
+            // looked like a styling problem for three attempts. The difference is
+            // that `.aspectRatio(.fill)` inflates the ZStack's child frame, the
+            // overlay aligns to *that*, and the square drawn afterwards does not
+            // contain it. Rendering both shapes to a bitmap and counting the
+            // badge's pixels settled it: old = 0 pixels, new = 314 at the
+            // top-right corner. Anything overlaid here must come after the
+            // aspect ratio is fixed.
+            Color.clear
+                .aspectRatio(1, contentMode: .fit)
+                .background(DashboardDS.surf2)
+                .overlay {
+                    if let img = entry.thumbnail {
+                        Image(nsImage: img)
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                    } else {
+                        Image(systemName: "photo")
+                            .foregroundStyle(DashboardDS.muted)
+                    }
+                }
+                .clipShape(RoundedRectangle(cornerRadius: 6))
+                .overlay(alignment: .topTrailing) {
+                    if let frameCount {
+                        videoBadge(frameCount: frameCount, fps: browser.framesPerSecond(for: entry))
+                    }
+                }
+                .overlay(alignment: .topLeading) {
+                    if isChecked {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.system(size: 16))
+                            .foregroundStyle(DashboardDS.onBrass, DashboardDS.brass)
+                            .padding(4)
+                    }
+                }
+                .overlay {
+                    RoundedRectangle(cornerRadius: 6)
+                        .strokeBorder(isSelected ? DashboardDS.brass : DashboardDS.border,
+                                      lineWidth: isSelected ? 2 : 1)
+                }
+                .contentShape(Rectangle())
+                .help(frameCount.map {
+                    "Video render — \($0) frames. Click to inspect the first frame; ⌘-click to select for export."
+                } ?? "Click to inspect · ⌘-click to select for export")
+                .onTapGesture {
+                    if NSEvent.modifierFlags.contains(.command) {
+                        browser.toggleEntrySelection(entry)
+                    } else {
+                        browser.selectedEntry = entry
+                    }
                 }
 
-            }
-            .clipShape(RoundedRectangle(cornerRadius: 6))
-            .overlay(
-                RoundedRectangle(cornerRadius: 6)
-                    .stroke(isSelected ? Color.accentColor : Color.clear, lineWidth: 2)
-            )
-            .overlay(alignment: .topLeading) {
-                if isChecked {
-                    Image(systemName: "checkmark.circle.fill")
-                        .font(.system(size: 16))
-                        .foregroundStyle(.white, Color.accentColor)
-                        .padding(4)
-                }
-            }
-            .aspectRatio(1, contentMode: .fit)
-            .contentShape(Rectangle())
-            .help(browser.frameCount(for: entry).map {
-                "Video render — \($0) frames. Click to inspect the first frame; ⌘-click to select for export."
-            } ?? "Click to inspect · ⌘-click to select for export")
-            .onTapGesture {
-                if NSEvent.modifierFlags.contains(.command) {
-                    browser.toggleEntrySelection(entry)
-                } else {
-                    browser.selectedEntry = entry
-                }
-            }
-
-            // The badge sits in the caption row rather than overlaid on the thumbnail.
-            // Overlaying it was the intent and it does not survive this cell's layout:
-            // the image uses `.aspectRatio(.fill)`, so it drives the ZStack's measured
-            // size and anything aligned to that lands outside the clip. Rather than
-            // rewrite the cell's sizing late in the day, the count goes where rendering
-            // is reliable — it is still the first thing on the row, and it reads.
-            HStack(spacing: 4) {
-                if let frameCount = browser.frameCount(for: entry) {
-                    videoBadge(frameCount: frameCount, fps: browser.framesPerSecond(for: entry))
-                }
-                Text(entry.prompt.isEmpty ? "(no prompt)" : entry.prompt)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
+            Text(entry.prompt.isEmpty ? "(no prompt)" : entry.prompt)
+                .font(TanqueDS.Font.mono(10))
+                .foregroundStyle(DashboardDS.muted)
+                .lineLimit(2)
+                .frame(maxWidth: .infinity, alignment: .leading)
         }
         .contextMenu {
             // Selection and export act on the cover frame only, matching the app's own
@@ -456,7 +475,7 @@ struct DTProjectBrowserView: View {
             Button(isChecked ? "Deselect" : "Select for Export") {
                 browser.toggleEntrySelection(entry)
             }
-            if let frameCount = browser.frameCount(for: entry) {
+            if let frameCount {
                 Divider()
                 Button(role: .destructive) {
                     seriesToDelete = entry
@@ -474,13 +493,16 @@ struct DTProjectBrowserView: View {
         }
     }
 
-    /// Frame-count badge on a clip's cell.
+    /// Frame-count badge, overlaid on the clip's cover frame.
     ///
     /// Drawn in the Dashboard's tokens rather than the raw black-on-white the draft
     /// used — that predates the paper palette and reads as a hole punched in the cell.
     ///
     /// An HStack rather than a Label: Label's title gets a tight width proposal in a
     /// narrow cell and truncates away entirely, leaving a play glyph and no count.
+    ///
+    /// The shadow is not decoration — the badge sits on an arbitrary image, so
+    /// brass-on-brass is a real possibility and the pill needs its own edge.
     private func videoBadge(frameCount: Int, fps: Double?) -> some View {
         HStack(spacing: 3) {
             Image(systemName: "play.fill")
@@ -491,7 +513,8 @@ struct DTProjectBrowserView: View {
         .foregroundStyle(DashboardDS.onBrass)
         .padding(.horizontal, 5)
         .padding(.vertical, 2)
-        .background(DashboardDS.brass.opacity(0.92), in: RoundedRectangle(cornerRadius: 4))
+        .background(DashboardDS.brass.opacity(0.94), in: RoundedRectangle(cornerRadius: 4))
+        .shadow(color: .black.opacity(0.35), radius: 2, y: 1)
         .fixedSize()
         .padding(5)
         .help(fps.map { "\(frameCount) frames at \(Int($0)) fps" } ?? "\(frameCount) frames")
@@ -522,11 +545,13 @@ struct DTProjectBrowserView: View {
                 VStack {
                     Spacer()
                     Text("Select an image")
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(DashboardDS.muted2)
                     Spacer()
                 }
+                .frame(maxWidth: .infinity)
             }
         }
+        .background(DashboardDS.surf1)
     }
 
     private func entryDetail(_ entry: DTGenerationEntry) -> some View {
@@ -547,26 +572,24 @@ struct DTProjectBrowserView: View {
                         Label("Send to Generate", systemImage: "arrow.right.circle.fill")
                             .frame(maxWidth: .infinity)
                     }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(DashboardPrimaryButtonStyle())
 
                     HStack(spacing: 8) {
                         Button("Copy Prompt") {
                             NSPasteboard.general.clearContents()
                             NSPasteboard.general.setString(entry.prompt, forType: .string)
                         }
-                        .buttonStyle(.bordered)
-                        .frame(maxWidth: .infinity)
+                        .buttonStyle(DashboardGhostButtonStyle())
 
                         Button("Copy Config") {
                             NSPasteboard.general.clearContents()
                             NSPasteboard.general.setString(configJSON(for: entry), forType: .string)
                         }
-                        .buttonStyle(.bordered)
-                        .frame(maxWidth: .infinity)
+                        .buttonStyle(DashboardGhostButtonStyle())
                     }
                 }
 
-                Divider()
+                Rectangle().fill(DashboardDS.border).frame(height: 1)
 
                 // Metadata
                 VStack(alignment: .leading, spacing: 10) {
@@ -600,12 +623,11 @@ struct DTProjectBrowserView: View {
     }
 
     private func metadataRow(_ label: String, value: String) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(label)
-                .font(.caption)
-                .foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: 3) {
+            DashboardCardLabel(text: label)
             Text(value)
-                .font(.callout)
+                .font(TanqueDS.Font.mono(11.5))
+                .foregroundStyle(DashboardDS.text)
                 .textSelection(.enabled)
         }
     }

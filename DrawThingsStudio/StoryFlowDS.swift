@@ -189,8 +189,10 @@ extension ButtonStyle where Self == StoryFlowHeaderIconButtonStyle {
     static var storyFlowHeaderIcon: StoryFlowHeaderIconButtonStyle { StoryFlowHeaderIconButtonStyle() }
 }
 
-/// Column header shared by the three StoryFlow panels, matching the Dashboard's
-/// uppercase tracked-mono section labels.
+/// Column header for a three-panel screen, matching the Dashboard's uppercase
+/// tracked-mono section labels. Used by StoryFlow's three panels and by the DT
+/// Project Browser's columns — it lives here because StoryFlow needed it first,
+/// not because it is StoryFlow-specific.
 struct StoryFlowPanelHeader<Trailing: View>: View {
     let title: String
     @ViewBuilder var trailing: Trailing

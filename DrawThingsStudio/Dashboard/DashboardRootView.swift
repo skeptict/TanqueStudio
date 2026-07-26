@@ -85,8 +85,9 @@ struct DashboardRootView: View {
         // what a beta tester reported on 0.9.28.
         //
         // Pinning light matches what every other view here already does for its
-        // own theme (SettingsView, HelpWindow, WelcomeSheet, GenerateRightPanel
-        // and DTProjectBrowserView all pin .dark). The alternative — making
+        // own theme (SettingsView, HelpWindow, WelcomeSheet and
+        // GenerateRightPanel all pin .dark; DTProjectBrowserView used to, and is
+        // on the paper palette as of 2026-07-26). The alternative — making
         // DashboardDS appearance-aware — is a real design project, not a fix.
         .preferredColorScheme(.light)
         .overlay(alignment: .bottomTrailing) {
