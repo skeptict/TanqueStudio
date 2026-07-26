@@ -291,14 +291,18 @@ struct StoryFlowStepListPanel: View {
         } label: {
             Image(systemName: "plus")
                 .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(DashboardDS.onBrass)
-                .frame(width: 34, height: 34)
-                .background(DashboardDS.brass, in: Circle())
-                .shadow(color: .black.opacity(0.16), radius: 5, y: 2)
         }
+        // `.borderlessButton` discards styling applied to the *label* — the brass fill
+        // and white glyph both vanished, leaving a bare system `+`. Styling the Menu
+        // itself survives, so the shape lives out here and only the glyph goes inside.
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
-        .fixedSize()
+        // The glyph follows the tint, not foregroundStyle — that gets discarded with
+        // the rest of the label styling, leaving a near-black `+` on brass.
+        .tint(DashboardDS.onBrass)
+        .frame(width: 34, height: 34)
+        .background(DashboardDS.brass, in: Circle())
+        .shadow(color: .black.opacity(0.16), radius: 5, y: 2)
         .help("Add a step")
         .padding(14)
     }
