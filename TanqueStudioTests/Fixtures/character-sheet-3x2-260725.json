@@ -1,0 +1,76 @@
+{
+  "projectName": "CharacterSheet_3x2_1920x1280",
+  "items": [
+    {
+      "type": "note",
+      "value": "Generate 3x2 character sheets \nno repeats, crop for PEFT\nKrea2 Turbo, Tiled Decoding"
+    },
+    {
+      "type": "canvasClear",
+      "value": true
+    },
+    {
+      "type": "config",
+      "value": "{\"clipSkip\":1,\"clipWeight\":1,\"controls\":[],\"decodingTileHeight\":704,\"decodingTileOverlap\":128,\"decodingTileWidth\":1920,\"diffusionTileHeight\":1024,\"diffusionTileOverlap\":128,\"diffusionTileWidth\":1024,\"faceRestoration\":null,\"guidanceScale\":1,\"hiresFix\":false,\"hiresFixHeight\":768,\"hiresFixStrength\":0.5,\"hiresFixWidth\":1152,\"loras\":[],\"model\":\"krea_2_turbo_q8p.ckpt\",\"refinerModel\":null,\"refinerStart\":0.97,\"sampler\":15,\"shift\":5,\"steps\":10,\"strength\":1,\"tiledDecoding\":true,\"tiledDiffusion\":false,\"upscaler\":null,\"upscalerScaleFactor\":0,\"zeroNegativePrompt\":false}"
+    },
+    {
+      "type": "size",
+      "value": "{\"width\":1920,\"height\":1280}"
+    },
+    {
+      "type": "loop",
+      "value": "{\"loop\":8,\"start\":0}"
+    },
+    {
+      "type": "concat",
+      "value": "the render is a 3x2 grid, each borderless fullbleed panel depicts a different view of the same Pixar-style cartoon character on white background. The character is a "
+    },
+    {
+      "type": "wildcard",
+      "value": "{\"wild\":\"shuffle\",\"cards\":[\"stylish\",\"white\",\"wooly\",\"black\",\"dun\",\"fluffy\",\"grumpy\",\"fat\",\"dapper\",\"fearful\",\"self-confident\"]}"
+    },
+    {
+      "type": "concat",
+      "value": " "
+    },
+    {
+      "type": "wildcard",
+      "value": "{\"wild\":\"shuffle\",\"cards\":[\"mouse\",\"tabbycat\",\"mutt\",\"badger\",\"scottish terrier\",\"orange kitten\",\"raccoon\"]}"
+    },
+    {
+      "type": "concat",
+      "value": " wearing "
+    },
+    {
+      "type": "wildcard",
+      "value": "{\"wild\":\"shuffle\",\"cards\":[\"mechanic's coveralls\",\"a tweed jacket\",\"bomberjacket\",\"flacksuit\",\"business suit\",\"liesure suit\",\"leather pants\"]}"
+    },
+    {
+      "type": "concat",
+      "value": " and "
+    },
+    {
+      "type": "wildcard",
+      "value": "{\"wild\":\"shuffle\",\"cards\":[\"a red scarf\",\"an unbuttoned shirt\",\"classic aviator goggles\",\"a boyish cap\",\"reading glasses\"]}"
+    },
+    {
+      "type": "prompt",
+      "value": ".\ntop left, face, neutral expression mouth closed, facing front, eyecontact.\ntop center, rotated side-glance, friendly smile.\ntop right, wide-view head to thigh, turned partial profile, walking.\nbottom left, closeup head-and-shoulders, alarmed expression looking right.\nbottom center, sly headtilt, eyes wide.\nbottom right, calm speaking, mouth half-open, side-glance."
+    },
+    {
+      "type": "loopEnd",
+      "value": true
+    }
+  ],
+  "promptTriggers": {
+    "@establish": "medium view of proud space princess, dusky-skin, brown eyes, false eyelashes wearing sheer purple headdress over ornate ornamental braids, aloof and glancing away, one hand on hip.",
+    "@overhead": "a wide view from above, the same woman walking seductively, head high, in the sheer headdress and long regal space gown.",
+    "@closeup": "extreme closeup face of the same woman, a bittersweet smile, and sensual eyes, eye contact.",
+    "@behind": "over the shoulder medium view of the same woman walking away, sheer purple headdress over ornate ornamental braids, upperback-half of regal gown.",
+    "@coy": "the same woman with sly expression, head-tilt and coy posture, side-glance, half-smile, ornate ornamental braids.",
+    "@profile": "profile of the same woman, determined eyes, mid-speech, sheer purple headdress over ornate ornamental braids."
+  },
+  "configShortcuts": {},
+  "poseJSONShortcuts": {},
+  "wildcardShortcuts": {}
+}

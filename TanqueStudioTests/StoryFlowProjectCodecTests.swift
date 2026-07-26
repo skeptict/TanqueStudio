@@ -155,8 +155,13 @@ final class StoryFlowProjectCodecTests: XCTestCase {
     /// `Fixtures/`. Skips cleanly when no fixtures are bundled, so the target is
     /// green on a fresh clone; drop real `.json` project files in to arm it.
     func testFixturesSurviveFullRoundTrip() throws {
-        let fixtures = Bundle(for: type(of: self))
-            .urls(forResourcesWithExtension: "json", subdirectory: nil) ?? []
+        // `*.pipeline.json` fixtures are exported *instruction arrays*, not projects —
+        // they pair with a project of the same stem and are consumed by
+        // StoryFlowPipelineExportTests. Decoding one as a StoryFlowProject would fail
+        // on shape alone, so they're excluded here rather than left to fail confusingly.
+        let fixtures = (Bundle(for: type(of: self))
+            .urls(forResourcesWithExtension: "json", subdirectory: nil) ?? [])
+            .filter { !$0.lastPathComponent.hasSuffix(".pipeline.json") }
 
         try XCTSkipIf(fixtures.isEmpty, """
             No StoryFlow fixtures bundled. Add real StoryFlow Editor project files to \

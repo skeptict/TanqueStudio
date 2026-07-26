@@ -21,3 +21,15 @@ than degrade into notes).
 
 Fixtures must have a `.json` extension to be discovered. A file saved without one
 (e.g. `LTX-2 config yeah`) needs renaming before it will run.
+
+## Reference exports (`*.pipeline.json`)
+
+A fixture named `<stem>.pipeline.json` is not a project — it is the **instruction array**
+the StoryFlow Editor itself exported for `<stem>.json`, supplied by the format's author.
+The sweep skips these (decoding one as a project would fail on shape alone);
+`StoryFlowPipelineExportTests.testExportMatchesTheAuthorsOwnExport` diffs our export
+against it instruction by instruction.
+
+That comparison is the strongest correctness signal the codec has — agreement with the
+reference implementation rather than with our own assumptions — so a `.json` /
+`.pipeline.json` pair is worth adding whenever the author ships one.

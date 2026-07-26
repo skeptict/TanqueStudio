@@ -33,13 +33,11 @@ xcodebuild test -project TanqueStudio.xcodeproj -scheme TanqueStudio \
                 -only-testing:TanqueStudioTests -derivedDataPath .build
 ```
 
-StoryFlow round-trip harness — it needs the app sources compiled alongside it:
+The StoryFlow round-trip harness used to be a separate hand-run `swiftc` invocation; as of
+2026-07-26 it lives in `TanqueStudioTests` (`StoryFlowPipelineExportTests`) and runs with the
+command above, so there is no extra step.
 
-```bash
-swiftc -O DrawThingsStudio/StoryFlowProject.swift DrawThingsStudio/StoryFlowModels.swift DrawThingsStudio/StoryFlowProjectCodec.swift Scripts/storyflow/verify-storyflow-roundtrip.swift -o /tmp/sfverify && /tmp/sfverify
-```
-
-All three must be green. The harness's check 7 diffs our pipeline export against the
+Both must be green. `testExportMatchesTheAuthorsOwnExport` diffs our pipeline export against the
 StoryFlow author's own reference export — if it fails, an instruction has drifted from the
 reference and the release should stop.
 
