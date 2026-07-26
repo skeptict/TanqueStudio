@@ -72,9 +72,29 @@ enum StoryFlowProjectCodec {
         }
 
         // items → WorkflowSteps
+        //
+        // A `prompt` item becomes TWO steps: set the text, then render.
+        //
+        // Draw Things' pipeline has no render instruction — its `prompt` both sets the
+        // text *and* fires the render (§3.2). Tanque Studio splits those, so mapping
+        // `prompt` to `promptInstruction` alone left every imported Editor project with
+        // nothing that renders: it walked every step and reported "Run complete" over an
+        // empty gallery. That was not a quirk of one project, it was true of every
+        // project the Editor has ever written.
+        //
+        // Synthesising the render here round-trips to exactly nothing: `toPipelineArray`
+        // drops a `generate` that immediately follows a `prompt`, precisely because DT's
+        // prompt already fired (see `case "generate"` there). So exports are unchanged —
+        // which the reference-export comparison against the format author's own file
+        // proves rather than assumes.
         var steps: [WorkflowStep] = []
         for item in project.items {
             steps.append(stepFromItem(item, unsupported: &unsupported))
+            if item.type == "prompt" {
+                var render = WorkflowStep(type: .generate)
+                render.label = WorkflowStepType.generate.displayName
+                steps.append(render)
+            }
         }
 
         var workflow = Workflow()
@@ -239,7 +259,27 @@ enum StoryFlowProjectCodec {
         }
 
         // Steps → items (configInstruction may expand to multiple items)
-        project.items = workflow.steps.flatMap { itemsFromStep($0) }
+        //
+        // A `.generate` that immediately follows a `.promptInstruction` is dropped, for
+        // the same reason `toPipelineArray` drops it: in the project format a `prompt`
+        // item already means "set the text and render", so emitting a separate generate
+        // beside it would write an item the Editor never wrote.
+        //
+        // This is the counterpart to the render step `toWorkflow` synthesises after every
+        // `prompt` item. The pair has to cancel exactly, or importing and re-saving a
+        // project would grow a spurious item each time — which is precisely what the
+        // round-trip tests caught when only the synthesis half existed.
+        var items: [StoryFlowItem] = []
+        var previousWasPromptInstruction = false
+        for step in workflow.steps {
+            if step.type == .generate, previousWasPromptInstruction {
+                previousWasPromptInstruction = false
+                continue
+            }
+            items.append(contentsOf: itemsFromStep(step))
+            previousWasPromptInstruction = (step.type == .promptInstruction)
+        }
+        project.items = items
         return project
     }
 

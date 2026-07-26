@@ -466,9 +466,22 @@ an acknowledgeable "Run Anyway" confirmation, and the head of the run log. Canva
 inform but do not interrupt. Live-verified against this project, and confirmed silent on a
 Tanque Studio-authored workflow.
 
-**The underlying fix is still open, and it is a real decision.** The importer could synthesize a
-`.generate` after each `prompt` item, matching DT's semantics — the export path already drops a
-`generate` that immediately follows a `prompt` (`StoryFlowProjectCodec.swift:451`), so the
-round-trip should survive it. That makes imported projects actually runnable instead of merely
-honest about being unrunnable. It is a change to import semantics guarded by the round-trip
-harness, and it overlaps Phase 3's `concat` re-modelling, so it is flagged rather than assumed.
+**FIXED 2026-07-26 — imported projects now render.** `toWorkflow` synthesises a `.generate` after
+each `prompt` item, matching DT's semantics, and `toProject` drops a `.generate` that immediately
+follows a `.promptInstruction`. **The two halves must cancel exactly**; the round-trip tests caught
+it immediately when only the synthesis half existed, because re-saving a project grew a spurious
+`generate` item each time.
+
+The pipeline export is **unchanged**, which is the point: `toPipelineArray` already dropped a
+`generate` following a `prompt` (`StoryFlowProjectCodec.swift:451`), so the synthesised step is
+invisible on the way out — proved by the reference-export comparison against the format author's
+own file still passing, not by inspection.
+
+Verified live: Ned's character-sheet project loads with the "no Generate step" warning gone (16
+steps rather than 15) and **actually renders** — a real 3×2 character sheet from Draw Things. The
+remaining warning is honest and unchanged: the `concat`/`wildcard` steps are still skipped, so the
+subject is missing until Phase 3 executes them.
+
+**Note this is deliberately NOT the full §3.2 re-modelling.** That one re-bases Tanque Studio's
+internal accumulator onto `concat`, retires the export re-emit hack, and changes the shape of every
+export. This is only the import mapping, and it is independent of that work.
