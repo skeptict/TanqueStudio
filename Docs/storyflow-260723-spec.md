@@ -96,7 +96,7 @@ So `{"prompt": ""}` renders the accumulated `concat` and clears it — an explic
 | `generate` | `prompt` with `""` |
 | `clearPrompt` | *(implicit — `prompt` clears `concat`)* |
 
-Adopting this deletes the re-emit hack and makes exports both smaller and semantically honest. **It also breaks compatibility with pre-260723 pipelines**, which is a decision for Ned (§6.1), not something to assume.
+Adopting this deletes the re-emit hack and makes exports both smaller and semantically honest. **It also breaks compatibility with pre-260723 pipelines** — accepted deliberately (Ned, 2026-07-26, §6.1b): Tanque Studio targets the current StoryFlow system and does not maintain a legacy emitter.
 
 ### 3.3 `interrogate` and `enhance` cannot be executed natively as specified
 
@@ -167,7 +167,7 @@ The parked roadmap after v0.9.28 was: Batch D (blocked on the client bump) → B
 4. **StoryFlow Dashboard design pass** (§6.1b) — the agreed prerequisite for Phase 2's UI.
 5. **Phase 2** — the largest single jump in usefulness, and it's export-only so the risk is low. Built into the shell from step 4.
 6. **Video workstream** (§7) — position relative to Phase 2 is open (§6.2.4).
-7. **Phase 3** — needs decision §6.2.1 (export target version) first.
+7. **Phase 3** — unblocked; the export-target decision it was waiting on is settled (§6.1b, always emit 260723), so it can delete the re-emit hack rather than preserve it.
 8. **Batch F** + `xlMagic`. Phase 4 deferred indefinitely.
 
 ---
@@ -191,9 +191,15 @@ The parked roadmap after v0.9.28 was: Batch D (blocked on the client bump) → B
   3. **Move parity Batch D (tiling) up** — §9.4 finding 1 gives it a real driver and the client bump has landed.
   4. **Migrate the round-trip harness into `TanqueStudioTests`** — the 12 checks still run as a hand-run `swiftc` binary; the test target now exists.
 
+- **Export target version: always emit 260723** (closes what was §6.2.1, option (a) of three). Tanque Studio targets the *current* StoryFlow system rather than maintaining a second legacy emitter. Ned's framing: the priority is current functionality and project files that work with the core StoryFlow system and can be run and managed in Tanque Studio.
+  - **What this affects and what it doesn't.** Only the **pipeline export** — the flat instruction array pasted into `StoryflowPipeline.js`. The **Editor project format** is untouched, so `.json` projects keep round-tripping through both the StoryFlow Editor and Tanque Studio regardless.
+  - **The exposure is narrow**: `StoryflowPipeline_260723.js` is byte-identical in the 260725 drop, so anyone on either current drop runs these exports fine. Only a recipient still running a **260225-era pipeline script** fails, and it fails loudly at preflight — old versions reject new instructions outright (`Storyflow_doc.txt:30-32`).
+  - **Consequence for Phase 3**: plan on *deleting* the re-emit hack (`StoryFlowProjectCodec.swift:380-470`, `lastPrompt`/`prevWasPrompt`), not preserving it. `promptInstruction` compiles to `concat`, `generate` compiles to `{"prompt": ""}`.
+  - **No effect on Phase 2**, which only makes `concat` explicitly authorable (§8.4). Phase 2 exports stay legacy-shaped by default.
+
 ### 6.2 Still open
 
-1. **Export target version.** Adopting `concat` (§3.2) means exports stop working in pre-260723 pipelines. Options: (a) always emit 260723, (b) a legacy/modern toggle on export, (c) auto-detect from what the project contains. My recommendation is (a) with a clear note in the UI — maintaining two emitters for a format whose consumer Ned controls is not worth the cost — but this affects anyone he shares exports with, so it's his call. **Needed before Phase 3**, not before Phase 2.
+1. ~~**Export target version.**~~ **SETTLED 2026-07-26 — always emit 260723; see §6.1b.**
 2. ~~**Where the new authoring UI lives.**~~ **SETTLED 2026-07-26 — see §6.1b.**
 3. **`fileLoad` / "add pipeline".** The Editor inlines an external exported pipeline at load time and warns that the user must re-link the file each session. Whether Tanque Studio should support it, and whether it should inline eagerly (losing the reference) or keep a security-scoped bookmark like the LLM Operations folder does, is undecided.
 4. **Where the video workstream (§7) sits relative to Phase 2.** Ned raised it as a priority over the LLM work but sequenced Phase 2 explicitly, so it's parked after Phase 2 below. Easy to reorder — it shares no code with the StoryFlow phases. *(The prerequisite that was blocking it is now resolved — see §7.1. Draw Things has a real series key, so this is ready to build whenever it's sequenced.)*
@@ -328,9 +334,9 @@ All read from the real editor and pipeline, and exercised by `Scripts/storyflow/
 
 ### 8.4 The `concat` question is deferred, deliberately
 
-Phase 2 adds `concat` as an *authorable instruction* only. It does **not** re-model Tanque Studio's internal `promptInstruction`/`generate` accumulator onto it (§3.2), and does not retire the export re-emit hack. That re-modelling is Phase 3, and it is gated on decision §6.2.1 (export target version), because it is what breaks pre-260723 compatibility.
+Phase 2 adds `concat` as an *authorable instruction* only. It does **not** re-model Tanque Studio's internal `promptInstruction`/`generate` accumulator onto it (§3.2), and does not retire the export re-emit hack. That re-modelling is Phase 3.
 
-Keeping them separate means Phase 2 ships without needing that decision, and the two changes stay independently revertible.
+The decision it was waiting on — export target version — is now **settled** (§6.1b, always emit 260723), so Phase 3 has its answer. The split still stands on its own merits: Phase 2 exports keep their current legacy-compatible shape, and the two changes stay independently revertible.
 
 ### 8.5 Work breakdown
 
