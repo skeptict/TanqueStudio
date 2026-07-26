@@ -149,6 +149,16 @@ Pixels is right for storage independent of that: Draw Things' own JSON multiplie
 
 Two behaviours worth knowing: DT **skips tiling entirely** unless the canvas exceeds the tile in at least one dimension (`ImageConverter.swift:1187`) — surfaced as an inline hint rather than enforced; and defaults match what the client was already applying implicitly, so surfacing the group changes no existing render.
 
+**Verified end-to-end against a live Draw Things server (2026-07-26).** Six deliberately distinct, non-transposable values were entered, a real render was run, and every layer was read back rather than inferred:
+
+| Layer | Diffusion | Decoding |
+|---|---|---|
+| UI (pixels) | 512 × 896, overlap 192 | 640 × 704, overlap 128 |
+| Request log (wire units) | **8 × 14, overlap 3** | **10 × 11, overlap 2** |
+| Saved PNG metadata (pixels) | 512 × 896, overlap 192 | 640 × 704, overlap 128 |
+
+Exact, in the right order, with width and height not transposed — 512→8 and 896→14 could not have swapped unnoticed. Draw Things accepted the request and returned the image, so the values are valid on the wire and not merely well-formed. The request-log lines print both units deliberately, which is what made this checkable from the log instead of by inspection.
+
 **Batch E — Text Encoders + SDXL Conditioning** (13 + 10 fields): plumbing-heavy, mostly niche; disabled rows acceptable long-term per policy.
 
 **Batch F — Video extras + Performance** (motionBucketId, condAug, startFrameCfg, stage2\*, causal\*, teaCache\*): lowest priority; SVD-era and perf knobs.
