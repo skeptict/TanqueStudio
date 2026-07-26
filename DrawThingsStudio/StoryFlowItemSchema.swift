@@ -92,6 +92,21 @@ struct StoryFlowItemSchema: Equatable {
     /// or placeholder text where it has one.
     let summary: String
 
+    /// Accent from what the instruction *does*, not from the fact that it isn't
+    /// executable yet.
+    ///
+    /// Before Phase 2 every passthrough card rendered grey, because the accent keyed
+    /// off the step type (`.passthrough`) rather than the instruction. That made
+    /// `size` and `concat` look identical — visible the moment a real project was
+    /// loaded, and wrong: they do quite different things to a run.
+    var accent: StoryFlowDS.Accent {
+        switch group {
+        case .prompt, .config:            return .accumulator
+        case .canvas, .moodboard, .mask:  return .canvas
+        case .loop:                       return .flow
+        }
+    }
+
     /// The value a freshly-added instruction carries, in the *project* format —
     /// object values are JSON **strings** there, matching `dataset.jsonValue`
     /// (spec §8.3.1).

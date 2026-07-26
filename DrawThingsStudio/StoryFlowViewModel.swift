@@ -161,6 +161,23 @@ final class StoryFlowViewModel {
         updateWorkflowJSON()
     }
 
+    /// Add a Phase 2 table instruction. It lands as a `.passthrough` step carrying the
+    /// schema's default — passthrough already round-trips these losslessly, so the only
+    /// thing the table adds is a form (spec §8.1).
+    func addSchemaStep(_ schema: StoryFlowItemSchema) {
+        guard selectedWorkflow != nil else { return }
+        var step = WorkflowStep(type: .passthrough)
+        step.label = schema.itemType
+        step.parameters["itemType"] = schema.itemType
+        if let data = try? encoder.encode(schema.defaultProjectValue),
+           let json = String(data: data, encoding: .utf8) {
+            step.parameters["rawValueJSON"] = json
+        }
+        selectedWorkflow!.steps.append(step)
+        saveCurrentWorkflow()
+        updateWorkflowJSON()
+    }
+
     func deleteStep(id: UUID) {
         guard selectedWorkflow != nil else { return }
         selectedWorkflow!.steps.removeAll { $0.id == id }

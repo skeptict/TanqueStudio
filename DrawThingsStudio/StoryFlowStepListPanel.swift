@@ -223,6 +223,21 @@ struct StoryFlowStepListPanel: View {
                         get: { vm.selectedWorkflow?.steps ?? [] },
                         set: { vm.selectedWorkflow?.steps = $0 }
                     )) { $step in
+                        // A passthrough step whose instruction is in the Phase 2 table
+                        // gets a real form; anything else keeps the read-only card.
+                        // Both use the same chrome, so they read as one list.
+                        if step.type == .passthrough,
+                           let schema = StoryFlowItemSchema.schema(for: step.parameters["itemType"] ?? "") {
+                            StoryFlowSchemaCard(schema: schema,
+                                                step: $step,
+                                                allVariables: vm.variables,
+                                                onDelete: { vm.deleteStep(id: step.id) },
+                                                onChange: { vm.updateStep(step) })
+                                .padding(.leading, CGFloat(depths[step.id] ?? 0) * 16)
+                                .listRowInsets(EdgeInsets(top: 3, leading: 8, bottom: 3, trailing: 8))
+                                .listRowBackground(Color.clear)
+                                .listRowSeparator(.hidden)
+                        } else {
                         StoryFlowStepCard(step: $step,
                                           allVariables: vm.variables,
                                           onDelete: { vm.deleteStep(id: step.id) },
@@ -231,6 +246,7 @@ struct StoryFlowStepListPanel: View {
                             .listRowInsets(EdgeInsets(top: 3, leading: 8, bottom: 3, trailing: 8))
                             .listRowBackground(Color.clear)
                             .listRowSeparator(.hidden)
+                        }
                     }
                     .onMove { vm.moveSteps(from: $0, to: $1) }
                 }
@@ -288,6 +304,22 @@ struct StoryFlowStepListPanel: View {
             Section("Utility") {
                 menuItem(.note)
             }
+
+            // The Phase 2 table, grouped the way the editor's own instruction drawer
+            // groups its buttons so the two tools stay navigable in the same shape.
+            // These are authorable but not executable — the run warning says so.
+            Divider()
+            ForEach(StoryFlowItemSchema.grouped(), id: \.group) { entry in
+                Section(entry.group.rawValue) {
+                    ForEach(entry.items, id: \.itemType) { schema in
+                        Button {
+                            vm.addSchemaStep(schema)
+                        } label: {
+                            Label(schema.itemType, systemImage: schema.icon)
+                        }
+                    }
+                }
+            }
         } label: {
             Image(systemName: "plus")
                 .font(.system(size: 14, weight: .semibold))
@@ -330,7 +362,7 @@ struct StoryFlowStepListPanel: View {
 // A TextField with a chevron button that opens a popover listing matching variables.
 // Used in step cards for parameter fields that accept variable references.
 
-private struct VariablePickerField: View {
+struct StoryFlowVariableField: View {
     let placeholder: String
     let variableTypes: [WorkflowVariableType]
     let allVariables: [WorkflowVariable]
@@ -453,7 +485,7 @@ private struct StoryFlowStepCard: View {
         switch step.type {
 
         case .configInstruction:
-            VariablePickerField(
+            StoryFlowVariableField(
                 placeholder: "#model, #sampler",
                 variableTypes: [.config],
                 allVariables: allVariables,
@@ -465,7 +497,7 @@ private struct StoryFlowStepCard: View {
             )
 
         case .promptInstruction:
-            VariablePickerField(
+            StoryFlowVariableField(
                 placeholder: "@character in $scene doing something",
                 variableTypes: [.prompt, .wildcard],
                 allVariables: allVariables,
@@ -494,7 +526,7 @@ private struct StoryFlowStepCard: View {
             .onSubmit { onChange() }
 
         case .addToMoodboard:
-            VariablePickerField(
+            StoryFlowVariableField(
                 placeholder: "image var",
                 variableTypes: [.image],
                 allVariables: allVariables,
