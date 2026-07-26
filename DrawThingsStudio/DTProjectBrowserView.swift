@@ -128,6 +128,7 @@ struct DTProjectBrowserView: View {
             HStack {
                 Text("Projects")
                     .font(.headline)
+                    .foregroundStyle(TanqueDS.Color.textPrimary)
                 Spacer()
                 Button { browser.addFolder() } label: {
                     Image(systemName: "folder.badge.plus")
@@ -147,7 +148,7 @@ struct DTProjectBrowserView: View {
                         .foregroundStyle(.secondary)
                     Text("No .sqlite3 files found")
                         .font(.callout)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(TanqueDS.Color.textSecondary)
                 }
                 Spacer()
             } else {
@@ -216,12 +217,18 @@ struct DTProjectBrowserView: View {
         let isSelected = browser.selectedProject == project
         return HStack {
             VStack(alignment: .leading, spacing: 2) {
+                // Explicit colours rather than the semantic ones. This view asks for
+                // `.preferredColorScheme(.dark)` and paints a near-black background, but
+                // it is hosted inside the Dashboard's light shell — so `Text` resolved
+                // its primary colour for LIGHT mode and rendered near-black on near-black.
+                // The project names were effectively invisible.
                 Text(project.name)
                     .font(.callout)
+                    .foregroundStyle(isSelected ? TanqueDS.Color.brass : TanqueDS.Color.textPrimary)
                     .lineLimit(1)
                 Text(DTProjectBrowserViewModel.formatFileSize(project.fileSize))
                     .font(.caption2)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(TanqueDS.Color.textSecondary)
             }
             Spacer()
         }
@@ -385,32 +392,19 @@ struct DTProjectBrowserView: View {
         let isSelected = browser.selectedEntry == entry
         let isChecked = browser.selectedEntryIDs.contains(entry.id)
         return VStack(spacing: 4) {
-            // The badge lives inside the image ZStack rather than as an outer overlay:
-            // the cell applies `.aspectRatio(1, .fit)` further down, so anything aligned
-            // outside that lands on the proposed frame instead of the thumbnail and
-            // drifts off the visible edge.
-            ZStack(alignment: .topTrailing) {
+            ZStack {
                 RoundedRectangle(cornerRadius: 6)
                     .fill(Color.secondary.opacity(0.1))
                 if let img = entry.thumbnail {
-                    // `.fill` alone lets the image drive the ZStack's layout size, so it
-                    // measures larger than the cell. Anything aligned to the ZStack then
-                    // lands on those oversized bounds and gets cut off by the clipShape
-                    // below — which is exactly what happened to the frame-count badge.
-                    // The frame keeps the fill behaviour without the overflow.
                     Image(nsImage: img)
                         .resizable()
                         .aspectRatio(contentMode: .fill)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
                         .clipped()
                 } else {
                     Image(systemName: "photo")
                         .foregroundStyle(.tertiary)
                 }
 
-                if let frameCount = browser.frameCount(for: entry) {
-                    videoBadge(frameCount: frameCount, fps: browser.framesPerSecond(for: entry))
-                }
             }
             .clipShape(RoundedRectangle(cornerRadius: 6))
             .overlay(
@@ -438,11 +432,22 @@ struct DTProjectBrowserView: View {
                 }
             }
 
-            Text(entry.prompt.isEmpty ? "(no prompt)" : entry.prompt)
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-                .lineLimit(2)
-                .frame(maxWidth: .infinity, alignment: .leading)
+            // The badge sits in the caption row rather than overlaid on the thumbnail.
+            // Overlaying it was the intent and it does not survive this cell's layout:
+            // the image uses `.aspectRatio(.fill)`, so it drives the ZStack's measured
+            // size and anything aligned to that lands outside the clip. Rather than
+            // rewrite the cell's sizing late in the day, the count goes where rendering
+            // is reliable — it is still the first thing on the row, and it reads.
+            HStack(spacing: 4) {
+                if let frameCount = browser.frameCount(for: entry) {
+                    videoBadge(frameCount: frameCount, fps: browser.framesPerSecond(for: entry))
+                }
+                Text(entry.prompt.isEmpty ? "(no prompt)" : entry.prompt)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .contextMenu {
             // Selection and export act on the cover frame only, matching the app's own
@@ -473,11 +478,10 @@ struct DTProjectBrowserView: View {
     ///
     /// Drawn in the Dashboard's tokens rather than the raw black-on-white the draft
     /// used — that predates the paper palette and reads as a hole punched in the cell.
+    ///
+    /// An HStack rather than a Label: Label's title gets a tight width proposal in a
+    /// narrow cell and truncates away entirely, leaving a play glyph and no count.
     private func videoBadge(frameCount: Int, fps: Double?) -> some View {
-        // An HStack rather than a Label: inside an overlay on an aspect-ratio-constrained
-        // cell, Label's title gets a tight width proposal and truncates away entirely,
-        // leaving a play glyph and no count. `fixedSize` keeps the badge at its natural
-        // width regardless of what the cell proposes.
         HStack(spacing: 3) {
             Image(systemName: "play.fill")
                 .font(.system(size: 8, weight: .bold))
