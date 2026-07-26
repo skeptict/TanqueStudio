@@ -531,9 +531,7 @@ final class DTProjectDatabase: @unchecked Sendable {
         let negPrompt  = foff(FBReader.VT_NEG_TEXT_PROMPT).flatMap { fb.readString(tablePos: tablePos, fieldRelOffset: $0) } ?? ""
         let loras      = foff(FBReader.VT_LORAS).map { fb.readLoRAVector(tablePos: tablePos, fieldRelOffset: $0) } ?? []
 
-        let wallClock = wallClockInt > 0
-            ? Date(timeIntervalSince1970: TimeInterval(wallClockInt))
-            : Date.distantPast
+        let wallClock = Self.date(fromWallClock: wallClockInt)
 
         return DTGenerationEntry(
             id: rowid,
@@ -595,6 +593,36 @@ final class DTProjectDatabase: @unchecked Sendable {
         }
         guard let end = jpegEnd, end > start else { return nil }
         return Data(data[start..<end])
+    }
+
+    // MARK: - Wall Clock
+
+    /// Any `wall_clock` at or above this is microseconds; below it, seconds.
+    ///
+    /// The two units are six orders of magnitude apart and this sits in the empty
+    /// middle, so it cannot misread a real value: read as seconds it is the year
+    /// 33658, and read as microseconds it is 1970-01-12. Neither is a generation.
+    /// Measured range across 32 real databases and 64,452 rows: seconds top out at
+    /// 1.73e9 (Oct 2024), microseconds start at 1.78e15 (Jul 2026).
+    static let wallClockMicrosecondFloor: Int64 = 1_000_000_000_000
+
+    /// Draw Things changed this field's unit in place.
+    ///
+    /// Up to 2025-05-16 it wrote `Int64(Date().timeIntervalSince1970)` — whole
+    /// seconds. From `fbe34f8` ("Make sure wall clock has a bit more precision")
+    /// it writes `Int64(Date().timeIntervalSince1970 * 1_000_000)`, and adds the
+    /// batch index so images in one batch keep their order. Both units therefore
+    /// exist in the wild, and reading everything as seconds put every recent
+    /// render half a million years in the future.
+    ///
+    /// **Per row, not per database.** No database observed actually mixes the two
+    /// — 9 are all-seconds, 23 all-microseconds — but one written either side of
+    /// that release would, and disambiguating by magnitude costs nothing.
+    static func date(fromWallClock raw: Int64) -> Date {
+        guard raw > 0 else { return .distantPast }
+        return raw >= wallClockMicrosecondFloor
+            ? Date(timeIntervalSince1970: TimeInterval(raw) / 1_000_000)
+            : Date(timeIntervalSince1970: TimeInterval(raw))
     }
 
     // MARK: - Enum Lookups
