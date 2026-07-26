@@ -16,6 +16,8 @@ struct DTProjectBrowserView: View {
     @State private var browser = DTProjectBrowserViewModel()
     @State private var entryToDelete: DTGenerationEntry?
     @State private var showDeleteConfirmation = false
+    /// The representative of a clip awaiting a Delete Series confirmation.
+    @State private var seriesToDelete: DTGenerationEntry?
     private let multiSelectTip = CmdClickMultiSelectTip()
 
     var body: some View {
@@ -38,6 +40,23 @@ struct DTProjectBrowserView: View {
             }
         } message: { _ in
             Text("This permanently removes this generation and its thumbnail from the Draw Things database. Close Draw Things before deleting for best results.")
+        }
+        // Separate from the single-entry alert on purpose: deleting a clip removes
+        // hundreds of rows, so the count belongs in the button rather than behind a
+        // generic "Delete".
+        .alert("Delete Video Series?", isPresented: Binding(
+            get: { seriesToDelete != nil },
+            set: { if !$0 { seriesToDelete = nil } }
+        ), presenting: seriesToDelete) { entry in
+            Button("Cancel", role: .cancel) { seriesToDelete = nil }
+            Button("Delete \(browser.frameCount(for: entry) ?? 1) Frames", role: .destructive) {
+                Task { @MainActor in
+                    await browser.deleteSeries(representative: entry)
+                    seriesToDelete = nil
+                }
+            }
+        } message: { entry in
+            Text("This permanently removes all \(browser.frameCount(for: entry) ?? 1) frames of this render and their thumbnails from the Draw Things database. Close Draw Things before deleting for best results.")
         }
     }
 
@@ -366,17 +385,31 @@ struct DTProjectBrowserView: View {
         let isSelected = browser.selectedEntry == entry
         let isChecked = browser.selectedEntryIDs.contains(entry.id)
         return VStack(spacing: 4) {
-            ZStack {
+            // The badge lives inside the image ZStack rather than as an outer overlay:
+            // the cell applies `.aspectRatio(1, .fit)` further down, so anything aligned
+            // outside that lands on the proposed frame instead of the thumbnail and
+            // drifts off the visible edge.
+            ZStack(alignment: .topTrailing) {
                 RoundedRectangle(cornerRadius: 6)
                     .fill(Color.secondary.opacity(0.1))
                 if let img = entry.thumbnail {
+                    // `.fill` alone lets the image drive the ZStack's layout size, so it
+                    // measures larger than the cell. Anything aligned to the ZStack then
+                    // lands on those oversized bounds and gets cut off by the clipShape
+                    // below — which is exactly what happened to the frame-count badge.
+                    // The frame keeps the fill behaviour without the overflow.
                     Image(nsImage: img)
                         .resizable()
                         .aspectRatio(contentMode: .fill)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
                         .clipped()
                 } else {
                     Image(systemName: "photo")
                         .foregroundStyle(.tertiary)
+                }
+
+                if let frameCount = browser.frameCount(for: entry) {
+                    videoBadge(frameCount: frameCount, fps: browser.framesPerSecond(for: entry))
                 }
             }
             .clipShape(RoundedRectangle(cornerRadius: 6))
@@ -394,7 +427,9 @@ struct DTProjectBrowserView: View {
             }
             .aspectRatio(1, contentMode: .fit)
             .contentShape(Rectangle())
-            .help("Click to inspect · ⌘-click to select for export")
+            .help(browser.frameCount(for: entry).map {
+                "Video render — \($0) frames. Click to inspect the first frame; ⌘-click to select for export."
+            } ?? "Click to inspect · ⌘-click to select for export")
             .onTapGesture {
                 if NSEvent.modifierFlags.contains(.command) {
                     browser.toggleEntrySelection(entry)
@@ -410,16 +445,52 @@ struct DTProjectBrowserView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
         .contextMenu {
+            // Selection and export act on the cover frame only, matching the app's own
+            // gallery convention for a video series. Delete Series below is the one
+            // action that reaches every frame.
             Button(isChecked ? "Deselect" : "Select for Export") {
                 browser.toggleEntrySelection(entry)
             }
-            Button(role: .destructive) {
-                entryToDelete = entry
-                showDeleteConfirmation = true
-            } label: {
-                Label("Delete", systemImage: "trash")
+            if let frameCount = browser.frameCount(for: entry) {
+                Divider()
+                Button(role: .destructive) {
+                    seriesToDelete = entry
+                } label: {
+                    Label("Delete Series (\(frameCount) frames)", systemImage: "trash")
+                }
+            } else {
+                Button(role: .destructive) {
+                    entryToDelete = entry
+                    showDeleteConfirmation = true
+                } label: {
+                    Label("Delete", systemImage: "trash")
+                }
             }
         }
+    }
+
+    /// Frame-count badge on a clip's cell.
+    ///
+    /// Drawn in the Dashboard's tokens rather than the raw black-on-white the draft
+    /// used — that predates the paper palette and reads as a hole punched in the cell.
+    private func videoBadge(frameCount: Int, fps: Double?) -> some View {
+        // An HStack rather than a Label: inside an overlay on an aspect-ratio-constrained
+        // cell, Label's title gets a tight width proposal and truncates away entirely,
+        // leaving a play glyph and no count. `fixedSize` keeps the badge at its natural
+        // width regardless of what the cell proposes.
+        HStack(spacing: 3) {
+            Image(systemName: "play.fill")
+                .font(.system(size: 8, weight: .bold))
+            Text("\(frameCount)")
+                .font(TanqueDS.Font.monoSemiBold(10))
+        }
+        .foregroundStyle(DashboardDS.onBrass)
+        .padding(.horizontal, 5)
+        .padding(.vertical, 2)
+        .background(DashboardDS.brass.opacity(0.92), in: RoundedRectangle(cornerRadius: 4))
+        .fixedSize()
+        .padding(5)
+        .help(fps.map { "\(frameCount) frames at \(Int($0)) fps" } ?? "\(frameCount) frames")
     }
 
     private func chooseFolderAndExport(_ scope: DTProjectBrowserViewModel.ExportScope) {

@@ -39,6 +39,38 @@ final class DTProjectBrowserViewModel {
     var projects: [DTProjectInfo] = []
     var selectedProject: DTProjectInfo?
     var entries: [DTGenerationEntry] = []
+
+    /// Every browser slot in the project, computed once when it opens.
+    ///
+    /// Grouping has to happen before pagination: a clip's frames are contiguous in
+    /// the table but a page boundary can fall anywhere inside one, so collapsing
+    /// per page would group the same clip differently depending on where you
+    /// stopped scrolling. See `DTProjectDatabase.collapseIntoSlots`.
+    private var slots: [DTBrowserSlot] = []
+    /// Draw Things' own clip records — frame count and fps, no counting required.
+    private var clips: [Int64: DTClip] = [:]
+    /// Representative rowid → its slot, so the grid can ask what a cell is.
+    private var slotByRowid: [Int64: DTBrowserSlot] = [:]
+
+    /// Frame count for a cell, or nil when it is a plain still.
+    func frameCount(for entry: DTGenerationEntry) -> Int? {
+        guard case .clip(_, _, let frameRowids)? = slotByRowid[entry.id] else { return nil }
+        return frameRowids.count
+    }
+
+    /// Every frame rowid behind a cell — the whole clip, or just the one still.
+    func frameRowids(for entry: DTGenerationEntry) -> [Int64] {
+        switch slotByRowid[entry.id] {
+        case .clip(_, _, let frameRowids)?: return frameRowids
+        default:                            return [entry.id]
+        }
+    }
+
+    /// Frames per second, when Draw Things recorded it for this clip.
+    func framesPerSecond(for entry: DTGenerationEntry) -> Double? {
+        guard case .clip(let clipId, _, _)? = slotByRowid[entry.id] else { return nil }
+        return clips[clipId]?.framesPerSecond
+    }
     var selectedEntry: DTGenerationEntry?
     var searchText = ""
     var isLoading = false
@@ -63,6 +95,8 @@ final class DTProjectBrowserViewModel {
     // nonisolated(unsafe) so deinit can read these without main actor context
     private nonisolated(unsafe) var accessedURLs: [URL] = []
     private var loadedOffset = 0
+    /// Pages are counted in **slots**, not rows. A clip occupies one slot however
+    /// many frames it holds, so a 369-frame render no longer eats seven pages.
     private let pageSize = 50
     private nonisolated(unsafe) var loadTask: Task<Void, Never>?
 
@@ -271,17 +305,27 @@ final class DTProjectBrowserViewModel {
         let limit = pageSize
 
         loadTask = Task {
-            let result = await Task.detached(priority: .userInitiated) { () -> (entries: [DTGenerationEntry], totalCount: Int, error: String?) in
+            let existingSlots: [DTBrowserSlot]? = offset == 0 ? nil : self.slots
+            let result = await Task.detached(priority: .userInitiated) { () -> (entries: [DTGenerationEntry], totalCount: Int, error: String?, slots: [DTBrowserSlot], clips: [Int64: DTClip]) in
                 guard let db = DTProjectDatabase(fileURL: url) else {
-                    return ([], 0, "Could not open database. The drive may have been ejected or the file may be corrupted.")
+                    return ([], 0, "Could not open database. The drive may have been ejected or the file may be corrupted.", [], [:])
                 }
-                let totalCount = db.entryCount()
-                var entries = db.fetchEntries(offset: offset, limit: limit)
+                // Build the slot index once, on the first page. Reading only the two
+                // grouping fields off every row is a vtable lookup each and no string
+                // decoding, so scanning the table costs far less than it sounds — and
+                // it is paid once per project rather than once per page.
+                let slots = existingSlots ?? DTProjectDatabase.collapseIntoSlots(db.fetchRowRefs())
+                let clips = existingSlots == nil ? db.fetchClips() : [:]
+
+                let page = Array(slots.dropFirst(offset).prefix(limit))
+                let byRowid = db.fetchEntries(rowids: page.map(\.representativeRowid))
+                // Keep the slot order; `fetchEntries` returns a dictionary.
+                var entries = page.compactMap { byRowid[$0.representativeRowid] }
                 for i in entries.indices {
-                    if Task.isCancelled { return ([], totalCount, nil) }
+                    if Task.isCancelled { return ([], slots.count, nil, slots, clips) }
                     entries[i].thumbnail = db.fetchThumbnail(previewId: entries[i].previewId)
                 }
-                return (entries, totalCount, nil)
+                return (entries, slots.count, nil, slots, clips)
             }.value
 
             if Task.isCancelled { return }
@@ -289,7 +333,14 @@ final class DTProjectBrowserViewModel {
             if let error = result.error { self.errorMessage = error }
             if offset == 0 {
                 self.entries = result.entries
+                // `entryCount` is now a count of *slots* — what the grid shows — so a
+                // project of five videos reads as five entries, not 1285.
                 self.entryCount = result.totalCount
+                self.slots = result.slots
+                self.clips = result.clips
+                self.slotByRowid = Dictionary(
+                    uniqueKeysWithValues: result.slots.map { ($0.representativeRowid, $0) }
+                )
             } else {
                 self.entries.append(contentsOf: result.entries)
             }
@@ -403,6 +454,43 @@ final class DTProjectBrowserViewModel {
             entries.removeAll { $0.id == entry.id }
             if selectedEntry?.id == entry.id { selectedEntry = nil }
             entryCount = max(0, entryCount - 1)
+            loadedOffset = max(0, loadedOffset - 1)
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    /// Delete every frame behind a cell — the whole clip, or the single still.
+    ///
+    /// Done as one detached task rather than awaiting per frame. The salvaged draft
+    /// looped `await deleteEntry(frame)`, which for the 369-frame clip in `z - del`
+    /// means 369 sequential hops to the main actor with no way to tell how far it had
+    /// got. One task, one pass, one UI update.
+    func deleteSeries(representative entry: DTGenerationEntry) async {
+        guard let project = selectedProject else { return }
+        let url = project.url
+        let rowids = frameRowids(for: entry)
+
+        do {
+            try await Task.detached(priority: .userInitiated) {
+                guard let db = DTProjectDatabase(fileURL: url) else {
+                    throw DTProjectDatabaseError.cannotOpen(url.lastPathComponent)
+                }
+                // Frames other than the representative were never loaded into the grid,
+                // so their previewIds have to be read before the rows are removed.
+                let frames = db.fetchEntries(rowids: rowids)
+                for rowid in rowids {
+                    let previewId = frames[rowid]?.previewId ?? 0
+                    try DTProjectDatabase.deleteEntry(rowid: rowid, previewId: previewId, from: url)
+                }
+            }.value
+
+            let removed = Set(rowids)
+            entries.removeAll { removed.contains($0.id) }
+            slots.removeAll { slot in removed.contains(slot.representativeRowid) }
+            slotByRowid[entry.id] = nil
+            if let selected = selectedEntry, removed.contains(selected.id) { selectedEntry = nil }
+            entryCount = max(0, entryCount - 1)   // one *slot* left the grid
             loadedOffset = max(0, loadedOffset - 1)
         } catch {
             errorMessage = error.localizedDescription
