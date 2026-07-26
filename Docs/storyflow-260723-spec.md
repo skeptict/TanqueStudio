@@ -248,6 +248,14 @@ Every clip's declared `count` matched the frames actually found; indices were co
 - Newer Draw Things builds write more fields than the local `draw-things-community` checkout (2026-01-09) declares — observed vtable sizes of 232 vs the schema's 222. FlatBuffers appends, so existing offsets stay valid, but don't assume the local schema is complete.
 - Grouping must happen **before** pagination, not after. `fetchEntries` currently pages with `LIMIT/OFFSET` over raw rows; a 369-frame clip would otherwise span pages and collapse inconsistently. This is the main structural change in `DTProjectBrowserViewModel`.
 
+**DATA LAYER DONE 2026-07-26.** `DTProjectDatabase` gained `clipId`/`indexInClip` on every entry (the `-1` sentinel normalised to nil), a `DTClip` reader with the required table probe, `fetchRowRefs()` (parses only the two grouping fields — a vtable lookup each, no string decoding, paid once per database rather than per page), the pure `collapseIntoSlots(_:)`, and `fetchEntries(rowids:)` for a page of slots. `TanqueStudioTests/DTClipGroupingTests` covers the grouping directly.
+
+Verified against the real databases, and cross-checked: an independent Python reimplementation and the Swift code agree exactly. `serious stuff` **1437 rows → 157 slots** (5 clips × 257 + 152 stills), `z - del` **972 → 108** (including the 369-frame clip that motivated grouping-before-pagination), `2024` **290 → 34**, and `papercut` — no `clip` table — correctly untouched at 10 stills. Every clip's declared `count` matched the frames found, every index set was contiguous from zero, and no frame was lost in the collapse.
+
+Two smaller things settled while in there: `stochasticSamplingGamma` is now decoded from slot 152 rather than hardcoded to 0.3 (§7.2) — measured absent in all 2699 rows across four databases, so the hardcode was right for every real row but is no longer a guess; and the `clip` table probe is confirmed necessary, since `papercut` has no such table.
+
+**Still to do, and it needs eyes:** the browser cell itself — one frame-count-badged reference per clip, expandable in place — plus paging `DTProjectBrowserViewModel` over slots instead of rows.
+
 ### 7.2 Bug found during this investigation — wrong vtable offset for `resolutionDependentShift`
 
 `DTProjectDatabase.swift:87` declares `VT_RESOLUTION_DEPENDENT_SHIFT = 146`. Offset 146 is actually **`decoding_tile_width`** (a `ushort`); `resolution_dependent_shift` lives at **182**.

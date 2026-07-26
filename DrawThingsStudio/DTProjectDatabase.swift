@@ -58,10 +58,64 @@ struct DTGenerationEntry: Identifiable, Hashable {
     let stochasticSamplingGamma: Float
     let wallClock: Date
     let loras: [DTLoRAEntry]
+    /// The video clip this row belongs to, or nil for a still image. Draw Things
+    /// writes `-1` for stills; that sentinel is normalised to nil here so callers
+    /// don't have to know it.
+    let clipId: Int64?
+    /// Position within the clip, contiguous from zero. Zero for stills.
+    let indexInClip: Int
     var thumbnail: NSImage?
+
+    var isVideoFrame: Bool { clipId != nil }
 
     func hash(into hasher: inout Hasher) { hasher.combine(id) }
     static func == (lhs: DTGenerationEntry, rhs: DTGenerationEntry) -> Bool { lhs.id == rhs.id }
+}
+
+/// A video clip's own record, from Draw Things' separate `clip` table.
+///
+/// Frame count and fps come free here — no counting rows required, which matters
+/// because the browser needs the count *before* it decides how to page.
+struct DTClip: Hashable {
+    let clipId: Int64
+    let count: Int
+    let framesPerSecond: Double
+    let width: Int
+    let height: Int
+}
+
+/// One row in the browser's grid: a still, or a whole clip collapsed to one cell.
+///
+/// This exists so that grouping can happen **before** pagination. The browser used
+/// to page raw rows with `LIMIT`/`OFFSET`, which cannot work for series — a
+/// 369-frame clip spans several pages and would collapse differently on each one.
+/// Slots are computed over the whole table once, then paged.
+enum DTBrowserSlot: Hashable {
+    case still(rowid: Int64)
+    case clip(clipId: Int64, representativeRowid: Int64, frameRowids: [Int64])
+
+    /// The row to parse and show. For a clip that is its first frame, matching how
+    /// Draw Things itself presents a clip.
+    var representativeRowid: Int64 {
+        switch self {
+        case .still(let rowid):                 return rowid
+        case .clip(_, let representative, _):   return representative
+        }
+    }
+
+    var frameCount: Int {
+        switch self {
+        case .still:                        return 1
+        case .clip(_, _, let frameRowids):  return frameRowids.count
+        }
+    }
+}
+
+/// Just enough of a row to group it, without paying for prompts, LoRAs or strings.
+struct DTRowRef: Hashable {
+    let rowid: Int64
+    let clipId: Int64?
+    let indexInClip: Int
 }
 
 // MARK: - FlatBuffer Reader
@@ -85,10 +139,18 @@ private struct FBReader {
     static let VT_LORAS: Int = 64
     static let VT_PREVIEW_ID: Int = 86
     static let VT_SCALE_FACTOR_BY_120: Int = 92
+    static let VT_STOCHASTIC_SAMPLING_GAMMA: Int = 152
     static let VT_SHIFT: Int = 136
     static let VT_RESOLUTION_DEPENDENT_SHIFT: Int = 182
     static let VT_TEXT_PROMPT: Int = 200
     static let VT_NEG_TEXT_PROMPT: Int = 202
+    // Draw Things' own definition of "this row is a video frame" is `clip_id >= 0`
+    // (ImageHistoryManager.swift:635, :1025). It writes one row per frame sharing a
+    // clip id, with a sequential index (:984-985), and reads frames back by
+    // `TensorHistoryNode.clipId == clip.clipId` (:510) — so the grouping the browser
+    // wants is the grouping Draw Things already performs internally.
+    static let VT_CLIP_ID: Int = 204
+    static let VT_INDEX_IN_A_CLIP: Int = 206
 
     func rootTable() -> (tablePos: Int, vtablePos: Int, vtableSize: Int)? {
         guard data.count >= 8 else { return nil }
@@ -132,6 +194,11 @@ private struct FBReader {
     func readFloat(at offset: Int) -> Float {
         guard offset >= 0, offset + 4 <= data.count else { return 0 }
         return data.withUnsafeBytes { $0.load(fromByteOffset: offset, as: Float.self) }
+    }
+
+    func readDouble(at offset: Int) -> Double {
+        guard offset >= 0, offset + 8 <= data.count else { return 0 }
+        return data.withUnsafeBytes { $0.load(fromByteOffset: offset, as: Double.self) }
     }
 
     func readInt64(at offset: Int) -> Int64 {
@@ -255,6 +322,155 @@ final class DTProjectDatabase: @unchecked Sendable {
         return entries
     }
 
+    // MARK: - Clips
+
+    /// True when this project has ever contained a video.
+    ///
+    /// The `clip` table is created **conditionally** — `ImageHistoryManager.swift:1032`
+    /// only includes `Clip.self` in the schema for projects that have one — so six of
+    /// eleven of Ned's real databases have no such table at all. Probe rather than
+    /// assume; querying a missing table is an error, not an empty result.
+    func hasClipTable() -> Bool {
+        guard let db = db else { return false }
+        var stmt: OpaquePointer?
+        defer { sqlite3_finalize(stmt) }
+        let sql = "SELECT 1 FROM sqlite_master WHERE type='table' AND name='clip' LIMIT 1"
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return false }
+        return sqlite3_step(stmt) == SQLITE_ROW
+    }
+
+    /// Every clip in the project, keyed by id. Empty when the project has no videos.
+    func fetchClips() -> [Int64: DTClip] {
+        guard let db = db, hasClipTable() else { return [:] }
+        var stmt: OpaquePointer?
+        defer { sqlite3_finalize(stmt) }
+        guard sqlite3_prepare_v2(db, "SELECT __pk0, p FROM clip", -1, &stmt, nil) == SQLITE_OK else { return [:] }
+
+        var clips: [Int64: DTClip] = [:]
+        while sqlite3_step(stmt) == SQLITE_ROW {
+            let pk0 = sqlite3_column_int64(stmt, 0)
+            guard let blobPtr = sqlite3_column_blob(stmt, 1) else { continue }
+            let blobSize = Int(sqlite3_column_bytes(stmt, 1))
+            guard blobSize > 0 else { continue }
+            let fb = FBReader(data: Data(bytes: blobPtr, count: blobSize))
+            guard let (tablePos, vtablePos, vtableSize) = fb.rootTable() else { continue }
+            func foff(_ slot: Int) -> Int? {
+                fb.fieldOffset(vtablePos: vtablePos, vtableSize: vtableSize, slot: slot)
+            }
+            // table Clip { clip_id: long; count: int; frames_per_second: double;
+            //              width: int; height: int } — slots 4, 6, 8, 10, 12.
+            let clipId = foff(4).map { fb.readInt64(at: tablePos + $0) } ?? pk0
+            let count  = foff(6).map { Int(fb.readInt32(at: tablePos + $0)) } ?? 0
+            let fps    = foff(8).map { fb.readDouble(at: tablePos + $0) } ?? 0
+            let width  = foff(10).map { Int(fb.readInt32(at: tablePos + $0)) } ?? 0
+            let height = foff(12).map { Int(fb.readInt32(at: tablePos + $0)) } ?? 0
+            clips[clipId] = DTClip(clipId: clipId, count: count,
+                                   framesPerSecond: fps, width: width, height: height)
+        }
+        return clips
+    }
+
+    // MARK: - Grouping
+
+    /// Row identity and clip membership for every row, newest first — the input the
+    /// grouping needs and nothing more.
+    ///
+    /// This parses every blob in the table, which sounds expensive and isn't: the
+    /// FlatBuffer is random-access, so reading two integers costs a vtable lookup
+    /// each and no string decoding. It is paid once per database rather than per page.
+    func fetchRowRefs() -> [DTRowRef] {
+        guard let db = db else { return [] }
+        var stmt: OpaquePointer?
+        defer { sqlite3_finalize(stmt) }
+        let sql = "SELECT rowid, p FROM tensorhistorynode ORDER BY rowid DESC"
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return [] }
+
+        var refs: [DTRowRef] = []
+        while sqlite3_step(stmt) == SQLITE_ROW {
+            let rowid = sqlite3_column_int64(stmt, 0)
+            guard let blobPtr = sqlite3_column_blob(stmt, 1) else { continue }
+            let blobSize = Int(sqlite3_column_bytes(stmt, 1))
+            guard blobSize > 0 else { continue }
+            let fb = FBReader(data: Data(bytes: blobPtr, count: blobSize))
+            guard let (tablePos, vtablePos, vtableSize) = fb.rootTable() else { continue }
+            func foff(_ slot: Int) -> Int? {
+                fb.fieldOffset(vtablePos: vtablePos, vtableSize: vtableSize, slot: slot)
+            }
+            let rawClipId = foff(FBReader.VT_CLIP_ID).map { fb.readInt64(at: tablePos + $0) } ?? -1
+            let index = foff(FBReader.VT_INDEX_IN_A_CLIP).map { Int(fb.readInt32(at: tablePos + $0)) } ?? 0
+            refs.append(DTRowRef(rowid: rowid,
+                                 clipId: rawClipId >= 0 ? rawClipId : nil,
+                                 indexInClip: index))
+        }
+        return refs
+    }
+
+    /// Collapse rows into browser slots: one per still, one per clip.
+    ///
+    /// Pure and static so it can be tested without a database. Two properties matter
+    /// and are easy to get wrong:
+    ///   - **A clip occupies the position of its first-seen row.** `refs` arrives
+    ///     newest-first, so a clip lands where its newest frame was, keeping the grid
+    ///     in the order the user expects rather than jumping to wherever frame 0 sits.
+    ///   - **The representative is frame 0**, the lowest `indexInClip` — that is the
+    ///     frame Draw Things itself shows for a clip.
+    static func collapseIntoSlots(_ refs: [DTRowRef]) -> [DTBrowserSlot] {
+        var slots: [DTBrowserSlot] = []
+        var clipPosition: [Int64: Int] = [:]      // clipId → index into `slots`
+        var clipFrames: [Int64: [DTRowRef]] = [:]
+
+        for ref in refs {
+            guard let clipId = ref.clipId else {
+                slots.append(.still(rowid: ref.rowid))
+                continue
+            }
+            clipFrames[clipId, default: []].append(ref)
+            if clipPosition[clipId] == nil {
+                clipPosition[clipId] = slots.count
+                // Placeholder; rewritten below once every frame is known.
+                slots.append(.clip(clipId: clipId, representativeRowid: ref.rowid, frameRowids: []))
+            }
+        }
+
+        for (clipId, position) in clipPosition {
+            let frames = (clipFrames[clipId] ?? []).sorted { $0.indexInClip < $1.indexInClip }
+            guard let first = frames.first else { continue }
+            slots[position] = .clip(clipId: clipId,
+                                    representativeRowid: first.rowid,
+                                    frameRowids: frames.map(\.rowid))
+        }
+        return slots
+    }
+
+    /// Fully parse the rows a page of slots needs, keyed by rowid.
+    func fetchEntries(rowids: [Int64]) -> [Int64: DTGenerationEntry] {
+        guard let db = db, !rowids.isEmpty else { return [:] }
+        var stmt: OpaquePointer?
+        defer { sqlite3_finalize(stmt) }
+
+        let placeholders = Array(repeating: "?", count: rowids.count).joined(separator: ",")
+        let sql = "SELECT rowid, __pk0, __pk1, p FROM tensorhistorynode WHERE rowid IN (\(placeholders))"
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return [:] }
+        for (i, rowid) in rowids.enumerated() {
+            sqlite3_bind_int64(stmt, Int32(i + 1), rowid)
+        }
+
+        var byRowid: [Int64: DTGenerationEntry] = [:]
+        while sqlite3_step(stmt) == SQLITE_ROW {
+            let rowid = sqlite3_column_int64(stmt, 0)
+            let pk0 = sqlite3_column_int64(stmt, 1)
+            let pk1 = sqlite3_column_int64(stmt, 2)
+            guard let blobPtr = sqlite3_column_blob(stmt, 3) else { continue }
+            let blobSize = Int(sqlite3_column_bytes(stmt, 3))
+            guard blobSize > 0 else { continue }
+            let blob = Data(bytes: blobPtr, count: blobSize)
+            if let entry = parseEntry(rowid: rowid, lineage: pk0, logicalTime: pk1, blob: blob) {
+                byRowid[rowid] = entry
+            }
+        }
+        return byRowid
+    }
+
     private enum ThumbnailTable: String {
         case half = "thumbnailhistoryhalfnode"
         case full = "thumbnailhistorynode"
@@ -300,6 +516,16 @@ final class DTProjectDatabase: @unchecked Sendable {
         let shift = foff(FBReader.VT_SHIFT).map { fb.readFloat(at: tablePos + $0) } ?? 1.0
         let resolutionDependentShift = foff(FBReader.VT_RESOLUTION_DEPENDENT_SHIFT)
             .map { fb.readUInt8(at: tablePos + $0) != 0 } ?? true
+        // Was hardcoded to 0.3. Measured across 2698 rows in three databases the slot
+        // is absent in every one, so the hardcode happened to be right for all real
+        // data seen — but it was a lie waiting for the first non-default gamma
+        // (spec §7.2, "benign today").
+        let stochasticSamplingGamma = foff(FBReader.VT_STOCHASTIC_SAMPLING_GAMMA)
+            .map { fb.readFloat(at: tablePos + $0) } ?? 0.3
+        // -1 is Draw Things' "not a video" sentinel; normalise it away at the boundary.
+        let rawClipId = foff(FBReader.VT_CLIP_ID).map { fb.readInt64(at: tablePos + $0) } ?? -1
+        let clipId: Int64? = rawClipId >= 0 ? rawClipId : nil
+        let indexInClip = foff(FBReader.VT_INDEX_IN_A_CLIP).map { Int(fb.readInt32(at: tablePos + $0)) } ?? 0
         let model      = foff(FBReader.VT_MODEL).flatMap          { fb.readString(tablePos: tablePos, fieldRelOffset: $0) } ?? ""
         let textPrompt = foff(FBReader.VT_TEXT_PROMPT).flatMap    { fb.readString(tablePos: tablePos, fieldRelOffset: $0) } ?? ""
         let negPrompt  = foff(FBReader.VT_NEG_TEXT_PROMPT).flatMap { fb.readString(tablePos: tablePos, fieldRelOffset: $0) } ?? ""
@@ -329,9 +555,11 @@ final class DTProjectDatabase: @unchecked Sendable {
             seedMode: Self.seedModeName(seedModeByte),
             shift: shift,
             resolutionDependentShift: resolutionDependentShift,
-            stochasticSamplingGamma: 0.3,
+            stochasticSamplingGamma: stochasticSamplingGamma,
             wallClock: wallClock,
             loras: loras,
+            clipId: clipId,
+            indexInClip: indexInClip,
             thumbnail: nil
         )
     }
