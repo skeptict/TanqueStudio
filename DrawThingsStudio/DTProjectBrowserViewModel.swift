@@ -176,6 +176,10 @@ final class DTProjectBrowserViewModel {
         if let selected = selectedProject, selected.folderName == folder.label {
             selectedProject = nil
             selectedEntry = nil
+            // Same reason as in selectProject: the database these rowids belong to
+            // is no longer reachable, so keeping them only offers an export of
+            // whatever the next project happens to number the same way.
+            selectedEntryIDs.removeAll()
             entries = []
             entryCount = 0
             hasMoreEntries = false
@@ -284,6 +288,12 @@ final class DTProjectBrowserViewModel {
     func selectProject(_ project: DTProjectInfo) {
         selectedProject = project
         selectedEntry = nil
+        // Rowids are per-database, so a selection carried across a project switch
+        // does not fail loudly — `startExport` filters the NEW project's entries
+        // by those ids, and small sequential rowids collide freely between
+        // databases. The result is a silent export of the wrong images, with a
+        // toolbar count that no longer matches what would be written.
+        selectedEntryIDs.removeAll()
         entries = []
         loadedOffset = 0
         hasMoreEntries = false
