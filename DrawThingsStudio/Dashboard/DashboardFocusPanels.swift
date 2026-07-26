@@ -442,22 +442,16 @@ struct ParametersSection: View {
     /// width unconditionally. Inside the drawer — pinned to `.frame(width: 320)`
     /// and `.clipped()` by the 0.9.27 overflow fix — a long menu item like
     /// "Euler Ancestral Trailing" demands more width than the parent can grant,
-    /// and SwiftUI has to reconcile the two every layout pass.
+    /// so SwiftUI must reconcile the two every layout pass. Bounding the width
+    /// makes the demand always satisfiable, where `.fixedSize()`'s was not.
     ///
-    /// On Intel / macOS 15.7.7 that reconciliation **never terminates**. A
-    /// `sample` taken during the hang put 7,288 of 7,288 samples (100% of a 10s
-    /// window) on one unbroken main-thread stack over 2,400 frames deep, cycling
-    /// `AG::Subgraph::update` → `AG::Graph::update_attribute` and bottoming out
-    /// in AppKit backing-store geometry (`NSViewGetTransformToBacking`,
-    /// `convertSizeToBacking:`, `+[NSScreen _backingScaleFactorForScreen:]`).
-    /// That is pixel-alignment rounding, which is the likeliest reason it is
-    /// machine-specific: old Intel iMacs are typically non-Retina (1× backing
-    /// scale) where the M1 dev machines are 2×, and a width that rounds cleanly
-    /// at 2× can oscillate between two values at 1×.
-    ///
-    /// Bounding the width removes the unbounded demand entirely, so there is
-    /// nothing left to oscillate — the cap is always satisfiable by the parent,
-    /// where `.fixedSize()`'s demand was not.
+    /// **This was NOT the cause of the Intel/macOS 15 hang, despite being
+    /// shipped as a fix for it in 0.9.28.** It was tested on the affected Intel
+    /// Mac and the hang persisted. The real cause was the seed `Slider`'s
+    /// 100,001 discrete steps (see the comment on the seed field below),
+    /// confirmed fixed by a tester on 0.9.29. Keep this cap anyway: it prevents
+    /// genuine truncation of the longest sampler name, which is a real if
+    /// cosmetic bug. Do not cite it as the hang fix.
     ///
     /// Sized to clear the longest menu entry rather than guessed: "Euler
     /// Ancestral Trailing" measures ~171pt at `mono(11.5)`, and a macOS pop-up
@@ -511,7 +505,9 @@ struct ParametersSection: View {
             }
             .padding(.top, 6)
             .help("CFG-Zero* guidance. Off by default; TS auto-enables for turbo models until set explicitly.")
-            // DIAGNOSTIC + real fix. Two reasons this is no longer a Slider:
+            // CONFIRMED FIX for the Intel/macOS 15 hang, plus a real
+            // reproducibility fix for everyone. Two reasons this is no longer a
+            // Slider:
             //
             // 1. It was bounded -1...99_999 with step 1 — 100,001 discrete
             //    positions, where every other slider here has ≤150 — while real
@@ -530,6 +526,16 @@ struct ParametersSection: View {
             // A numeric field plus a dice button is what the classic
             // GenerateLeftPanel already uses, holds the full UInt32 range, and
             // removes the 100k-step control entirely.
+            //
+            // Verified: a tester on an older Intel Mac confirmed 0.9.29 no
+            // longer hangs. Reason 2 was therefore the actual root cause — the
+            // earlier attempt at this bug (bounding the drawer's Picker widths,
+            // see drawerPickerWidth above) did NOT fix it.
+            //
+            // So: do not reintroduce a high-step-count Slider anywhere in this
+            // drawer. ≤150 steps is the established norm here; a control with
+            // tens of thousands of positions can hang older machines outright
+            // rather than merely being slow.
             HStack {
                 Text("Seed").font(TanqueDS.Font.mono(11.5)).foregroundStyle(DashboardDS.muted2)
                 Spacer()
