@@ -107,6 +107,14 @@ final class StoryFlowEngine {
         loopCounters = [:]
         jumpToIndex = nil
 
+        // Lead with what this run will skip, so the log says it once up front rather
+        // than only as scattered ↪ lines the reader has to reassemble. See
+        // StoryFlowRunPreflight.
+        let preflight = StoryFlowRunPreflight(workflow: workflow)
+        for line in preflight.summaryLines {
+            log("\(preflight.requiresConfirmation ? "⚠️" : "ℹ️") \(line)")
+        }
+
         runTask = Task { @MainActor in
             do {
                 let steps = workflow.steps

@@ -422,13 +422,35 @@ model those fields, so importing this project silently drops them and the render
 Batch D stops being the "niche" batch: it is what this real project needs, and the bump that
 blocked it has landed.
 
-**2. Skipped passthrough steps can silently produce a wrong render, not just a partial one.**
+**2. Running an imported Editor project produces nothing at all — and that is worse than the
+partial render first assumed here.**
+
 This project's whole subject comes from `concat`×4 + `wildcard`×4; the trailing `prompt` item
 carries only the camera/layout suffix (`".\ntop left, face, neutral expression…"`). All eight
-subject-bearing steps are passthrough today, so *running* it in Tanque Studio renders the suffix
-alone — a completely different image, with only a `↪ … (preserved, not executed)` line in the
-run log to say so. The engine's per-step skip note is fine for `maskFG`; it is not fine for a
-step that supplies the prompt. **Recommendation, cheap and independent of Phase 2: before a run,
-count non-executable steps and surface a blocking or acknowledgeable warning naming them** —
-"4 concat and 4 wildcard steps will be skipped; the prompt will not match the project." Phase 3
-retires the need for it, but it should not wait for Phase 3.
+subject-bearing steps are passthrough, so the natural prediction was that Tanque Studio renders
+the suffix alone — a different image, announced only by `↪ … (preserved, not executed)` lines.
+
+**Running it proved that prediction wrong, and the truth is broader.** The run reports
+"Run complete" over an **empty gallery**. There is no render at all, because the *render trigger*
+does not survive import either: DT's pipeline has no explicit generate — its `prompt` instruction
+both sets the text and renders (§3.2) — and the importer maps `prompt` to `promptInstruction`,
+which only sets text. **No Editor-authored project contains anything the importer turns into a
+`.generate` step, so every imported project is a no-op in Tanque Studio until the user adds one
+by hand.** That is not a property of this project; it is a property of the import path, and it
+was invisible because nothing said so.
+
+**Shipped (2026-07-26): `StoryFlowRunPreflight`.** Before a run it reports, most-severe first:
+(a) the workflow has no `.generate` step, so the run will produce no images; and (b) which
+instruction types will be skipped, named with counts, split by whether they feed the
+prompt/config (the render won't match the project) or are DT-canvas-local (§3.4 — the renders
+themselves are unaffected). It surfaces in three places: a persistent banner above the step list,
+an acknowledgeable "Run Anyway" confirmation, and the head of the run log. Canvas-only skips
+inform but do not interrupt. Live-verified against this project, and confirmed silent on a
+Tanque Studio-authored workflow.
+
+**The underlying fix is still open, and it is a real decision.** The importer could synthesize a
+`.generate` after each `prompt` item, matching DT's semantics — the export path already drops a
+`generate` that immediately follows a `prompt` (`StoryFlowProjectCodec.swift:451`), so the
+round-trip should survive it. That makes imported projects actually runnable instead of merely
+honest about being unrunnable. It is a change to import semantics guarded by the round-trip
+harness, and it overlaps Phase 3's `concat` re-modelling, so it is flagged rather than assumed.

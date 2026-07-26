@@ -6,10 +6,19 @@ import AppKit
 struct StoryFlowStepListPanel: View {
     @Bindable var vm: StoryFlowViewModel
 
+    /// Raised by Run when the workflow contains steps that would change the render if
+    /// skipped. Acknowledgeable rather than blocking — see StoryFlowRunPreflight.
+    @State private var showSkipConfirmation = false
+
     var body: some View {
         VStack(spacing: 0) {
             toolbar
             Divider()
+
+            if let preflight = vm.runPreflight, !preflight.isEmpty {
+                skippedStepsBanner(preflight)
+                Divider()
+            }
 
             if vm.showTextView {
                 textView
@@ -18,6 +27,51 @@ struct StoryFlowStepListPanel: View {
             }
         }
         .background(Color(NSColor.controlBackgroundColor))
+        .confirmationDialog(
+            vm.runPreflight?.confirmationTitle ?? "",
+            isPresented: $showSkipConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Run Anyway") { vm.run() }
+            Button("Cancel", role: .cancel) { }
+        } message: {
+            Text(vm.runPreflight?.message ?? "")
+        }
+    }
+
+    // MARK: — Skipped-step banner
+
+    /// A persistent, non-modal count of what a run would skip. It sits above the steps
+    /// while editing rather than only appearing at run time, because the answer to
+    /// "why doesn't this match the project?" should be visible before the run, not after.
+    private func skippedStepsBanner(_ preflight: StoryFlowRunPreflight) -> some View {
+        HStack(alignment: .top, spacing: 6) {
+            Image(systemName: preflight.requiresConfirmation
+                  ? "exclamationmark.triangle.fill"
+                  : "info.circle.fill")
+                .font(.caption)
+                .foregroundStyle(preflight.requiresConfirmation ? .orange : .secondary)
+
+            // One line per issue rather than a single run-on paragraph — a workflow can
+            // both render nothing and skip half its prompt, and those are separate fixes.
+            VStack(alignment: .leading, spacing: 3) {
+                ForEach(preflight.summaryLines, id: \.self) { line in
+                    Text(line)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(preflight.requiresConfirmation
+                    ? Color.orange.opacity(0.10)
+                    : Color.secondary.opacity(0.06))
+        .accessibilityElement(children: .combine)
     }
 
     // MARK: — Toolbar
@@ -59,7 +113,15 @@ struct StoryFlowStepListPanel: View {
                     .buttonStyle(.borderedProminent)
                     .tint(.red)
                 } else {
-                    Button { vm.run() } label: {
+                    Button {
+                        // A run that renders nothing, or renders from the wrong prompt,
+                        // is worth interrupting for; canvas-only skips stay in the banner.
+                        if vm.runPreflight?.requiresConfirmation == true {
+                            showSkipConfirmation = true
+                        } else {
+                            vm.run()
+                        }
+                    } label: {
                         Label("Run", systemImage: "play.fill")
                             .font(.caption.weight(.semibold))
                     }

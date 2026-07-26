@@ -309,6 +309,11 @@ final class StoryFlowViewModel {
 
     // MARK: — Execution
 
+    /// What the selected workflow would skip if it ran now. Nil when nothing is selected.
+    var runPreflight: StoryFlowRunPreflight? {
+        selectedWorkflow.map { StoryFlowRunPreflight(workflow: $0) }
+    }
+
     func run() {
         guard let workflow = selectedWorkflow else { return }
         engine.run(workflow: workflow, variables: variables)
