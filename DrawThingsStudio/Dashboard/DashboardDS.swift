@@ -2,11 +2,14 @@ import SwiftUI
 
 // MARK: - Dashboard + Focus Rooms design tokens
 //
-// Isolated from TanqueDS on purpose — this fork's light "paper" palette is
-// spike-only. If it loses the layout-forks bake-off, this whole Dashboard/
-// folder is deleted and TanqueDS stays untouched. See
-// design_handoff_layout_forks/README.md, Fork 4. Values copied verbatim
-// from the prototype's [data-theme="paper"] block, not re-derived.
+// Written as a spike: isolated from TanqueDS so that losing the layout-forks
+// bake-off meant deleting this folder with TanqueDS untouched. **It won** — the
+// Dashboard shipped as the default navigation in v0.9.25, so this is now the
+// app's primary design language rather than a candidate for one, and StoryFlow
+// was brought onto it in the 2026-07-26 design pass (see StoryFlowDS.swift).
+//
+// Values were copied verbatim from the prototype's [data-theme="paper"] block,
+// not re-derived — keep it that way when adding tokens.
 
 enum DashboardDS {
     static let bg    = Color(hex: "#f0ebe0")
@@ -106,6 +109,20 @@ struct DashboardPrimaryButtonStyle: ButtonStyle {
             .padding(.horizontal, 16)
             .padding(.vertical, 8)
             .background(DashboardDS.brass, in: RoundedRectangle(cornerRadius: 8))
+            .opacity(configuration.isPressed ? 0.8 : 1)
+    }
+}
+
+/// Primary button in the destructive register — same shape and weight, so a
+/// Cancel that replaces a Run in place doesn't shift the layout under the cursor.
+struct DashboardDestructiveButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(TanqueDS.Font.monoSemiBold(11.5))
+            .foregroundStyle(DashboardDS.onBrass)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+            .background(DashboardDS.red, in: RoundedRectangle(cornerRadius: 8))
             .opacity(configuration.isPressed ? 0.8 : 1)
     }
 }

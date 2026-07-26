@@ -13,24 +13,25 @@ struct StoryFlowVariablesPanel: View {
     var body: some View {
         VStack(spacing: 0) {
             header
-            Divider()
             ScrollView {
                 VStack(spacing: 0) {
                     ForEach(sectionOrder, id: \.self) { type in
                         sectionForType(type)
-                        Divider()
                     }
                 }
             }
+            .scrollContentBackground(.hidden)
+            .background(DashboardDS.bg)
         }
-        .background(Color(NSColor.controlBackgroundColor))
+        .background(DashboardDS.bg)
         .overlay(alignment: .bottom) {
             if let msg = importToast {
                 Text(msg)
-                    .font(.caption)
+                    .font(TanqueDS.Font.mono(11))
+                    .foregroundStyle(DashboardDS.text)
                     .padding(.horizontal, 12)
                     .padding(.vertical, 7)
-                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+                    .dashboardSurface(cornerRadius: 8)
                     .padding(12)
                     .transition(.opacity.combined(with: .move(edge: .bottom)))
             }
@@ -41,10 +42,7 @@ struct StoryFlowVariablesPanel: View {
     // MARK: - Header
 
     private var header: some View {
-        HStack(spacing: 6) {
-            Text("Variables")
-                .font(.headline)
-            Spacer()
+        StoryFlowPanelHeader(title: "Variables") {
             Button { loadProject() } label: {
                 Image(systemName: "tray.and.arrow.down")
             }
@@ -80,8 +78,7 @@ struct StoryFlowVariablesPanel: View {
             .buttonStyle(.plain)
             .help("Open variables folder in Finder")
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
+        .buttonStyle(.storyFlowHeaderIcon)
     }
 
     private func loadProject() {
@@ -201,16 +198,16 @@ struct StoryFlowVariablesPanel: View {
                     // Empty state row
                     HStack(spacing: 6) {
                         Text("No \(type.displayName.lowercased()) variables")
-                            .font(.caption)
-                            .foregroundStyle(.tertiary)
+                            .font(TanqueDS.Font.mono(11))
+                            .foregroundStyle(DashboardDS.muted)
                         Spacer()
                         Button {
                             vm.addVariable(type: type)
                         } label: {
                             Image(systemName: "plus")
-                                .font(.system(size: 12))
+                                .font(.system(size: 10, weight: .semibold))
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(.storyFlowHeaderIcon)
                     }
                     .padding(.horizontal, 12)
                     .padding(.vertical, 8)
@@ -252,27 +249,27 @@ struct StoryFlowVariablesPanel: View {
         // Left accent bar + content row
         HStack(spacing: 0) {
             Rectangle()
-                .fill(Color.accentColor.opacity(0.75))
+                .fill(DashboardDS.brass)
                 .frame(width: 3)
 
             HStack(spacing: 6) {
                 Image(systemName: type.iconName)
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(.secondary)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(DashboardDS.muted2)
                     .frame(width: 16)
 
                 Text(type.displayName.uppercased())
-                    .font(.system(size: 12, weight: .bold))
-                    .foregroundStyle(.primary)
-                    .kerning(0.5)
+                    .font(TanqueDS.Font.monoSemiBold(10.5))
+                    .tracking(0.8)
+                    .foregroundStyle(DashboardDS.text)
 
                 if count > 0 {
                     Text("\(count)")
-                        .font(.system(size: 10, weight: .semibold))
+                        .font(TanqueDS.Font.mono(9.5))
                         .padding(.horizontal, 5)
                         .padding(.vertical, 1)
-                        .background(Color.secondary.opacity(0.2))
-                        .foregroundStyle(.secondary)
+                        .background(DashboardDS.brassSubtle)
+                        .foregroundStyle(DashboardDS.brass)
                         .clipShape(Capsule())
                 }
 
@@ -282,19 +279,20 @@ struct StoryFlowVariablesPanel: View {
                     vm.addVariable(type: type)
                 } label: {
                     Image(systemName: "plus")
-                        .font(.system(size: 12, weight: .medium))
+                        .font(.system(size: 10, weight: .semibold))
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.storyFlowHeaderIcon)
 
                 Image(systemName: isCollapsed ? "chevron.right" : "chevron.down")
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(.tertiary)
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(DashboardDS.muted)
             }
             .padding(.leading, 10)
-            .padding(.trailing, 12)
-            .padding(.vertical, 8)
+            .padding(.trailing, 10)
+            .padding(.vertical, 7)
         }
-        .background(Color.primary.opacity(0.07))
+        .background(DashboardDS.surf2)
+        .overlay(alignment: .bottom) { Rectangle().fill(DashboardDS.border).frame(height: 1) }
         .contentShape(Rectangle())
         .onTapGesture {
             withAnimation(.easeInOut(duration: 0.15)) {
@@ -350,47 +348,48 @@ private struct VariableRow: View {
     private var rowHeader: some View {
         HStack(spacing: 6) {
             Image(systemName: variable.type.iconName)
-                .font(.system(size: 13))
-                .foregroundStyle(.secondary)
+                .font(.system(size: 11))
+                .foregroundStyle(DashboardDS.muted)
                 .frame(width: 16)
 
             Text(variable.type.prefix)
-                .font(.system(size: 13, weight: .semibold, design: .monospaced))
-                .foregroundStyle(variable.isBuiltIn ? .orange : .accentColor)
+                .font(TanqueDS.Font.monoSemiBold(12))
+                .foregroundStyle(variable.isBuiltIn ? DashboardDS.orange : DashboardDS.brass)
 
             Text(variable.name)
-                .font(.footnote.weight(.medium))
+                .font(TanqueDS.Font.mono(11.5))
+                .foregroundStyle(DashboardDS.text)
                 .lineLimit(1)
 
             if variable.isBuiltIn {
                 Text("built-in")
-                    .font(.system(size: 10, weight: .semibold))
+                    .font(TanqueDS.Font.badgeLabel)
                     .padding(.horizontal, 4)
                     .padding(.vertical, 1)
-                    .background(Color.orange.opacity(0.15))
-                    .foregroundStyle(.orange)
+                    .background(DashboardDS.orange.opacity(0.16))
+                    .foregroundStyle(DashboardDS.orange)
                     .clipShape(Capsule())
             }
 
             Spacer()
 
             Text(variable.valuePreview)
-                .font(.caption)
-                .foregroundStyle(.tertiary)
+                .font(TanqueDS.Font.mono(10))
+                .foregroundStyle(DashboardDS.muted)
                 .lineLimit(1)
 
             Button {
                 showDeleteConfirm = true
             } label: {
                 Image(systemName: "minus.circle")
-                    .font(.system(size: 13))
-                    .foregroundStyle(.red.opacity(0.7))
+                    .font(.system(size: 11))
+                    .foregroundStyle(DashboardDS.red.opacity(0.8))
             }
             .buttonStyle(.plain)
 
             Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
-                .font(.system(size: 11))
-                .foregroundStyle(.tertiary)
+                .font(.system(size: 9, weight: .semibold))
+                .foregroundStyle(DashboardDS.muted)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
@@ -402,12 +401,11 @@ private struct VariableRow: View {
             // Name field
             HStack {
                 Text("Name")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .font(TanqueDS.Font.mono(10.5))
+                    .foregroundStyle(DashboardDS.muted)
                     .frame(width: 60, alignment: .trailing)
                 TextField("name", text: $variable.name)
-                    .textFieldStyle(.roundedBorder)
-                    .font(.footnote)
+                    .storyFlowFieldChrome()
                     .onSubmit { onSave(variable) }
             }
 
@@ -416,25 +414,27 @@ private struct VariableRow: View {
             case .prompt:
                 HStack(alignment: .top) {
                     Text("Value")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .font(TanqueDS.Font.mono(10.5))
+                        .foregroundStyle(DashboardDS.muted)
                         .frame(width: 60, alignment: .trailing)
                         .padding(.top, 3)
                     TextEditor(text: Binding(
                         get: { variable.promptValue ?? "" },
                         set: { variable.promptValue = $0 }
                     ))
-                    .font(.footnote)
+                    .font(TanqueDS.Font.mono(11))
+                    .scrollContentBackground(.hidden)
+                    .background(DashboardDS.bg, in: RoundedRectangle(cornerRadius: 5))
                     .frame(minHeight: 60)
-                    .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.secondary.opacity(0.3)))
+                    .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(DashboardDS.border, lineWidth: 1))
                     .onChange(of: variable.promptValue) { _, _ in onSave(variable) }
                 }
 
             case .config:
                 HStack(alignment: .top) {
                     Text("Config")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .font(TanqueDS.Font.mono(10.5))
+                        .foregroundStyle(DashboardDS.muted)
                         .frame(width: 60, alignment: .trailing)
                         .padding(.top, 3)
                     VStack(alignment: .leading, spacing: 4) {
@@ -442,16 +442,18 @@ private struct VariableRow: View {
                             get: { variable.configJSON ?? "" },
                             set: { variable.configJSON = $0.isEmpty ? nil : $0 }
                         ))
-                        .font(.system(size: 12, design: .monospaced))
+                        .font(TanqueDS.Font.mono(11))
+                        .scrollContentBackground(.hidden)
+                        .background(DashboardDS.bg, in: RoundedRectangle(cornerRadius: 5))
                         .frame(minHeight: 80)
-                        .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.secondary.opacity(0.3)))
+                        .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(DashboardDS.border, lineWidth: 1))
                         .onChange(of: variable.configJSON) { _, _ in onSave(variable) }
                         if let json = variable.configJSON, !json.isEmpty {
                             let isValid = isValidConfigJSON(json)
                             Label(isValid ? "Valid config" : "Invalid JSON",
                                   systemImage: isValid ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
-                                .font(.system(size: 12))
-                                .foregroundStyle(isValid ? Color.green : Color.orange)
+                                .font(TanqueDS.Font.mono(10.5))
+                                .foregroundStyle(isValid ? DashboardDS.green : DashboardDS.orange)
                         }
                     }
                 }
@@ -459,40 +461,41 @@ private struct VariableRow: View {
             case .lora:
                 HStack {
                     Text("File")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .font(TanqueDS.Font.mono(10.5))
+                        .foregroundStyle(DashboardDS.muted)
                         .frame(width: 60, alignment: .trailing)
                     TextField("lora.safetensors", text: Binding(
                         get: { variable.loraFile ?? "" },
                         set: { variable.loraFile = $0 }
                     ))
-                    .textFieldStyle(.roundedBorder)
-                    .font(.footnote)
+                    .storyFlowFieldChrome()
                     .onSubmit { onSave(variable) }
                 }
                 HStack {
                     Text("Weight")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .font(TanqueDS.Font.mono(10.5))
+                        .foregroundStyle(DashboardDS.muted)
                         .frame(width: 60, alignment: .trailing)
                     Slider(value: Binding(
                         get: { variable.loraWeight ?? 1.0 },
                         set: { variable.loraWeight = $0; onSave(variable) }
                     ), in: 0...2, step: 0.05)
+                    .tint(DashboardDS.brass)
                     Text(String(format: "%.2f", variable.loraWeight ?? 1.0))
-                        .font(.caption.monospacedDigit())
-                        .frame(width: 36)
+                        .font(TanqueDS.Font.mono(10.5))
+                        .foregroundStyle(DashboardDS.brass)
+                        .frame(width: 36, alignment: .trailing)
                 }
 
             case .image:
                 HStack {
                     Text("File")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .font(TanqueDS.Font.mono(10.5))
+                        .foregroundStyle(DashboardDS.muted)
                         .frame(width: 60, alignment: .trailing)
                     Text(variable.imageFileName ?? "None")
-                        .font(.caption)
-                        .foregroundStyle(.tertiary)
+                        .font(TanqueDS.Font.mono(11))
+                        .foregroundStyle(DashboardDS.muted)
                 }
 
             case .wildcard:
@@ -500,18 +503,17 @@ private struct VariableRow: View {
                 HStack(alignment: .top) {
                     VStack(alignment: .trailing, spacing: 2) {
                         Text("Options")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .font(TanqueDS.Font.mono(10.5))
+                            .foregroundStyle(DashboardDS.muted)
                             .frame(width: 60, alignment: .trailing)
                         Text("pipe-sep.")
-                            .font(.system(size: 10))
-                            .foregroundStyle(.tertiary)
+                            .font(TanqueDS.Font.mono(9.5))
+                            .foregroundStyle(DashboardDS.muted.opacity(0.8))
                             .frame(width: 60, alignment: .trailing)
                     }
                     .padding(.top, 3)
                     TextField("red|green|blue", text: $wildcardText)
-                        .textFieldStyle(.roundedBorder)
-                        .font(.system(size: 13, design: .monospaced))
+                        .storyFlowFieldChrome()
                         .onSubmit { commitWildcard() }
                         .onChange(of: wildcardText) { _, _ in commitWildcard() }
                 }
@@ -520,16 +522,15 @@ private struct VariableRow: View {
             // Notes field
             HStack(alignment: .top) {
                 Text("Notes")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .font(TanqueDS.Font.mono(10.5))
+                    .foregroundStyle(DashboardDS.muted)
                     .frame(width: 60, alignment: .trailing)
                     .padding(.top, 2)
                 TextField("optional notes", text: Binding(
                     get: { variable.notes ?? "" },
                     set: { variable.notes = $0.isEmpty ? nil : $0 }
                 ))
-                .textFieldStyle(.roundedBorder)
-                .font(.caption)
+                .storyFlowFieldChrome()
                 .onSubmit { onSave(variable) }
             }
         }
@@ -559,21 +560,20 @@ private struct VariableRow: View {
     private var deleteConfirmBar: some View {
         HStack {
             Text("Delete this variable?")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+                .font(TanqueDS.Font.mono(11))
+                .foregroundStyle(DashboardDS.text)
             Spacer()
             Button("Cancel") { showDeleteConfirm = false }
-                .font(.caption)
-                .buttonStyle(.borderless)
+                .buttonStyle(.plain)
+                .font(TanqueDS.Font.mono(11))
+                .foregroundStyle(DashboardDS.muted2)
             Button("Delete") {
                 showDeleteConfirm = false
                 onDelete()
             }
-            .font(.caption)
-            .buttonStyle(.borderedProminent)
-            .tint(.red)
+            .buttonStyle(DashboardDestructiveButtonStyle())
         }
         .padding(8)
-        .background(Color.red.opacity(0.08), in: RoundedRectangle(cornerRadius: 6))
+        .background(DashboardDS.red.opacity(0.10), in: RoundedRectangle(cornerRadius: 6))
     }
 }

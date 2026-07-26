@@ -13,31 +13,25 @@ struct StoryFlowOutputPanel: View {
     var body: some View {
         VStack(spacing: 0) {
             header
-            Divider()
             content
         }
-        .background(Color(NSColor.controlBackgroundColor))
+        .background(DashboardDS.bg)
     }
 
     // MARK: — Header
 
     private var header: some View {
-        HStack(spacing: 6) {
-            Text("Output")
-                .font(.headline)
-            Spacer()
+        StoryFlowPanelHeader(title: "Output") {
             if let folder = vm.engine.outputFolder {
                 Button {
                     NSWorkspace.shared.open(folder)
                 } label: {
                     Image(systemName: "folder")
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.storyFlowHeaderIcon)
                 .help("Open output folder in Finder")
             }
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
     }
 
     // MARK: — Content
@@ -56,13 +50,13 @@ struct StoryFlowOutputPanel: View {
 
                     // Run state banner
                     if case .completed = vm.engine.runState {
-                        stateBanner(text: "Run complete", color: .green,
+                        stateBanner(text: "Run complete", color: DashboardDS.green,
                                     icon: "checkmark.circle.fill")
                     } else if case .cancelled = vm.engine.runState {
-                        stateBanner(text: "Cancelled", color: .orange,
+                        stateBanner(text: "Cancelled", color: DashboardDS.orange,
                                     icon: "stop.circle.fill")
                     } else if case .failed(let msg) = vm.engine.runState {
-                        stateBanner(text: "Failed: \(msg)", color: .red,
+                        stateBanner(text: "Failed: \(msg)", color: DashboardDS.red,
                                     icon: "exclamationmark.triangle.fill")
                     }
 
@@ -87,11 +81,11 @@ struct StoryFlowOutputPanel: View {
     private var emptyState: some View {
         VStack(spacing: 8) {
             Image(systemName: "film")
-                .font(.system(size: 32))
-                .foregroundStyle(.tertiary)
+                .font(.system(size: 30))
+                .foregroundStyle(DashboardDS.muted.opacity(0.6))
             Text("Run a workflow to see results here.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+                .font(TanqueDS.Font.mono(11))
+                .foregroundStyle(DashboardDS.muted)
                 .multilineTextAlignment(.center)
         }
         .padding()
@@ -106,21 +100,24 @@ struct StoryFlowOutputPanel: View {
             let current = vm.engine.currentStepIndex + 1
             HStack {
                 Text("Step \(current) of \(total)")
-                    .font(.caption.weight(.semibold))
+                    .font(TanqueDS.Font.monoSemiBold(11))
+                    .foregroundStyle(DashboardDS.text)
                 Spacer()
                 Text(vm.engine.stepProgress.description)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
+                    .font(TanqueDS.Font.mono(10.5))
+                    .foregroundStyle(DashboardDS.muted)
             }
             ProgressView(value: vm.engine.stepProgress.fraction)
                 .progressViewStyle(.linear)
+                .tint(DashboardDS.brass)
             ProgressView(value: Double(vm.engine.currentStepIndex),
                          total: Double(max(vm.engine.totalSteps, 1)))
                 .progressViewStyle(.linear)
-                .tint(.secondary.opacity(0.4))
+                .tint(DashboardDS.muted.opacity(0.5))
         }
         .padding(10)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+        .background(DashboardDS.surf1, in: RoundedRectangle(cornerRadius: 8))
+        .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(DashboardDS.border, lineWidth: 1))
     }
 
     // MARK: — State banner
@@ -128,23 +125,24 @@ struct StoryFlowOutputPanel: View {
     private func stateBanner(text: String, color: Color, icon: String) -> some View {
         HStack(spacing: 6) {
             Image(systemName: icon)
+                .font(.system(size: 11))
                 .foregroundStyle(color)
             Text(text)
-                .font(.caption.weight(.medium))
+                .font(TanqueDS.Font.mono(11))
+                .foregroundStyle(DashboardDS.text)
+                .fixedSize(horizontal: false, vertical: true)
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(color.opacity(0.1), in: RoundedRectangle(cornerRadius: 6))
+        .background(color.opacity(0.12), in: RoundedRectangle(cornerRadius: 6))
     }
 
     // MARK: — Results grid
 
     private var resultsGrid: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("Results")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
+            DashboardCardLabel(text: "Results")
             LazyVGrid(columns: columns, spacing: 8) {
                 ForEach(Array(vm.engine.stepResults.keys), id: \.self) { stepID in
                     if let img = vm.engine.stepResults[stepID] {
@@ -160,25 +158,25 @@ struct StoryFlowOutputPanel: View {
 
     private var logSection: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text("Log")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
+            DashboardCardLabel(text: "Log")
 
             if vm.engine.stepLog.isEmpty {
                 Text("No log entries yet.")
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
+                    .font(TanqueDS.Font.mono(10.5))
+                    .foregroundStyle(DashboardDS.muted)
             } else {
                 VStack(alignment: .leading, spacing: 2) {
                     ForEach(vm.engine.stepLog.indices, id: \.self) { idx in
                         Text(vm.engine.stepLog[idx])
-                            .font(.system(size: 10, design: .monospaced))
-                            .foregroundStyle(.secondary)
+                            .font(TanqueDS.Font.mono(10))
+                            .foregroundStyle(DashboardDS.muted2)
+                            .textSelection(.enabled)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
                 }
                 .padding(8)
-                .background(Color.black.opacity(0.05), in: RoundedRectangle(cornerRadius: 6))
+                .background(DashboardDS.surf1, in: RoundedRectangle(cornerRadius: 6))
+                .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(DashboardDS.border, lineWidth: 1))
             }
         }
     }
@@ -203,11 +201,8 @@ struct StoryFlowOutputPanel: View {
             NSWorkspace.shared.open(workflowFolder)
         } label: {
             Label("Open Output Folder", systemImage: "folder")
-                .font(.caption)
         }
-        .buttonStyle(.borderless)
-        .foregroundStyle(.secondary)
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .buttonStyle(DashboardGhostButtonStyle())
     }
 }
 
@@ -225,14 +220,14 @@ private struct ResultThumbnail: View {
                 .aspectRatio(contentMode: .fill)
                 .frame(height: 100)
                 .clipped()
-                .clipShape(RoundedRectangle(cornerRadius: 4))
-                .overlay(RoundedRectangle(cornerRadius: 4)
-                    .stroke(Color.accentColor.opacity(0.3), lineWidth: 1))
+                .clipShape(RoundedRectangle(cornerRadius: 5))
+                .overlay(RoundedRectangle(cornerRadius: 5)
+                    .strokeBorder(DashboardDS.border2, lineWidth: 1))
 
             let label = workflow?.steps.first(where: { $0.id == stepID })?.displayLabel ?? "Output"
             Text(label)
-                .font(.system(size: 9))
-                .foregroundStyle(.secondary)
+                .font(TanqueDS.Font.mono(9.5))
+                .foregroundStyle(DashboardDS.muted)
                 .lineLimit(1)
         }
     }

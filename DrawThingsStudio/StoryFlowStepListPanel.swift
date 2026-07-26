@@ -13,11 +13,9 @@ struct StoryFlowStepListPanel: View {
     var body: some View {
         VStack(spacing: 0) {
             toolbar
-            Divider()
 
             if let preflight = vm.runPreflight, !preflight.isEmpty {
                 skippedStepsBanner(preflight)
-                Divider()
             }
 
             if vm.showTextView {
@@ -26,7 +24,7 @@ struct StoryFlowStepListPanel: View {
                 stepList
             }
         }
-        .background(Color(NSColor.controlBackgroundColor))
+        .background(DashboardDS.bg)
         .confirmationDialog(
             vm.runPreflight?.confirmationTitle ?? "",
             isPresented: $showSkipConfirmation,
@@ -49,16 +47,16 @@ struct StoryFlowStepListPanel: View {
             Image(systemName: preflight.requiresConfirmation
                   ? "exclamationmark.triangle.fill"
                   : "info.circle.fill")
-                .font(.caption)
-                .foregroundStyle(preflight.requiresConfirmation ? .orange : .secondary)
+                .font(.system(size: 11))
+                .foregroundStyle(preflight.requiresConfirmation ? DashboardDS.orange : DashboardDS.muted)
 
             // One line per issue rather than a single run-on paragraph — a workflow can
             // both render nothing and skip half its prompt, and those are separate fixes.
             VStack(alignment: .leading, spacing: 3) {
                 ForEach(preflight.summaryLines, id: \.self) { line in
                     Text(line)
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
+                        .font(TanqueDS.Font.mono(10.5))
+                        .foregroundStyle(DashboardDS.muted2)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
@@ -69,8 +67,9 @@ struct StoryFlowStepListPanel: View {
         .padding(.vertical, 6)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(preflight.requiresConfirmation
-                    ? Color.orange.opacity(0.10)
-                    : Color.secondary.opacity(0.06))
+                    ? DashboardDS.orange.opacity(0.12)
+                    : DashboardDS.surf2)
+        .overlay(alignment: .bottom) { Rectangle().fill(DashboardDS.border).frame(height: 1) }
         .accessibilityElement(children: .combine)
     }
 
@@ -84,16 +83,17 @@ struct StoryFlowStepListPanel: View {
                         get: { vm.selectedWorkflow?.name ?? "" },
                         set: { vm.selectedWorkflow?.name = $0 }
                     ))
-                    .textFieldStyle(.roundedBorder)
-                    .font(.headline)
+                    .textFieldStyle(.plain)
+                    .font(TanqueDS.Font.monoSemiBold(13))
+                    .foregroundStyle(DashboardDS.text)
                     .onSubmit { vm.saveCurrentWorkflow() }
                 } else {
                     Text("No workflow selected")
-                        .font(.headline)
-                        .foregroundStyle(.secondary)
+                        .font(TanqueDS.Font.mono(13))
+                        .foregroundStyle(DashboardDS.muted)
                 }
 
-                Spacer()
+                Spacer(minLength: 8)
 
                 Button {
                     if vm.showTextView { vm.applyWorkflowJSON() }
@@ -101,6 +101,12 @@ struct StoryFlowStepListPanel: View {
                     vm.showTextView.toggle()
                 } label: {
                     Image(systemName: vm.showTextView ? "list.bullet" : "curlybraces")
+                        .font(.system(size: 11))
+                        .foregroundStyle(DashboardDS.muted2)
+                        .frame(width: 26, height: 24)
+                        .background(DashboardDS.surf2, in: RoundedRectangle(cornerRadius: 6))
+                        .overlay(RoundedRectangle(cornerRadius: 6)
+                            .strokeBorder(DashboardDS.border2, lineWidth: 1))
                 }
                 .buttonStyle(.plain)
                 .help(vm.showTextView ? "Show step cards" : "View as JSON")
@@ -108,10 +114,8 @@ struct StoryFlowStepListPanel: View {
                 if vm.isRunning {
                     Button { vm.cancel() } label: {
                         Label("Cancel", systemImage: "stop.fill")
-                            .font(.caption.weight(.semibold))
                     }
-                    .buttonStyle(.borderedProminent)
-                    .tint(.red)
+                    .buttonStyle(DashboardDestructiveButtonStyle())
                 } else {
                     Button {
                         // A run that renders nothing, or renders from the wrong prompt,
@@ -123,19 +127,21 @@ struct StoryFlowStepListPanel: View {
                         }
                     } label: {
                         Label("Run", systemImage: "play.fill")
-                            .font(.caption.weight(.semibold))
                     }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(DashboardPrimaryButtonStyle())
                     .disabled(vm.selectedWorkflow?.steps.isEmpty ?? true)
+                    .opacity((vm.selectedWorkflow?.steps.isEmpty ?? true) ? 0.45 : 1)
                 }
             }
             .padding(.horizontal, 12)
-            .padding(.vertical, 8)
+            .padding(.top, 10)
+            .padding(.bottom, 8)
 
-            HStack(spacing: 6) {
+            HStack(spacing: 10) {
                 Button("New") { vm.newWorkflow() }
-                    .buttonStyle(.borderless)
-                    .font(.caption)
+                    .buttonStyle(.plain)
+                    .font(TanqueDS.Font.mono(11))
+                    .foregroundStyle(DashboardDS.muted2)
 
                 if !vm.workflows.isEmpty {
                     Menu("Open…") {
@@ -147,21 +153,25 @@ struct StoryFlowStepListPanel: View {
                         }
                     }
                     .menuStyle(.borderlessButton)
-                    .font(.caption)
+                    .font(TanqueDS.Font.mono(11))
+                    .foregroundStyle(DashboardDS.muted2)
+                    .fixedSize()
                 }
 
                 Spacer()
 
                 if let w = vm.selectedWorkflow {
                     Button("Delete") { vm.deleteWorkflow(w) }
-                        .buttonStyle(.borderless)
-                        .font(.caption)
-                        .foregroundStyle(.red)
+                        .buttonStyle(.plain)
+                        .font(TanqueDS.Font.mono(11))
+                        .foregroundStyle(DashboardDS.red)
                 }
             }
             .padding(.horizontal, 12)
-            .padding(.bottom, 6)
+            .padding(.bottom, 9)
         }
+        .background(DashboardDS.surf1)
+        .overlay(alignment: .bottom) { Rectangle().fill(DashboardDS.border).frame(height: 1) }
     }
 
     // MARK: — Step list
@@ -169,35 +179,35 @@ struct StoryFlowStepListPanel: View {
     private var stepList: some View {
         Group {
             if vm.selectedWorkflow == nil {
-                VStack(spacing: 8) {
+                VStack(spacing: 10) {
                     Image(systemName: "doc.badge.plus")
-                        .font(.system(size: 32))
-                        .foregroundStyle(.tertiary)
+                        .font(.system(size: 30))
+                        .foregroundStyle(DashboardDS.muted.opacity(0.6))
                     Text("No workflow selected")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .font(TanqueDS.Font.monoSemiBold(12))
+                        .foregroundStyle(DashboardDS.muted2)
                     Text("StoryFlow is a step-based workflow engine — stack config and prompt steps, loop them, and generate series in one run.")
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
+                        .font(TanqueDS.Font.mono(11))
+                        .foregroundStyle(DashboardDS.muted)
                         .multilineTextAlignment(.center)
                         .frame(maxWidth: 300)
                     Button("New Workflow") { vm.newWorkflow() }
-                        .buttonStyle(.borderedProminent)
+                        .buttonStyle(DashboardPrimaryButtonStyle())
                     HelpTopicLink(title: "Learn more…", topic: HelpTopicID.storyFlow)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
 
             } else if vm.selectedWorkflow!.steps.isEmpty {
-                VStack(spacing: 8) {
+                VStack(spacing: 10) {
                     Image(systemName: "list.bullet.clipboard")
-                        .font(.system(size: 32))
-                        .foregroundStyle(.tertiary)
+                        .font(.system(size: 30))
+                        .foregroundStyle(DashboardDS.muted.opacity(0.6))
                     Text("No steps yet")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .font(TanqueDS.Font.monoSemiBold(12))
+                        .foregroundStyle(DashboardDS.muted2)
                     Text("Add a step to get started.")
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
+                        .font(TanqueDS.Font.mono(11))
+                        .foregroundStyle(DashboardDS.muted)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .overlay(alignment: .bottom) { addStepButton }
@@ -225,6 +235,8 @@ struct StoryFlowStepListPanel: View {
                     .onMove { vm.moveSteps(from: $0, to: $1) }
                 }
                 .listStyle(.plain)
+                .scrollContentBackground(.hidden)
+                .background(DashboardDS.bg)
                 .overlay(alignment: .bottomTrailing) { addStepButton }
             }
         }
@@ -277,14 +289,18 @@ struct StoryFlowStepListPanel: View {
                 menuItem(.note)
             }
         } label: {
-            Image(systemName: "plus.circle.fill")
-                .font(.system(size: 28))
-                .foregroundStyle(Color.accentColor)
-                .shadow(radius: 2)
+            Image(systemName: "plus")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(DashboardDS.onBrass)
+                .frame(width: 34, height: 34)
+                .background(DashboardDS.brass, in: Circle())
+                .shadow(color: .black.opacity(0.16), radius: 5, y: 2)
         }
         .menuStyle(.borderlessButton)
-        .frame(width: 44, height: 44)
-        .padding(12)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .help("Add a step")
+        .padding(14)
     }
 
     private func menuItem(_ type: WorkflowStepType) -> some View {
@@ -297,7 +313,11 @@ struct StoryFlowStepListPanel: View {
 
     private var textView: some View {
         TextEditor(text: $vm.workflowJSON)
-            .font(.system(size: 11, design: .monospaced))
+            .font(TanqueDS.Font.mono(11))
+            .foregroundStyle(DashboardDS.text)
+            .scrollContentBackground(.hidden)
+            .background(DashboardDS.bg)
+            .padding(8)
     }
 }
 
@@ -324,16 +344,21 @@ private struct VariablePickerField: View {
     var body: some View {
         HStack(spacing: 4) {
             TextField(placeholder, text: $text)
-                .textFieldStyle(.roundedBorder)
-                .font(.system(size: 11, design: .monospaced))
+                .storyFlowFieldChrome()
                 .onSubmit { onChange() }
 
             if !filtered.isEmpty {
                 Button { showPicker.toggle() } label: {
                     Image(systemName: "chevron.down")
-                        .font(.caption)
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(DashboardDS.muted2)
+                        .frame(width: 20, height: 22)
+                        .background(DashboardDS.surf2, in: RoundedRectangle(cornerRadius: 5))
+                        .overlay(RoundedRectangle(cornerRadius: 5)
+                            .strokeBorder(DashboardDS.border2, lineWidth: 1))
                 }
-                .buttonStyle(.borderless)
+                .buttonStyle(.plain)
+                .help("Insert a variable reference")
                 .popover(isPresented: $showPicker, arrowEdge: .bottom) {
                     VStack(alignment: .leading, spacing: 0) {
                         ForEach(filtered) { variable in
@@ -345,29 +370,33 @@ private struct VariablePickerField: View {
                             } label: {
                                 HStack(spacing: 6) {
                                     Image(systemName: variable.type.iconName)
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
+                                        .font(.system(size: 10))
+                                        .foregroundStyle(DashboardDS.muted)
                                         .frame(width: 14)
                                     Text(variable.type.prefix + variable.name)
-                                        .font(.caption)
+                                        .font(TanqueDS.Font.mono(11.5))
+                                        .foregroundStyle(DashboardDS.text)
                                     Spacer()
                                 }
                                 .padding(.horizontal, 12)
                                 .padding(.vertical, 6)
+                                .contentShape(Rectangle())
                             }
                             .buttonStyle(.plain)
                             Divider()
                         }
-                        Divider()
                         Button("Done") {
                             onChange()
                             showPicker = false
                         }
-                        .buttonStyle(.borderless)
+                        .buttonStyle(.plain)
+                        .font(TanqueDS.Font.monoSemiBold(11))
+                        .foregroundStyle(DashboardDS.brass)
                         .padding(8)
                         .frame(maxWidth: .infinity, alignment: .trailing)
                     }
                     .frame(minWidth: 200)
+                    .background(DashboardDS.surf1)
                 }
             }
         }
@@ -385,73 +414,32 @@ private struct StoryFlowStepCard: View {
     let onDelete: () -> Void
     let onChange: () -> Void
 
-    var accentColor: Color {
-        switch step.type {
-        case .configInstruction:  return .orange
-        case .promptInstruction:  return .teal
-        case .generate:           return .accentColor
-        case .loadCanvas:         return .green
-        case .saveCanvas:         return .blue
-        case .addToMoodboard:     return .purple
-        case .clearMoodboard:     return .orange
-        case .canvasToMoodboard:  return .purple
-        case .note:               return .gray
-        case .loop:               return .yellow
-        case .endLoop:            return .yellow
-        case .clearCanvas:        return .red
-        case .clearPrompt:        return .red
-        case .moveScale:          return .green
-        case .crop:               return .green
-        case .configInline:       return .orange
-        case .passthrough:        return .gray
-        }
+    /// A passthrough card is titled by the instruction it carries, not by the
+    /// word "Passthrough" — the instruction is the useful information, and Phase 2
+    /// promotes many of these to first-class steps under exactly these names.
+    private var title: String {
+        step.type == .passthrough
+            ? (step.parameters["itemType"] ?? "unknown")
+            : step.type.displayName
     }
 
     var body: some View {
-        HStack(spacing: 0) {
-            // Colored left strip with drag handle
-            VStack {
-                Image(systemName: "line.3.horizontal")
-                    .font(.system(size: 10))
-                    .foregroundStyle(.tertiary)
-            }
-            .frame(width: 20)
-            .frame(maxHeight: .infinity)
-            .background(accentColor.opacity(0.15))
-            .overlay(alignment: .leading) {
-                Rectangle().fill(accentColor).frame(width: 3)
-            }
-
-            // Label + field(s)
-            HStack(spacing: 8) {
-                // Fixed-width type label
-                Text(step.type.displayName)
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(accentColor)
-                    .frame(width: 108, alignment: .leading)
-                    .lineLimit(1)
-
-                // Primary field, fills remaining space
-                primaryField
-            }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 7)
-
-            // Delete button
-            Button(action: onDelete) {
-                Image(systemName: "xmark")
-                    .font(.system(size: 10, weight: .bold))
-                    .foregroundStyle(.white)
-                    .frame(width: 28, height: 28)
-                    .background(Color.red)
-                    .clipShape(RoundedRectangle(cornerRadius: 5))
-            }
-            .buttonStyle(.plain)
-            .padding(.trailing, 8)
+        StoryFlowCardChrome(
+            title: title,
+            accent: step.type.accent,
+            isInert: step.type == .passthrough,
+            onDelete: onDelete
+        ) {
+            primaryField
         }
-        .background(Color(NSColor.controlBackgroundColor))
-        .clipShape(RoundedRectangle(cornerRadius: 6))
-        .overlay(RoundedRectangle(cornerRadius: 6).stroke(accentColor.opacity(0.2), lineWidth: 1))
+    }
+
+    /// Caption used by steps whose behaviour is fixed and takes no parameters.
+    private func fixedBehaviour(_ text: String) -> some View {
+        Text(text)
+            .font(TanqueDS.Font.mono(10.5))
+            .foregroundStyle(DashboardDS.muted)
+            .fixedSize(horizontal: false, vertical: true)
     }
 
     // MARK: — Primary field per step type
@@ -490,8 +478,7 @@ private struct StoryFlowStepCard: View {
                 get: { step.parameters["outputName"] ?? "" },
                 set: { step.parameters["outputName"] = $0.isEmpty ? nil : $0 }
             ))
-            .textFieldStyle(.roundedBorder)
-            .font(.caption)
+            .storyFlowFieldChrome()
             .onSubmit { onChange() }
 
         case .loadCanvas, .saveCanvas:
@@ -499,8 +486,7 @@ private struct StoryFlowStepCard: View {
                 get: { step.parameters["name"] ?? "" },
                 set: { step.parameters["name"] = $0.isEmpty ? nil : $0 }
             ))
-            .textFieldStyle(.roundedBorder)
-            .font(.caption)
+            .storyFlowFieldChrome()
             .onSubmit { onChange() }
 
         case .addToMoodboard:
@@ -521,104 +507,89 @@ private struct StoryFlowStepCard: View {
             weightSlider
 
         case .clearMoodboard:
-            Text("clears all moodboard entries")
-                .font(.caption2)
-                .foregroundStyle(.tertiary)
+            fixedBehaviour("clears all moodboard entries")
 
         case .note:
             TextField("annotation…", text: Binding(
                 get: { step.parameters["text"] ?? "" },
                 set: { step.parameters["text"] = $0 }
             ))
-            .textFieldStyle(.roundedBorder)
-            .font(.caption)
+            .storyFlowFieldChrome()
             .onSubmit { onChange() }
 
         case .loop:
             HStack(spacing: 6) {
-                Text("Repeat")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                Text("repeat")
+                    .font(TanqueDS.Font.mono(10.5))
+                    .foregroundStyle(DashboardDS.muted)
                 TextField("count", text: Binding(
                     get: { step.parameters["count"] ?? "1" },
                     set: { step.parameters["count"] = $0.isEmpty ? nil : $0; onChange() }
                 ))
-                .frame(width: 50)
-                .textFieldStyle(.roundedBorder)
-                .font(.caption)
+                .multilineTextAlignment(.trailing)
+                .frame(width: 44)
+                .storyFlowFieldChrome()
                 .onSubmit { onChange() }
                 Text("times")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .font(TanqueDS.Font.mono(10.5))
+                    .foregroundStyle(DashboardDS.muted)
             }
 
         case .endLoop:
-            Text("↩ returns to matching loop")
-                .font(.caption2)
-                .foregroundStyle(.tertiary)
+            fixedBehaviour("↩ returns to the matching loop")
 
         case .clearCanvas:
-            Text("clears img2img canvas source")
-                .font(.caption2)
-                .foregroundStyle(.tertiary)
+            fixedBehaviour("clears the img2img canvas source")
 
         case .clearPrompt:
-            Text("resets accumulated prompt to empty")
-                .font(.caption2)
-                .foregroundStyle(.tertiary)
+            fixedBehaviour("resets the accumulated prompt to empty")
 
         case .moveScale:
             HStack(spacing: 6) {
-                ForEach([("X", "positionX"), ("Y", "positionY"), ("Scale", "scale")], id: \.0) { label, key in
+                ForEach([("x", "positionX"), ("y", "positionY"), ("scale", "scale")], id: \.0) { label, key in
                     Text(label)
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
+                        .font(TanqueDS.Font.mono(10.5))
+                        .foregroundStyle(DashboardDS.muted)
                     TextField("0", text: Binding(
                         get: { step.parameters[key] ?? (key == "scale" ? "1" : "0") },
                         set: { step.parameters[key] = $0.isEmpty ? nil : $0; onChange() }
                     ))
-                    .frame(width: 48)
-                    .textFieldStyle(.roundedBorder)
-                    .font(.caption.monospacedDigit())
+                    .multilineTextAlignment(.trailing)
+                    .frame(width: 42)
+                    .storyFlowFieldChrome()
                     .onSubmit { onChange() }
                 }
             }
 
         case .crop:
-            Text("Crops to the current move/scale viewport.")
-                .font(.caption2)
-                .foregroundStyle(.tertiary)
+            fixedBehaviour("crops to the current move/scale viewport")
 
         case .configInline:
             TextField("{\"width\":1024,\"height\":1024}", text: Binding(
                 get: { step.parameters["json"] ?? "" },
                 set: { step.parameters["json"] = $0.isEmpty ? nil : $0 }
             ))
-            .textFieldStyle(.roundedBorder)
-            .font(.system(size: 11, design: .monospaced))
+            .storyFlowFieldChrome()
             .onSubmit { onChange() }
 
         case .passthrough:
-            VStack(alignment: .leading, spacing: 2) {
-                Text(step.parameters["itemType"] ?? "unknown")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                Text("Preserved on save, not yet executable in TanqueStudio.")
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
-            }
+            // The instruction name is the card's title now, so the body only has
+            // to explain the consequence.
+            fixedBehaviour("preserved on save, not executable yet")
         }
     }
 
     private var weightSlider: some View {
-        HStack(spacing: 4) {
+        HStack(spacing: 6) {
             Slider(value: Binding(
                 get: { Double(step.parameters["weight"] ?? "1.0") ?? 1.0 },
                 set: { step.parameters["weight"] = String(format: "%.2f", $0); onChange() }
             ), in: 0...1, step: 0.05)
+            .tint(DashboardDS.brass)
             Text(step.parameters["weight"] ?? "1.00")
-                .font(.caption2.monospacedDigit())
-                .frame(width: 30)
+                .font(TanqueDS.Font.mono(10.5))
+                .foregroundStyle(DashboardDS.brass)
+                .frame(width: 30, alignment: .trailing)
         }
     }
 }
