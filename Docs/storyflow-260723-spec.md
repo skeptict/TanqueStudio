@@ -41,7 +41,7 @@ Editor `$wildcard` shortcuts are expanded to a literal string **at export time**
 | Project codec — import | `note`, `prompt`, `config`, `canvasClear`, `canvasSave`, `canvasLoad`, `moveScale`, `crop`, `moodboardClear`, `moodboardCanvas`, `moodboardAdd`/`moodboardLoad`, `generate`/`pipeline`, `loop`, `loopEnd` | `StoryFlowProjectCodec.swift:93-159` |
 | Project codec — export | same set, plus a `generate` marker | `StoryFlowProjectCodec.swift:378-467` |
 | Engine — native execution | `configInstruction`, `promptInstruction`, `generate`, `loadCanvas`, `saveCanvas`, `addToMoodboard`, `clearMoodboard`, `canvasToMoodboard`, `note`, `loop`, `endLoop`, `clearCanvas`, `clearPrompt`, `moveScale`, `crop`, `configInline` | `StoryFlowEngine.swift:162-314` |
-| Everything else | `.passthrough` — preserved byte-for-byte on round-trip, invisible in the editor, skipped at run time | `StoryFlowModels.swift:146` |
+| Everything else | `.passthrough` — preserved byte-for-byte on round-trip, shown as a read-only grey card ("Preserved on save, not yet executable"), skipped at run time | `StoryFlowModels.swift:146` |
 
 That is **14 of 49** keys authorable, and 16 step types runnable — of which only a handful are true DT canvas operations.
 
@@ -153,20 +153,22 @@ Everything in §3.4. Not part of 260723 adoption. Listed so it stops looking lik
 
 ### Dependency note
 
-Phase 2's `xlMagic` and Phase 3's `sweep` both want parity **Batch F**; `sweep` benefits from **Batch D** (tiling) too. Batch D is blocked on landing `chore/bump-drawthings-client` (`9798dd2`) — unchanged from v0.9.28. Neither blocks Phases 1–3 from starting; they only cap how much `sweep` can reach.
+Phase 2's `xlMagic` and Phase 3's `sweep` both want parity **Batch F**; `sweep` benefits from **Batch D** (tiling) too. **The client bump landed (`c8f8493`, merged `4d61c00`), so Batch D is no longer blocked** — and §9.4 gives it a concrete driver. Neither batch blocks Phases 1–3 from starting; they only cap how much `sweep` can reach.
 
 ---
 
 ## 5. Suggested sequencing against the existing roadmap
 
-The parked roadmap after v0.9.28 was: Batch D (blocked on the client bump) → Batches E/F (low priority) → README polish. Phase 1 is small enough to fold into any release. My recommendation:
+The parked roadmap after v0.9.28 was: Batch D (blocked on the client bump) → Batches E/F (low priority) → README polish. My recommendation, with the first two steps now **done** (2026-07-25, both merged to `main` and pushed):
 
-1. **Phase 1** — it's a real load failure, cheap, and unblocks testing everything else with real files.
-2. **Land the client bump** (`chore/bump-drawthings-client`) — still owed, and it gates Batch D. Release notes must call out that seedMode 2/3 encoding changes output for the same seed, and that default seedMode is "Scale Alike", so it hits default-config users.
-3. **Phase 2** — the largest single jump in usefulness, and it's export-only so the risk is low.
-4. **Video workstream** (§7) — position relative to Phase 2 is open (§6.2.4).
-5. **Batch D**, then **Phase 3**.
-6. **Batch F** + `xlMagic`. Phase 4 deferred indefinitely.
+1. ~~**Phase 1**~~ — **DONE** (`a0d82b1`, `e8cb3ef`, `65d4430`; merged `da264eb`). A real load failure, and it unblocked testing everything else with real files.
+2. ~~**Land the client bump**~~ — **DONE** (`e855790`, merged `4d61c00`, pin `c8f8493`). Release notes still owe the call-out that seedMode 2/3 encoding changes output for the same seed, and that default seedMode is "Scale Alike", so it hits default-config users.
+3. **The four fold-ins** (§6.1b) — small, independent, and each one de-risks what follows: pre-run skipped-step warning, `CharacterSheet` fixture, harness into `TanqueStudioTests`, and **Batch D (tiling)** moved up now that it is unblocked and has a driver (§9.4). ← **next**
+4. **StoryFlow Dashboard design pass** (§6.1b) — the agreed prerequisite for Phase 2's UI.
+5. **Phase 2** — the largest single jump in usefulness, and it's export-only so the risk is low. Built into the shell from step 4.
+6. **Video workstream** (§7) — position relative to Phase 2 is open (§6.2.4).
+7. **Phase 3** — needs decision §6.2.1 (export target version) first.
+8. **Batch F** + `xlMagic`. Phase 4 deferred indefinitely.
 
 ---
 
@@ -180,10 +182,19 @@ The parked roadmap after v0.9.28 was: Batch D (blocked on the client bump) → B
   - *Assumption, flag if wrong:* `enhance` stays **authorable and exportable** in Phase 2. It costs nothing on the LLM front because export-only instructions run inside Draw Things against its own answer model — the deferral above is only about Tanque Studio executing them natively. Dropping `enhance` from authoring too is a one-line scope change if that's not what was meant.
 - **Video handling is its own workstream** — see §7.
 
+### 6.1b Settled (Ned, 2026-07-26)
+
+- **StoryFlow gets a Dashboard-design-language pass *before* Phase 2 is built** (closes what was §6.2.2). Phase 2's schema-driven step cards are then authored into the new shell rather than into the pre-Dashboard three-column `StoryFlowView`. Cost is a design workstream ahead of the functional win; the payoff is not building the step-card UI twice, which matters precisely because Phase 2 roughly doubles the step-type count.
+- **Four fold-ins accepted**, all from §9.4 and §4:
+  1. **Pre-run skipped-step warning** — §9.4 finding 2. Independent of Phase 2, do it early.
+  2. **Check `CharacterSheet_3x2_1920x1280` in as a third fixture** — round-trip guard only; no author-side export exists to diff against.
+  3. **Move parity Batch D (tiling) up** — §9.4 finding 1 gives it a real driver and the client bump has landed.
+  4. **Migrate the round-trip harness into `TanqueStudioTests`** — the 12 checks still run as a hand-run `swiftc` binary; the test target now exists.
+
 ### 6.2 Still open
 
 1. **Export target version.** Adopting `concat` (§3.2) means exports stop working in pre-260723 pipelines. Options: (a) always emit 260723, (b) a legacy/modern toggle on export, (c) auto-detect from what the project contains. My recommendation is (a) with a clear note in the UI — maintaining two emitters for a format whose consumer Ned controls is not worth the cost — but this affects anyone he shares exports with, so it's his call. **Needed before Phase 3**, not before Phase 2.
-2. **Where the new authoring UI lives.** StoryFlow is still badged Labs and predates the Dashboard + Focus Rooms merge. Phase 2 roughly doubles the step-type count — worth deciding whether that lands in the existing three-column `StoryFlowView` or gets a pass in the Dashboard's design language first. **Needed before Phase 2 implementation begins.**
+2. ~~**Where the new authoring UI lives.**~~ **SETTLED 2026-07-26 — see §6.1b.**
 3. **`fileLoad` / "add pipeline".** The Editor inlines an external exported pipeline at load time and warns that the user must re-link the file each session. Whether Tanque Studio should support it, and whether it should inline eagerly (losing the reference) or keep a security-scoped bookmark like the LLM Operations folder does, is undecided.
 4. **Where the video workstream (§7) sits relative to Phase 2.** Ned raised it as a priority over the LLM work but sequenced Phase 2 explicitly, so it's parked after Phase 2 below. Easy to reorder — it shares no code with the StoryFlow phases. *(The prerequisite that was blocking it is now resolved — see §7.1. Draw Things has a real series key, so this is ready to build whenever it's sequenced.)*
 
@@ -385,3 +396,33 @@ exactly the failure mode a hand-built export path is prone to.
 
 **Note `misc/` is gitignored**, so the original drops are not in the repo; the two files
 above are the tracked copies.
+
+### 9.4 A second real project (`CharacterSheet_3x2_1920x1280`) — Phase 1 holds, and it surfaces two things (2026-07-26)
+
+A second 260725-era project sits in `misc/` alongside Juxtapolooza: a 3×2 character-sheet
+generator (15 items — `note`, `canvasClear`, `config`, `size`, `loop`, then `concat`/`wildcard`
+×4 each, `prompt`, `loopEnd`). Run through the codec it is **clean**: it decodes, re-encodes
+deep-equal, projects through `toWorkflow`/`toProject` deep-equal, and emits 16 pipeline
+instructions with no unknown keys and no type mismatches. Phase 1 holds against a project it
+was never tested on.
+
+Two findings worth acting on:
+
+**1. It gives Batch D (tiling) a concrete driver.** Its `config` item carries 28 keys including
+all eight tiling fields — `tiledDecoding: true`, `decodingTile{Width,Height,Overlap}`
+1920/704/128, `diffusionTile{Width,Height,Overlap}` 1024/1024/128, `tiledDiffusion: false` —
+which is what its own note ("Krea2 Turbo, Tiled Decoding") says it needs. Tanque Studio does not
+model those fields, so importing this project silently drops them and the render would differ.
+Batch D stops being the "niche" batch: it is what this real project needs, and the bump that
+blocked it has landed.
+
+**2. Skipped passthrough steps can silently produce a wrong render, not just a partial one.**
+This project's whole subject comes from `concat`×4 + `wildcard`×4; the trailing `prompt` item
+carries only the camera/layout suffix (`".\ntop left, face, neutral expression…"`). All eight
+subject-bearing steps are passthrough today, so *running* it in Tanque Studio renders the suffix
+alone — a completely different image, with only a `↪ … (preserved, not executed)` line in the
+run log to say so. The engine's per-step skip note is fine for `maskFG`; it is not fine for a
+step that supplies the prompt. **Recommendation, cheap and independent of Phase 2: before a run,
+count non-executable steps and surface a blocking or acknowledgeable warning naming them** —
+"4 concat and 4 wildcard steps will be skipped; the prompt will not match the project." Phase 3
+retires the need for it, but it should not wait for Phase 3.

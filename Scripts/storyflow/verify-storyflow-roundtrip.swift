@@ -1,7 +1,8 @@
 // Round-trip and pipeline-export verification for the StoryFlow project codec.
 //
-// There is no unit-test target in this project (DrawThingsStudioUITests is UI-only,
-// and Tests/ is gitignored). Until one exists, run this by hand from the repo root:
+// A `TanqueStudioTests` target now exists and sweeps the same fixtures
+// (TanqueStudioTests/Fixtures/), but these checks have not been migrated into it yet —
+// they still run as a standalone binary. Run by hand from the repo root:
 //
 //   swiftc -O DrawThingsStudio/StoryFlowProject.swift \
 //             DrawThingsStudio/StoryFlowModels.swift \
