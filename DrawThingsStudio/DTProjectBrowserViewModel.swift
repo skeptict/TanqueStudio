@@ -452,6 +452,100 @@ final class DTProjectBrowserViewModel {
         exportTask?.cancel()
     }
 
+    /// Exports one clip in the shape the user picked.
+    ///
+    /// Separate from `startExport` on purpose: that one is scoped to *entries in
+    /// the grid*, and a clip's frames are deliberately not in the grid — the
+    /// whole point of collapsing them. Frames are read straight from the database
+    /// by rowid, in clip order, the same way `deleteSeries` reaches them.
+    func exportSeries(_ mode: DTSeriesExportMode,
+                      representative entry: DTGenerationEntry,
+                      to folder: URL) {
+        guard let project = selectedProject, !isExporting else { return }
+        let url = project.url
+        let baseName = project.name.replacingOccurrences(of: ".sqlite3", with: "")
+        let rowids = mode == .coverFrame ? [entry.id] : frameRowids(for: entry)
+        // 25 is what every clip measured on this machine carries; the fallback
+        // only matters for a clip whose Clip row is missing.
+        let fps = framesPerSecond(for: entry) ?? 25
+        let coverRowid = entry.id
+        isExporting = true
+        exportSummary = nil
+
+        exportTask = Task {
+            let result = await Task.detached(priority: .userInitiated) { () -> (written: Int, skipped: Int, error: String?) in
+                guard let db = DTProjectDatabase(fileURL: url) else {
+                    return (0, 0, "Could not open database. The drive may have been ejected or the file may be corrupted.")
+                }
+                let entries = db.fetchEntries(rowids: rowids)
+
+                // A movie's frames are scratch: written to a temp directory,
+                // handed to the assembler, then removed. Only the .mp4 lands in
+                // the folder the user chose.
+                let isMovie = (mode == .movie)
+                let frameDir = isMovie
+                    ? FileManager.default.temporaryDirectory
+                        .appendingPathComponent("tanque-clip-\(UUID().uuidString)", isDirectory: true)
+                    : folder
+                if isMovie {
+                    try? FileManager.default.createDirectory(at: frameDir, withIntermediateDirectories: true)
+                }
+                defer { if isMovie { try? FileManager.default.removeItem(at: frameDir) } }
+
+                var written = 0, skipped = 0
+                var frameURLs: [URL] = []
+                for (index, rowid) in rowids.enumerated() {
+                    if Task.isCancelled { break }
+                    guard let frame = entries[rowid],
+                          let data = db.fetchThumbnailJPEGData(previewId: frame.previewId) else {
+                        skipped += 1
+                        continue
+                    }
+                    // Single frame keeps the seed-bearing name the grid export
+                    // uses; a series is numbered so the order survives sorting.
+                    let filename = mode == .coverFrame
+                        ? "\(baseName)_\(frame.id)_seed\(frame.seed).jpg"
+                        : String(format: "%@_%lld_%04d.jpg", baseName, coverRowid, index)
+                    do {
+                        try data.write(to: frameDir.appendingPathComponent(filename))
+                        written += 1
+                        frameURLs.append(frameDir.appendingPathComponent(filename))
+                    } catch {
+                        skipped += 1
+                    }
+                }
+
+                guard isMovie else { return (written, skipped, nil) }
+                if Task.isCancelled { return (0, skipped, nil) }
+                guard !frameURLs.isEmpty else {
+                    return (0, skipped, "No frames could be read for this render.")
+                }
+                let output = folder.appendingPathComponent("\(baseName)_\(coverRowid).mp4")
+                do {
+                    try await VideoAssembler.assemble(frameURLs: frameURLs,
+                                                      fps: Int32(fps.rounded()),
+                                                      to: output)
+                } catch {
+                    return (0, skipped, "Could not assemble the movie: \(error.localizedDescription)")
+                }
+                return (1, skipped, nil)
+            }.value
+
+            self.isExporting = false
+            if let error = result.error {
+                self.exportSummary = error
+            } else if Task.isCancelled {
+                self.exportSummary = "Export cancelled — \(result.written) file(s) written."
+            } else if mode == .movie {
+                self.exportSummary = "Exported 1 movie."
+            } else {
+                self.exportSummary = result.skipped == 0
+                    ? "Exported \(result.written) image(s)."
+                    : "Exported \(result.written) image(s); \(result.skipped) skipped (no stored preview)."
+            }
+        }
+    }
+
     // MARK: - Delete
 
     func deleteEntry(_ entry: DTGenerationEntry) async {

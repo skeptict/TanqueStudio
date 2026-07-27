@@ -24,6 +24,22 @@ struct DTProjectBrowserView: View {
     @State private var showDeleteConfirmation = false
     /// The representative of a clip awaiting a Delete Series confirmation.
     @State private var seriesToDelete: DTGenerationEntry?
+    /// The representative of a clip awaiting an export-shape choice.
+    @State private var seriesToExport: DTGenerationEntry?
+
+    // Two loaders rather than one: hovering the grid must not evict the clip the
+    // detail column is playing, and vice versa. Only one cell is hovered at a
+    // time, so the grid needs exactly one.
+    @State private var hoverLoader = DTClipFrameLoader()
+    @State private var detailLoader = DTClipFrameLoader()
+    @State private var hoveredClipID: Int64?
+    @State private var isDetailPlaying = true
+    @State private var detailFrameIndex = 0
+    /// Playback's clock origin for the detail column. Mutable, unlike the hover
+    /// preview's, so that resuming after a scrub carries on from where the
+    /// scrubber was parked rather than from wherever the wall clock had got to.
+    @State private var detailStartedAt = Date()
+
     private let multiSelectTip = CmdClickMultiSelectTip()
 
     var body: some View {
@@ -62,6 +78,17 @@ struct DTProjectBrowserView: View {
             }
         } message: { entry in
             Text("This permanently removes all \(browser.frameCount(for: entry) ?? 1) frames of this render and their thumbnails from the Draw Things database. Close Draw Things before deleting for best results.")
+        }
+        .sheet(item: $seriesToExport) { entry in
+            DTSeriesExportSheet(
+                frameCount: browser.frameCount(for: entry) ?? 1,
+                fps: browser.framesPerSecond(for: entry) ?? 25,
+                onCancel: { seriesToExport = nil },
+                onExport: { mode in
+                    seriesToExport = nil
+                    chooseFolderAndExportSeries(mode, representative: entry)
+                }
+            )
         }
     }
 
@@ -431,10 +458,37 @@ struct DTProjectBrowserView: View {
                             .foregroundStyle(DashboardDS.muted)
                     }
                 }
+                // Hover preview sits above the still and below the badge, so the
+                // frame count stays readable while it plays. Mounted only for the
+                // hovered cell and only once its frames are all decoded — until
+                // then the cover frame stays put rather than stuttering through a
+                // partial loop.
+                .overlay {
+                    if hoveredClipID == entry.id, !hoverLoader.frames.isEmpty,
+                       let readyAt = hoverLoader.readyAt {
+                        DTClipPlaybackView(
+                            frames: hoverLoader.frames,
+                            fps: browser.framesPerSecond(for: entry) ?? 25,
+                            pausedIndex: 0,
+                            isPlaying: true,
+                            startedAt: readyAt
+                        )
+                    }
+                }
                 .clipShape(RoundedRectangle(cornerRadius: 6))
                 .overlay(alignment: .topTrailing) {
                     if let frameCount {
                         videoBadge(frameCount: frameCount, fps: browser.framesPerSecond(for: entry))
+                    }
+                }
+                .overlay(alignment: .bottomTrailing) {
+                    if hoveredClipID == entry.id, hoverLoader.isLoading {
+                        ProgressView()
+                            .controlSize(.small)
+                            .tint(DashboardDS.onBrass)
+                            .padding(5)
+                            .background(DashboardDS.brass.opacity(0.85), in: Circle())
+                            .padding(5)
                     }
                 }
                 .overlay(alignment: .topLeading) {
@@ -451,8 +505,20 @@ struct DTProjectBrowserView: View {
                                       lineWidth: isSelected ? 2 : 1)
                 }
                 .contentShape(Rectangle())
+                .onHover { inside in
+                    guard frameCount != nil, let url = browser.selectedProject?.url else { return }
+                    if inside {
+                        hoveredClipID = entry.id
+                        hoverLoader.load(clipKey: entry.id,
+                                         frameRowids: browser.frameRowids(for: entry),
+                                         from: url)
+                    } else if hoveredClipID == entry.id {
+                        hoveredClipID = nil
+                        hoverLoader.cancel()
+                    }
+                }
                 .help(frameCount.map {
-                    "Video render — \($0) frames. Click to inspect the first frame; ⌘-click to select for export."
+                    "Video render — \($0) frames. Hover to play; click to open it in the panel; ⌘-click to select for export."
                 } ?? "Click to inspect · ⌘-click to select for export")
                 .onTapGesture {
                     if NSEvent.modifierFlags.contains(.command) {
@@ -476,6 +542,7 @@ struct DTProjectBrowserView: View {
                 browser.toggleEntrySelection(entry)
             }
             if let frameCount {
+                Button("Export Series…") { seriesToExport = entry }
                 Divider()
                 Button(role: .destructive) {
                     seriesToDelete = entry
@@ -520,6 +587,22 @@ struct DTProjectBrowserView: View {
         .help(fps.map { "\(frameCount) frames at \(Int($0)) fps" } ?? "\(frameCount) frames")
     }
 
+    private func chooseFolderAndExportSeries(_ mode: DTSeriesExportMode,
+                                             representative entry: DTGenerationEntry) {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.canCreateDirectories = true
+        panel.prompt = "Export Here"
+        panel.message = mode == .movie
+            ? "Choose a folder for the assembled movie"
+            : "Choose a folder for the exported frames"
+        panel.begin { response in
+            guard response == .OK, let url = panel.url else { return }
+            browser.exportSeries(mode, representative: entry, to: url)
+        }
+    }
+
     private func chooseFolderAndExport(_ scope: DTProjectBrowserViewModel.ExportScope) {
         let panel = NSOpenPanel()
         panel.canChooseDirectories = true
@@ -552,13 +635,21 @@ struct DTProjectBrowserView: View {
             }
         }
         .background(DashboardDS.surf1)
+        .onChange(of: browser.selectedEntry?.id) { _, _ in syncDetailClip() }
+        // The clock starts when the frames do, not when the selection changed —
+        // decoding a 369-frame clip takes long enough that the difference is
+        // several seconds of clip already "played" before the first draw.
+        .onChange(of: detailLoader.readyAt) { _, readyAt in
+            if readyAt != nil { detailStartedAt = Date(); detailFrameIndex = 0 }
+        }
     }
 
     private func entryDetail(_ entry: DTGenerationEntry) -> some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                // Thumbnail
-                if let img = entry.thumbnail {
+                if let frameCount = browser.frameCount(for: entry) {
+                    clipViewer(entry, frameCount: frameCount)
+                } else if let img = entry.thumbnail {
                     Image(nsImage: img)
                         .resizable()
                         .aspectRatio(contentMode: .fit)
@@ -620,6 +711,117 @@ struct DTProjectBrowserView: View {
             }
             .padding(16)
         }
+    }
+
+    // MARK: - Clip viewer (detail column)
+
+    /// The clip surface: frames, play/pause, scrubber. Shows the cover thumbnail
+    /// until every frame has decoded, so playback never starts mid-clip.
+    private func clipViewer(_ entry: DTGenerationEntry, frameCount: Int) -> some View {
+        let fps = browser.framesPerSecond(for: entry) ?? 25
+        let ready = detailLoader.clipKey == entry.id && !detailLoader.frames.isEmpty
+        let aspect = entry.height > 0 ? CGFloat(entry.width) / CGFloat(entry.height) : 1
+
+        return VStack(spacing: 8) {
+            ZStack {
+                if ready {
+                    DTClipPlaybackView(
+                        frames: detailLoader.frames,
+                        fps: fps,
+                        pausedIndex: detailFrameIndex,
+                        isPlaying: isDetailPlaying,
+                        startedAt: detailStartedAt
+                    )
+                    .aspectRatio(aspect, contentMode: .fit)
+                } else if let img = entry.thumbnail {
+                    Image(nsImage: img)
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                }
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+            .frame(maxWidth: .infinity)
+            .overlay {
+                if detailLoader.isLoading {
+                    ProgressView()
+                        .controlSize(.small)
+                        .tint(DashboardDS.onBrass)
+                        .padding(8)
+                        .background(DashboardDS.brass.opacity(0.85), in: Circle())
+                }
+            }
+
+            if ready {
+                clipControls(fps: fps, frameCount: detailLoader.frames.count)
+            } else {
+                Text("\(frameCount) frames · \(Int(fps)) fps")
+                    .font(TanqueDS.Font.mono(10.5))
+                    .foregroundStyle(DashboardDS.muted)
+            }
+        }
+    }
+
+    /// Transport for the detail clip. Lives inside its own `TimelineView` so the
+    /// scrubber and counter follow playback — they read the same clock the frames
+    /// do, rather than being pushed from it.
+    private func clipControls(fps: Double, frameCount: Int) -> some View {
+        TimelineView(.animation(paused: !isDetailPlaying)) { context in
+            let live = isDetailPlaying
+                ? DTClipClock.frame(elapsed: context.date.timeIntervalSince(detailStartedAt),
+                                    fps: fps, frameCount: frameCount)
+                : detailFrameIndex
+
+            HStack(spacing: 10) {
+                Button {
+                    if isDetailPlaying {
+                        detailFrameIndex = live
+                        isDetailPlaying = false
+                    } else {
+                        // Rewind the origin so playback resumes from the scrubber.
+                        detailStartedAt = Date().addingTimeInterval(-Double(detailFrameIndex) / fps)
+                        isDetailPlaying = true
+                    }
+                } label: {
+                    Image(systemName: isDetailPlaying ? "pause.fill" : "play.fill")
+                        .font(.system(size: 11))
+                }
+                .buttonStyle(.storyFlowHeaderIcon)
+                .help(isDetailPlaying ? "Pause" : "Play")
+
+                Slider(
+                    value: Binding(
+                        get: { Double(live) },
+                        set: {
+                            isDetailPlaying = false
+                            detailFrameIndex = Int($0.rounded())
+                        }
+                    ),
+                    in: 0...Double(max(1, frameCount - 1)),
+                    step: 1
+                )
+                .tint(DashboardDS.brass)
+
+                Text("\(live + 1) / \(frameCount)")
+                    .font(TanqueDS.Font.mono(10.5).monospacedDigit())
+                    .foregroundStyle(DashboardDS.muted2)
+            }
+        }
+    }
+
+    /// Loads (or releases) the detail column's clip for the current selection.
+    private func syncDetailClip() {
+        guard let entry = browser.selectedEntry,
+              browser.frameCount(for: entry) != nil,
+              let url = browser.selectedProject?.url else {
+            detailLoader.cancel()
+            return
+        }
+        guard detailLoader.clipKey != entry.id else { return }
+        detailFrameIndex = 0
+        isDetailPlaying = true
+        detailLoader.load(clipKey: entry.id,
+                          frameRowids: browser.frameRowids(for: entry),
+                          from: url)
     }
 
     private func metadataRow(_ label: String, value: String) -> some View {
