@@ -90,6 +90,72 @@ final class StoryFlowPhase3Tests: XCTestCase {
         XCTAssertEqual(StoryFlowEngine.spokenFrameCount(in: "\"a b c\"", wordsPerSecond: 0), 1)
     }
 
+    // MARK: - Dimension snapping
+
+    /// **Floor, never round.** This is the whole point: 700 is nearer to 704 than to
+    /// 640, so a rounding implementation would return 704 and still disagree with
+    /// the image Draw Things sends back. Measured live — a 700×500 request returned
+    /// a 640×448 PNG.
+    func testDimensionsFloorRatherThanRound() {
+        XCTAssertEqual(DrawThingsGenerationConfig.snapDimensionTo64(700), 640,
+                       "704 here means this rounds instead of flooring")
+        XCTAssertEqual(DrawThingsGenerationConfig.snapDimensionTo64(500), 448)
+        XCTAssertEqual(DrawThingsGenerationConfig.snapDimensionTo64(1023), 960)
+    }
+
+    /// An exact multiple must survive untouched, or every existing project's
+    /// dimensions would shift by 64 on load.
+    func testExactMultiplesAreUnchanged() {
+        for v in [64, 512, 704, 1024, 1920] {
+            XCTAssertEqual(DrawThingsGenerationConfig.snapDimensionTo64(v), v)
+        }
+    }
+
+    /// Draw Things' own version is a bare `dimension -= dimension % 64`, which
+    /// turns anything under 64 into zero. We clamp instead — a zero-sized render is
+    /// not a size, and this is the one place we deliberately do not match DT.
+    func testSmallAndDegenerateValuesClampToOneTile() {
+        XCTAssertEqual(DrawThingsGenerationConfig.snapDimensionTo64(32), 64)
+        XCTAssertEqual(DrawThingsGenerationConfig.snapDimensionTo64(0), 64)
+        XCTAssertEqual(DrawThingsGenerationConfig.snapDimensionTo64(-100), 64)
+    }
+
+    /// Reports whether it changed anything, so a caller can say so rather than
+    /// silently altering a size the author typed.
+    func testSnapReportsWhetherItMovedAnything() {
+        var untouched = DrawThingsGenerationConfig()
+        untouched.width = 1024; untouched.height = 1024
+        XCTAssertFalse(untouched.snapDimensionsTo64())
+
+        var moved = DrawThingsGenerationConfig()
+        moved.width = 700; moved.height = 500
+        XCTAssertTrue(moved.snapDimensionsTo64())
+        XCTAssertEqual(moved.width, 640)
+        XCTAssertEqual(moved.height, 448)
+    }
+
+    /// The RDS shift is derived from the dimensions, so snapping has to happen
+    /// first — otherwise a shift is computed for a render that never happens.
+    func testSnappingBeforeTheRDSShiftChangesTheShift() {
+        var early = DrawThingsGenerationConfig()
+        early.width = 700; early.height = 500; early.resolutionDependentShift = true
+        early.snapDimensionsTo64()
+        early.applyRDSShiftIfNeeded()
+
+        var late = DrawThingsGenerationConfig()
+        late.width = 700; late.height = 500; late.resolutionDependentShift = true
+        late.applyRDSShiftIfNeeded()          // the wrong order
+        late.snapDimensionsTo64()
+
+        XCTAssertNotEqual(early.shift, late.shift,
+                          "if these agree the ordering constraint is not real and the "
+                          + "comments claiming it should go")
+        XCTAssertEqual(early.shift,
+                       DrawThingsGenerationConfig.rdsComputedShift(width: 640, height: 448),
+                       accuracy: 0.001,
+                       "the shift must come from the size actually rendered")
+    }
+
     // MARK: - Canvas re-framing
 
     /// A solid image of a known pixel size, with one differently-coloured pixel at

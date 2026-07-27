@@ -193,6 +193,49 @@ final class StoryFlowLiveRunTests: XCTestCase {
                       "expected the moodboard to be emptied.\n\(log)")
     }
 
+    // MARK: - The config saved beside an image must describe that image
+
+    /// Draw Things floors render dimensions to a multiple of 64, silently. Before
+    /// this was handled, a `size {700, 500}` sent `width: 700 / height: 500`, got a
+    /// 640×448 image back, and stored "700×500" as that image's metadata — which
+    /// makes the render unreproducible from its own record.
+    ///
+    /// Builds its own workflow rather than loading one from the app container, so
+    /// it cannot be broken by editing a saved project.
+    func testTheStoredConfigDescribesTheImageItCameWith() async throws {
+        try requireLiveServer()
+        let engine = StoryFlowEngine()
+
+        var config: DrawThingsGenerationConfig?
+        var rendered: CGSize?
+        engine.onImageGenerated = { img, cfg, _, _ in config = cfg; rendered = img.size }
+
+        var wf = Workflow(name: "stored config probe")
+        var cfgStep = WorkflowStep(type: .configInstruction)
+        cfgStep.parameters["configVars"] = "#ZIT1.0"
+        var size = WorkflowStep(type: .passthrough)
+        size.parameters["itemType"] = "size"
+        // Neither dimension is a multiple of 64: 700 → 640, 500 → 448.
+        size.parameters["rawValueJSON"] = "\"{\\\"width\\\":700,\\\"height\\\":500}\""
+        var prompt = WorkflowStep(type: .promptInstruction)
+        prompt.parameters["text"] = "a single red apple on a table"
+        wf.steps = [cfgStep, size, prompt, WorkflowStep(type: .generate)]
+
+        try await run(wf, engine: engine)
+        let log = engine.stepLog.joined(separator: "\n")
+
+        let cfg = try XCTUnwrap(config, "no image was generated.\n\(log)")
+        let size2 = try XCTUnwrap(rendered)
+        XCTAssertEqual(Double(cfg.width), size2.width, accuracy: 1,
+                       "stored width does not describe the image.\n\(log)")
+        XCTAssertEqual(Double(cfg.height), size2.height, accuracy: 1,
+                       "stored height does not describe the image.\n\(log)")
+        // Floor, not round — 704 would be nearer but is not what DT does.
+        XCTAssertEqual(cfg.width, 640, "expected 700 to floor to 640.\n\(log)")
+        XCTAssertEqual(cfg.height, 448, "expected 500 to floor to 448.\n\(log)")
+        XCTAssertTrue(log.contains("floored"), "the adjustment was not reported.\n\(log)")
+    }
+
     // MARK: - approve, without a server
 
     /// The pause is a `CheckedContinuation`, and `Task.cancel()` does not resume

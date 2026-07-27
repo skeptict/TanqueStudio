@@ -439,6 +439,39 @@ struct DrawThingsGenerationConfig: Codable {
         shift = DrawThingsGenerationConfig.rdsComputedShift(width: width, height: height)
     }
 
+    /// Floors a render dimension to a multiple of 64, the way Draw Things does.
+    ///
+    /// **Floor, never round.** 700 becomes 640, not 704 — verified against a live
+    /// server over gRPC (a 700×500 request returned a 640×448 image) and matching
+    /// `fixDimensionIfNecessary` in Draw Things' own scripting bridge.
+    ///
+    /// One deliberate difference: DT's version is a bare `dimension -= dimension % 64`,
+    /// so a dimension under 64 becomes **zero**. We clamp to 64 instead — a zero-sized
+    /// render helps nobody, and matching that particular behaviour has no upside.
+    static func snapDimensionTo64(_ dimension: Int) -> Int {
+        max(64, dimension - (dimension % 64))
+    }
+
+    /// Snaps `width` and `height` to what Draw Things will actually render.
+    ///
+    /// Call this **before** `applyRDSShiftIfNeeded()`, which derives the shift from
+    /// the dimensions — computing it from a size DT is about to change would bake in
+    /// a shift for a render that never happens.
+    ///
+    /// Without this the config lies about its own image: Draw Things silently floors
+    /// the dimensions, so a 700×500 request comes back 640×448 while the metadata
+    /// saved beside it still claims 700×500. That metadata exists to make a render
+    /// reproducible, so a mismatch there defeats its whole purpose.
+    ///
+    /// - Returns: `true` if either dimension moved, so a caller can say so.
+    @discardableResult
+    mutating func snapDimensionsTo64() -> Bool {
+        let (w, h) = (width, height)
+        width = Self.snapDimensionTo64(w)
+        height = Self.snapDimensionTo64(h)
+        return width != w || height != h
+    }
+
     /// Convert to HTTP API request body dictionary
     func toRequestBody(prompt: String) -> [String: Any] {
         var body: [String: Any] = [

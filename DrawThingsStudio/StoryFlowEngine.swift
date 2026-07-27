@@ -397,6 +397,11 @@ final class StoryFlowEngine {
                 return
             }
             Self.mergeDict(obj, into: &currentConfig)
+            // Before the canvas is re-framed, or it would be trimmed to a size Draw
+            // Things is about to floor — reopening the mismatch one step removed.
+            if currentConfig.snapDimensionsTo64() {
+                log("  ⚠ size floored to a multiple of 64 — Draw Things renders no other size")
+            }
             log("  ✓ size → \(currentConfig.width)×\(currentConfig.height)")
             reframeCanvasToConfig("size")
 
@@ -622,6 +627,11 @@ final class StoryFlowEngine {
         }
         currentConfig.width = min(Int(image.size.width.rounded()), Int(maxW))
         currentConfig.height = min(Int(image.size.height.rounded()), Int(maxH))
+        // The bounding box is whatever the last render produced and the box is
+        // whatever the author typed, so neither is guaranteed to be a multiple of 64.
+        if currentConfig.snapDimensionsTo64() {
+            log("  ⚠ adaptSize floored to a multiple of 64 — Draw Things renders no other size")
+        }
         viewportPosition = .zero
         viewportScale = 1.0
         log("  ✓ adaptSize → \(currentConfig.width)×\(currentConfig.height)")
@@ -732,6 +742,11 @@ final class StoryFlowEngine {
         // Build config from accumulated state; force batchCount = 1.
         var cfg = currentConfig
         cfg.batchCount = 1
+        // Backstop for dimensions that reached the config without passing through
+        // `mergeDict` or `adaptSize`. Before the RDS shift, which derives from them.
+        if cfg.snapDimensionsTo64() {
+            log("  ⚠ size floored to \(cfg.width)×\(cfg.height) — Draw Things renders in multiples of 64")
+        }
         cfg.applyRDSShiftIfNeeded()
 
         // Prompt from accumulated state

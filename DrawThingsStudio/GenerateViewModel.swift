@@ -404,6 +404,13 @@ final class GenerateViewModel {
         let client = AppSettings.shared.createDrawThingsClient()
         var cfg = config
         cfg.negativePrompt = negativePrompt
+        // Before the RDS shift, which is derived from the dimensions. Draw Things
+        // floors both to a multiple of 64, so without this the saved metadata
+        // claims a size the returned image does not have.
+        if cfg.snapDimensionsTo64() {
+            config.width = cfg.width
+            config.height = cfg.height
+        }
         cfg.applyRDSShiftIfNeeded()
 
         // Roll base seed before capturing cfg; write back so UI shows the base seed used.
@@ -793,6 +800,10 @@ final class GenerateViewModel {
         let client = AppSettings.shared.createDrawThingsClient()
         var cfg = config
         cfg.negativePrompt = negativePrompt
+        if cfg.snapDimensionsTo64() {
+            config.width = cfg.width
+            config.height = cfg.height
+        }
         cfg.applyRDSShiftIfNeeded()
         if randomizeSeed {
             let newSeed = Int(UInt32.random(in: 0...UInt32.max))
