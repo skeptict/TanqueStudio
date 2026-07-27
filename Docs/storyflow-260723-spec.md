@@ -363,8 +363,20 @@ The decision it was waiting on — export target version — is now **settled** 
 3. **Editor-asset parity** — the editor's Assets tabs cover prompt triggers, config shortcuts, wildcards and pose JSON. Tanque Studio models the first three as `WorkflowVariable`s; `poseJSONShortcuts` is preserved but not editable. Add a pose-JSON asset editor, or explicitly leave it preserve-only.
 4. **Round-trip coverage** — extend `TanqueStudioTests/StoryFlowPipelineExportTests` so each newly authorable instruction is asserted, not just carried. The fixture already contains all of them.
 5. **End-to-end verification** — author a project in Tanque Studio using the new instructions, export it, and run it in Draw Things' pipeline. This is the real exit criterion; a green round-trip test is necessary but not sufficient.
+   - **✅ DONE 2026-07-26. PHASE 2 IS COMPLETE.** A workflow authored from scratch in Tanque Studio — `config`, `size`, `negPrompt`, `loop ×3`, `concat` / `wildcard` / `concat`, `sweep`, `prompt`, `loopEnd` — exported, pasted into `StoryflowPipeline_260723.js`, and run. **Preflight passed** and three images rendered. Verified by reading the parameters back out of Draw Things' own database rather than by looking at the pictures:
 
-**Exit:** a Tanque Studio-authored 260723 project runs correctly in Draw Things, verified by actually running it — not by inspection.
+     | # | prompt | guidanceScale | seed | size |
+     |---|---|---|---|---|
+     | 1 | `a photograph of a red car, cinematic lighting` | 3.0 | 12345 | 1024² |
+     | 2 | `a photograph of a blue boat, cinematic lighting` | 6.0 | 12345 | 1024² |
+     | 3 | `a photograph of a green house, cinematic lighting` | 9.0 | 12345 | 1024² |
+
+   - **`concat` lands *around* the wildcard with exact spacing** — the pipeline does `concat = concat + value` with **no separator inserted** (`StoryflowPipeline_260723.js:934`), so the trailing space in `"a photograph of a "` is load-bearing and survived export.
+   - **`sweep` reached a real config field as real numbers.** The §8.3.3 export-time coercion is correct against the actual script, which no round-trip test could establish — the pipeline assigns `configuration[paramName] = pickedValue` with no coercion of its own, so a string would have landed silently in a numeric field.
+   - **The seed was pinned deliberately** so the only differences between the three renders are the wildcard subject and the swept guidance. A test whose renders differ for several possible reasons proves less.
+   - **Found and fixed while authoring** (`f35cfc2`): the card-list editor made multi-word cards impossible to type. Not reachable from the round-trip tests — the defect was in *when* the parse ran, not what it computed.
+
+**Exit:** ~~a Tanque Studio-authored 260723 project runs correctly in Draw Things, verified by actually running it — not by inspection.~~ **MET 2026-07-26.**
 
 ---
 
