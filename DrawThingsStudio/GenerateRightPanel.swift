@@ -749,7 +749,9 @@ struct AssistTabView: View {
     private var footerLinks: some View {
         HStack {
             Button {
-                NSWorkspace.shared.open(LLMOperationLoader.userOperationsFolder())
+                ImageFolderAccess.revealInFinder(
+                    LLMOperationLoader.userOperationsFolder(),
+                    bookmark: AppSettings.shared.llmOperationsFolderBookmark)
             } label: {
                 Label("Open Operations Folder", systemImage: "folder")
                     .font(.caption)

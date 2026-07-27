@@ -124,3 +124,46 @@ enum ImageFolderAccess {
         return nil
     }
 }
+
+// MARK: - Revealing a folder in Finder
+
+extension ImageFolderAccess {
+
+    /// Opens `folder` in Finder, holding security-scoped access while it does.
+    ///
+    /// A sandboxed app cannot hand Launch Services a path it has no live claim on.
+    /// When output lives outside the container — a custom image folder, a custom
+    /// LLM-operations folder — that claim only exists while the folder's bookmark
+    /// is being accessed, so a bare `NSWorkspace.open` fails with:
+    ///
+    ///     The application "Tanque Studio" does not have permission to
+    ///     open "2026-07-27T19-08-45."
+    ///
+    /// The writing paths already got this right, which is why saving worked and
+    /// only the "open in Finder" buttons broke.
+    ///
+    /// - Parameters:
+    ///   - folder: the folder to open. Created first if it does not exist — which
+    ///     also needs the scope, for the same reason.
+    ///   - bookmark: the security-scoped bookmark for the folder the **user
+    ///     granted**, not for `folder` itself; a timestamped subfolder was never
+    ///     granted anything on its own. Pass `nil` for locations inside the app's
+    ///     container, which need no scope.
+    static func revealInFinder(_ folder: URL, bookmark: Data?) {
+        var scoped: URL?
+        if let bookmark {
+            var isStale = false
+            if let resolved = try? URL(resolvingBookmarkData: bookmark,
+                                       options: .withSecurityScope,
+                                       relativeTo: nil,
+                                       bookmarkDataIsStale: &isStale),
+               resolved.startAccessingSecurityScopedResource() {
+                scoped = resolved
+            }
+        }
+        defer { scoped?.stopAccessingSecurityScopedResource() }
+
+        try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        NSWorkspace.shared.open(folder)
+    }
+}

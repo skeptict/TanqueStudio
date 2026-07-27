@@ -24,7 +24,8 @@ struct StoryFlowOutputPanel: View {
         StoryFlowPanelHeader(title: "Output") {
             if let folder = vm.engine.outputFolder {
                 Button {
-                    NSWorkspace.shared.open(folder)
+                    ImageFolderAccess.revealInFinder(
+                        folder, bookmark: AppSettings.shared.defaultImageFolderBookmark)
                 } label: {
                     Image(systemName: "folder")
                 }
@@ -195,10 +196,11 @@ struct StoryFlowOutputPanel: View {
         }()
 
         return Button {
-            // Create folder if it doesn't exist yet, then reveal in Finder
-            try? FileManager.default.createDirectory(
-                at: workflowFolder, withIntermediateDirectories: true)
-            NSWorkspace.shared.open(workflowFolder)
+            // Creates the folder if it does not exist yet, then reveals it. Both
+            // steps need security-scoped access when the output folder is outside
+            // the container, so they live together in the storage helper.
+            ImageFolderAccess.revealInFinder(
+                workflowFolder, bookmark: AppSettings.shared.defaultImageFolderBookmark)
         } label: {
             Label("Open Output Folder", systemImage: "folder")
         }
