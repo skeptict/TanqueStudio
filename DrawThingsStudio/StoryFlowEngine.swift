@@ -187,6 +187,18 @@ final class StoryFlowEngine {
 
         case .generate:
             try await executeGenerate(step: step, variables: variables)
+            // Rendering empties the prompt accumulator, matching Draw Things.
+            //
+            // DT's pipeline script does `concat += value; generate(); concat = ""`
+            // — the buffer is cleared by the render. Tanque Studio used to keep
+            // it, so the same instruction list diverged after the first render:
+            // `prompt A, generate, generate` rendered A twice here and A-then-
+            // nothing in Draw Things. Matching DT is Ned's call (2026-07-27);
+            // the divergence is the kind that only shows up as a wrong image.
+            //
+            // Nothing is silently lost: `StoryFlowRunPreflight` now reports a
+            // generate that would run on an empty accumulator.
+            currentPrompt = ""
 
         case .loadCanvas:
             let name = step.parameters["name"] ?? ""

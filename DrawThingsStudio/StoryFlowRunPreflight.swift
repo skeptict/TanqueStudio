@@ -59,6 +59,19 @@ struct StoryFlowRunPreflight {
     /// `prompt` to a real render.
     let producesNoImages: Bool
 
+    /// How many `.generate` steps would fire with nothing accumulated.
+    ///
+    /// Rendering now empties the prompt accumulator, matching Draw Things
+    /// (2026-07-27). That makes a second `generate` after a single prompt render
+    /// a **blank** image rather than a repeat of the first — correct, and
+    /// invisible until you look at the output. Workflows written before the
+    /// change may rely on the old repeat-on-render behaviour, so the count is
+    /// surfaced rather than left to be discovered.
+    ///
+    /// Counted the way the engine runs: a `promptInstruction` fills the
+    /// accumulator, a `generate` empties it, and `clearPrompt` empties it too.
+    let blankRenders: Int
+
     // MARK: — Construction
 
     init(workflow: Workflow) {
@@ -70,6 +83,23 @@ struct StoryFlowRunPreflight {
 
         producesNoImages = !workflow.steps.isEmpty
             && !workflow.steps.contains { $0.type == .generate }
+
+        var accumulatorHasText = false
+        var blanks = 0
+        for step in workflow.steps {
+            switch step.type {
+            case .promptInstruction:
+                if !(step.parameters["text"] ?? "").isEmpty { accumulatorHasText = true }
+            case .generate:
+                if !accumulatorHasText { blanks += 1 }
+                accumulatorHasText = false
+            case .clearPrompt:
+                accumulatorHasText = false
+            default:
+                break
+            }
+        }
+        blankRenders = blanks
 
         groups = counts
             .map { SkippedGroup(itemType: $0.key,
@@ -124,10 +154,10 @@ struct StoryFlowRunPreflight {
     // MARK: — Summary
 
     /// Nothing worth telling the user about before they hit Run.
-    var isEmpty: Bool { groups.isEmpty && !producesNoImages }
+    var isEmpty: Bool { groups.isEmpty && !producesNoImages && blankRenders == 0 }
 
     /// Worth interrupting Run for. Canvas-only skips are not — they stay in the banner.
-    var requiresConfirmation: Bool { altersRender || producesNoImages }
+    var requiresConfirmation: Bool { altersRender || producesNoImages || blankRenders > 0 }
 
     var totalCount: Int { groups.reduce(0) { $0 + $1.count } }
 
@@ -165,6 +195,13 @@ struct StoryFlowRunPreflight {
             lines.append("No Generate step — this run will produce no images. Draw Things "
                        + "renders on every prompt instruction; Tanque Studio needs an "
                        + "explicit Generate step.")
+        }
+
+        if blankRenders > 0 {
+            lines.append("\(blankRenders) Generate step\(blankRenders == 1 ? "" : "s") "
+                       + "\(blankRenders == 1 ? "has" : "have") no prompt to render — "
+                       + "rendering clears the prompt, matching Draw Things, so a second "
+                       + "Generate needs its own prompt step.")
         }
 
         if altersRender {

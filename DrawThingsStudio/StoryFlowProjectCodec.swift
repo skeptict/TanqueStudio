@@ -417,24 +417,21 @@ enum StoryFlowProjectCodec {
     ///   Note: $wildcard tokens are left unexpanded (non-deterministic).
     static func toPipelineArray(_ project: StoryFlowProject) -> [[String: Any]] {
         var result: [[String: Any]] = []
-        // In DT's pipeline the "prompt" instruction both sets the text AND calls
-        // pipeline.run(). TS separates these: promptInstruction sets the text,
-        // .generate fires the render.
+        // The re-emit hack is gone (2026-07-27, Phase 3 step 1).
         //
-        // Export rules:
-        //  • TS prompt  → DT prompt (fires render immediately)
-        //  • TS generate immediately after a TS prompt → DROP (render already fired)
-        //  • TS generate after non-prompt (e.g. config swap) → re-emit last prompt
-        var lastPrompt: String? = nil
-        var prevWasPrompt = false
-
+        // It carried `lastPrompt`/`prevWasPrompt` so that a `generate` following a
+        // config swap could re-send the previous prompt text — necessary while
+        // Tanque Studio's accumulator survived a render and Draw Things' did not.
+        // Now that `.generate` clears the accumulator here too (StoryFlowEngine),
+        // the mapping is one-to-one and needs no state at all:
+        //
+        //   project `prompt`   → {"prompt": text}   set, render, clear — identical
+        //                                            in both engines
+        //   project `generate` → {"prompt": ""}     render whatever `concat` holds
+        //
+        // A bare generate now renders the accumulated `concat` rather than a
+        // re-sent copy of an earlier prompt, which is what Draw Things does.
         for item in project.items {
-            // Reset the "previous item was a prompt" flag for everything except
-            // generate/pipeline, which consume it and set it to false themselves.
-            if item.type != "generate" && item.type != "pipeline" && item.type != "prompt" {
-                prevWasPrompt = false
-            }
-
             switch item.type {
 
             case "note":
@@ -488,14 +485,7 @@ enum StoryFlowProjectCodec {
                 // If this generate immediately follows a prompt, the render already
                 // fired (DT's prompt IS the render). Drop it to avoid a duplicate.
                 // Otherwise re-emit the last accumulated prompt so DT fires again.
-                if prevWasPrompt {
-                    // render already triggered by the preceding prompt — skip
-                } else if let p = lastPrompt {
-                    result.append(["prompt": p])
-                } else {
-                    result.append(["note": "⚠️ generate step has no prior prompt — render will not fire"])
-                }
-                prevWasPrompt = false
+                result.append(["prompt": ""])
 
             case "prompt":
                 let raw = item.value.stringValue ?? ""
@@ -504,8 +494,6 @@ enum StoryFlowProjectCodec {
                     print("[StoryFlowProjectCodec] WARNING: prompt contains $wildcard tokens — left unexpanded in pipeline export")
                 }
                 let expanded = expandPromptTokens(raw, promptTriggers: project.promptTriggers)
-                lastPrompt = expanded
-                prevWasPrompt = true
                 result.append(["prompt": expanded])
 
             case "config":
