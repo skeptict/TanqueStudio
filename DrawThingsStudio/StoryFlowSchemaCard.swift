@@ -220,7 +220,10 @@ struct StoryFlowSchemaCard: View {
                 Text(field.label)
                     .font(TanqueDS.Font.mono(10))
                     .foregroundStyle(DashboardDS.muted)
-                TextEditor(text: objectCardListBinding(field.key))
+                CardListEditor(
+                    text: cardListText(field.key),
+                    onCommit: { setCards(field.key, from: $0) }
+                )
                     .font(TanqueDS.Font.mono(11))
                     .scrollContentBackground(.hidden)
                     .background(DashboardDS.bg, in: RoundedRectangle(cornerRadius: 5))
@@ -307,20 +310,51 @@ struct StoryFlowSchemaCard: View {
         )
     }
 
-    private func objectCardListBinding(_ key: String) -> Binding<String> {
-        Binding(
-            get: {
-                let cards = StoryFlowPassthroughValue.object(of: step)[key] as? [Any] ?? []
-                return cards.map { "\($0)" }.joined(separator: "\n")
-            },
-            set: { text in
-                let cards = text.split(separator: "\n", omittingEmptySubsequences: true)
-                    .map { $0.trimmingCharacters(in: .whitespaces) }
-                    .filter { !$0.isEmpty }
-                StoryFlowPassthroughValue.setObjectField(key, to: cards, on: &step)
-                onChange()
+    /// The card list as editable text, one per line.
+    private func cardListText(_ key: String) -> String {
+        let cards = StoryFlowPassthroughValue.object(of: step)[key] as? [Any] ?? []
+        return cards.map { "\($0)" }.joined(separator: "\n")
+    }
+
+    private func setCards(_ key: String, from text: String) {
+        let cards = text.split(separator: "\n", omittingEmptySubsequences: true)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+        StoryFlowPassthroughValue.setObjectField(key, to: cards, on: &step)
+        onChange()
+    }
+}
+
+/// Card list editor that keeps its own text while you type.
+///
+/// **Do not bind a `TextEditor` straight to the parsed model here.** The parse
+/// trims each line and drops empty ones, so re-deriving the displayed text from
+/// the model on every keystroke deletes the space you just typed at the end of
+/// `red ` before you can type `car`, and swallows the newline that would start a
+/// new card. Multi-word cards and new lines both become impossible to type —
+/// which is most of what a wildcard is for.
+///
+/// So the text lives here while the field has focus, and is parsed back into
+/// cards when focus leaves. Typing stays literal; normalisation happens once.
+private struct CardListEditor: View {
+    let text: String
+    let onCommit: (String) -> Void
+
+    @State private var draft: String = ""
+    @FocusState private var isFocused: Bool
+
+    var body: some View {
+        TextEditor(text: $draft)
+            .focused($isFocused)
+            .onAppear { draft = text }
+            // Re-seed when the model changes underneath us (a different step
+            // scrolled into this view), but never while the user is typing.
+            .onChange(of: text) { _, newValue in
+                if !isFocused { draft = newValue }
             }
-        )
+            .onChange(of: isFocused) { _, focused in
+                if !focused { onCommit(draft) }
+            }
     }
 }
 
