@@ -59,6 +59,39 @@ final class StoryFlowEngine {
     /// image to the scene that produced it (outputName == scene UUID string).
     var onStepImageGenerated: ((String, NSImage, DrawThingsGenerationConfig, String, URL?) -> Void)?
 
+    // MARK: — Human in the loop (`approve`)
+
+    /// A run suspended at an `approve` instruction, waiting on a human edit of
+    /// the accumulated prompt. Non-nil exactly while the sheet should be up.
+    var pendingApproval: PendingApproval?
+
+    /// Set by whichever view presents the approval sheet.
+    ///
+    /// Without a presenter an `approve` instruction **must not** pause: the run
+    /// would suspend on a continuation nothing could ever resume, leaving the
+    /// engine wedged in `.running` forever. Story Studio's private engine and
+    /// the tests leave this false and get a logged skip instead.
+    var canPresentApproval = false
+
+    private var approvalContinuation: CheckedContinuation<String, Never>?
+
+    struct PendingApproval: Identifiable {
+        let id = UUID()
+        /// The accumulated prompt as it stood when the run reached `approve`.
+        var text: String
+    }
+
+    /// Resumes a run paused at `approve` with the human-edited prompt.
+    ///
+    /// Idempotent: a sheet dismissed twice (or a cancel racing the button)
+    /// resumes the continuation once and then does nothing.
+    func submitApproval(_ text: String) {
+        pendingApproval = nil
+        guard let continuation = approvalContinuation else { return }
+        approvalContinuation = nil
+        continuation.resume(returning: text)
+    }
+
     // MARK: — Accumulator state (reset at each run)
 
     /// Current accumulated generation config. Starts from defaults; each Config instruction
@@ -104,6 +137,7 @@ final class StoryFlowEngine {
         viewportPosition = .zero
         viewportScale = 1.0
         activeMoodboard = []
+        submitApproval("")   // clear any approval left pending by a previous run
         currentStepIndex = 0
         totalSteps = workflow.steps.count
         runState = .running(stepIndex: 0)
@@ -162,6 +196,10 @@ final class StoryFlowEngine {
     func cancel() {
         runTask?.cancel()
         runTask = nil
+        // A task cancelled while suspended on a continuation stays suspended —
+        // `Task.cancel()` does not resume one. Resume it first, or cancelling
+        // from the approval sheet leaks the run and wedges the engine.
+        submitApproval(pendingApproval?.text ?? "")
         runState = .cancelled
     }
 
@@ -348,6 +386,72 @@ final class StoryFlowEngine {
         case .passthrough where step.parameters["itemType"] == "wildcard":
             executeWildcard(step: step, at: currentIndex)
 
+        case .passthrough where step.parameters["itemType"] == "size":
+            // DT does `Object.assign(configuration, value)` then
+            // `canvas.updateCanvasSize(configuration)` — the whole object, not
+            // just width/height, which is why this merges rather than reading
+            // two keys. The canvas half needs no equivalent here: Tanque Studio
+            // renders at the config's dimensions, so the next generate already
+            // uses them.
+            guard let obj = Self.passthroughObject(step.parameters["rawValueJSON"] ?? "") else {
+                log("  ⚠ size: missing or invalid parameters — skipped")
+                return
+            }
+            mergeDict(obj, into: &currentConfig)
+            log("  ✓ size → \(currentConfig.width)×\(currentConfig.height)")
+
+        case .passthrough where step.parameters["itemType"] == "frames":
+            guard let n = Self.passthroughNumber(step.parameters["rawValueJSON"] ?? "") else {
+                log("  ⚠ frames: missing or invalid frame count — skipped")
+                return
+            }
+            currentConfig.numFrames = Int(n)
+            log("  ✓ frames → \(Int(n))")
+
+        case .passthrough where step.parameters["itemType"] == "negPrompt":
+            // DT holds `negativePrompt` as a pipeline variable and copies it
+            // into every generate payload. Ours lives on the config, which
+            // persists across renders the same way — so this is one assignment,
+            // not a per-render fixup.
+            let text = Self.passthroughString(step.parameters["rawValueJSON"] ?? "")
+            currentConfig.negativePrompt = resolveTokens(text, variables: variables)
+            let shown = currentConfig.negativePrompt
+            log("  ✓ negPrompt → \(shown.isEmpty ? "(empty)" : String(shown.prefix(80)))")
+
+        case .passthrough where step.parameters["itemType"] == "adaptSize":
+            executeAdaptSize(step: step)
+
+        case .passthrough where step.parameters["itemType"] == "moodboardWeights":
+            executeMoodboardWeights(step: step)
+
+        case .passthrough where step.parameters["itemType"] == "framesDialog":
+            guard let obj = Self.passthroughObject(step.parameters["rawValueJSON"] ?? ""),
+                  let wps = Self.numberValue(obj["wps"]), wps > 0 else {
+                log("  ⚠ framesDialog: missing or invalid words-per-second — skipped")
+                return
+            }
+            let padding = Int(Self.numberValue(obj["padding"]) ?? 0)
+            let spoken = Self.spokenFrameCount(in: currentPrompt, wordsPerSecond: wps)
+            currentConfig.numFrames = spoken + padding
+            log("  ✓ framesDialog → \(spoken) + \(padding) pad = \(currentConfig.numFrames) frames")
+            // `if (value.generate) { generate(); concat = ""; }` — the only
+            // instruction besides `prompt` that DT counts as a render, which is
+            // why its own preflight scans for it (`genIndices`).
+            if (Self.numberValue(obj["generate"]) ?? 0) != 0 {
+                try await executeGenerate(step: step, variables: variables)
+                currentPrompt = ""
+            }
+
+        case .passthrough where step.parameters["itemType"] == "approve":
+            guard canPresentApproval else {
+                log("  ↪ approve (no approval sheet available — prompt left unedited)")
+                return
+            }
+            log("  ⏸ approve — waiting for your review of the prompt")
+            let edited = await requestApproval()
+            currentPrompt = edited
+            log("  ✓ approve → \(edited.isEmpty ? "(empty)" : String(edited.prefix(80)))")
+
         case .configInline:
             let json = step.parameters["json"] ?? ""
             guard !json.isEmpty,
@@ -410,6 +514,120 @@ final class StoryFlowEngine {
               let s = (try? JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed])) as? String
         else { return raw }
         return s
+    }
+
+    /// A passthrough step's numeric value, unwrapped from its JSON quoting.
+    ///
+    /// Accepts a quoted digit string as well as a bare number: the card lists
+    /// store their values as strings (§8.3.3), and a hand-edited project may do
+    /// the same for a scalar.
+    static func passthroughNumber(_ raw: String) -> Double? {
+        guard let data = raw.data(using: .utf8),
+              let parsed = try? JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed])
+        else { return Double(raw.trimmingCharacters(in: .whitespaces)) }
+        return numberValue(parsed)
+    }
+
+    /// A JSON scalar as a `Double`, whether it arrived as a number or a string.
+    static func numberValue(_ any: Any?) -> Double? {
+        switch any {
+        case let n as NSNumber: return n.doubleValue
+        case let s as String:   return Double(s.trimmingCharacters(in: .whitespaces))
+        default:                return nil
+        }
+    }
+
+    /// Frame count derived from the words spoken in the accumulated prompt.
+    ///
+    /// `framesDialog(pacing)` in the pipeline: count whitespace-separated tokens
+    /// inside every `"…"` span of the accumulator, divide by words-per-second,
+    /// multiply by 25 fps, round **up** to a multiple of 8, then add one. Only
+    /// quoted spans count — unquoted stage direction is not spoken.
+    static func spokenFrameCount(in text: String, wordsPerSecond: Double) -> Int {
+        guard wordsPerSecond > 0,
+              let regex = try? NSRegularExpression(pattern: "\"([^\"]+)\"") else { return 1 }
+        let ns = text as NSString
+        var wordCount = 0
+        for match in regex.matches(in: text, range: NSRange(location: 0, length: ns.length))
+        where match.numberOfRanges > 1 {
+            let span = ns.substring(with: match.range(at: 1))
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            // JavaScript's `"".split(/\s+/)` yields `[""]`, so a quoted span of
+            // pure whitespace counts as one word there. Match it.
+            wordCount += span.isEmpty ? 1 : span.split(whereSeparator: \.isWhitespace).count
+        }
+        let rawFrames = (Double(wordCount) / wordsPerSecond) * 25.0
+        return Int((rawFrames / 8).rounded(.up)) * 8 + 1
+    }
+
+    /// Suspends the run until the approval sheet hands back an edited prompt.
+    private func requestApproval() async -> String {
+        await withCheckedContinuation { continuation in
+            approvalContinuation = continuation
+            pendingApproval = PendingApproval(text: currentPrompt)
+        }
+    }
+
+    /// Clamps the canvas to a bounding box and re-centres it.
+    ///
+    /// Faithful to `adaptAndResetCanvas`: the axes are clamped **independently**
+    /// (`min(boundingBox, max)` each), so despite the name this is not an
+    /// aspect-preserving scale — a 2000×500 canvas under a 1664 box becomes
+    /// 1664×500, not 1664×416. DT then resets zoom and pan, so we do too.
+    private func executeAdaptSize(step: WorkflowStep) {
+        guard let obj = Self.passthroughObject(step.parameters["rawValueJSON"] ?? ""),
+              let maxW = Self.numberValue(obj["maxWidth"]),
+              let maxH = Self.numberValue(obj["maxHeight"]) else {
+            log("  ⚠ adaptSize: missing or invalid parameters — skipped")
+            return
+        }
+        // DT measures `canvas.boundingBox` and bails on a zero-sized one rather
+        // than guessing. Our canvas is the current image; with none there is
+        // nothing to clamp, and inventing a size would silently resize a render.
+        guard let image = currentCanvasImage, image.size.width > 0, image.size.height > 0 else {
+            log("  ⚠ adaptSize: no canvas image to measure — skipped")
+            return
+        }
+        currentConfig.width = min(Int(image.size.width.rounded()), Int(maxW))
+        currentConfig.height = min(Int(image.size.height.rounded()), Int(maxH))
+        viewportPosition = .zero
+        viewportScale = 1.0
+        log("  ✓ adaptSize → \(currentConfig.width)×\(currentConfig.height)")
+    }
+
+    /// Sets the weight of each moodboard slot named in the instruction.
+    ///
+    /// DT walks `index_0`…`index_11` and applies **only the keys present**. The
+    /// editor's form offers six, so the schema table has six — but a project may
+    /// legally carry twelve, and reading only six would silently ignore the rest.
+    private func executeMoodboardWeights(step: WorkflowStep) {
+        guard let obj = Self.passthroughObject(step.parameters["rawValueJSON"] ?? "") else {
+            log("  ⚠ moodboardWeights: missing or invalid parameters — skipped")
+            return
+        }
+        var applied: [String] = []
+        var unfilled: [Int] = []
+        for i in 0...11 {
+            guard let weight = Self.numberValue(obj["index_\(i)"]) else { continue }
+            guard i < activeMoodboard.count else {
+                // A zero weight on an empty slot is a no-op by any reading;
+                // a real weight aimed at nothing is worth saying out loud.
+                if weight != 0 { unfilled.append(i) }
+                continue
+            }
+            activeMoodboard[i].1 = Float(weight)
+            applied.append("\(i)=\(weight)")
+        }
+        if applied.isEmpty && unfilled.isEmpty {
+            log("  ⚠ moodboardWeights: no index_N weights found — nothing changed")
+            return
+        }
+        if !applied.isEmpty { log("  ✓ moodboardWeights \(applied.joined(separator: " "))") }
+        if !unfilled.isEmpty {
+            log("  ⚠ moodboardWeights: slot\(unfilled.count == 1 ? "" : "s") "
+              + "\(unfilled.map(String.init).joined(separator: ", ")) "
+              + "\(unfilled.count == 1 ? "has" : "have") no moodboard image — weight not applied")
+        }
     }
 
     /// Draws this wildcard's next card and appends it to the prompt.

@@ -75,7 +75,25 @@ struct StoryFlowRunPreflight {
     /// Passthrough instruction types Tanque Studio now runs itself (Phase 3).
     /// Kept beside the preflight so the banner and the engine cannot disagree
     /// about what actually executes.
-    static let nativelyExecuted: Set<String> = ["concat", "wildcard", "sweep"]
+    static let nativelyExecuted: Set<String> = [
+        "concat", "wildcard", "sweep",
+        "size", "frames", "negPrompt", "adaptSize", "moodboardWeights",
+        "framesDialog", "approve",
+    ]
+
+    /// True if this step is a `framesDialog` with its `generate` flag set.
+    ///
+    /// Draw Things treats it as a render — its own preflight collects
+    /// `key === "prompt" || (key === "framesDialog" && value?.generate)` as the
+    /// generating indices. So a workflow whose only render is one of these does
+    /// produce images, and the Generate it fires consumes the accumulator.
+    static func isRenderingFramesDialog(_ step: WorkflowStep) -> Bool {
+        guard step.type == .passthrough,
+              step.parameters["itemType"] == "framesDialog",
+              let obj = StoryFlowEngine.passthroughObject(step.parameters["rawValueJSON"] ?? "")
+        else { return false }
+        return (StoryFlowEngine.numberValue(obj["generate"]) ?? 0) != 0
+    }
 
     // MARK: — Construction
 
@@ -90,15 +108,24 @@ struct StoryFlowRunPreflight {
         }
 
         producesNoImages = !workflow.steps.isEmpty
-            && !workflow.steps.contains { $0.type == .generate }
+            && !workflow.steps.contains { $0.type == .generate || Self.isRenderingFramesDialog($0) }
 
         var accumulatorHasText = false
         var blanks = 0
         for step in workflow.steps {
+            // Fires a render and empties the accumulator, exactly like `.generate`.
+            if Self.isRenderingFramesDialog(step) {
+                if !accumulatorHasText { blanks += 1 }
+                accumulatorHasText = false
+                continue
+            }
             switch step.type {
             // `concat` and `wildcard` fill the accumulator just as a prompt step
-            // does, so a Generate after either is not blank.
-            case .passthrough where ["concat", "wildcard"].contains(step.parameters["itemType"] ?? ""):
+            // does, so a Generate after either is not blank. `approve` hands the
+            // accumulator to a human who may type into an empty one, so it counts
+            // as filling it — a warning it can't justify is worse than none here.
+            case .passthrough where ["concat", "wildcard", "approve"]
+                    .contains(step.parameters["itemType"] ?? ""):
                 accumulatorHasText = true
             case .promptInstruction:
                 if !(step.parameters["text"] ?? "").isEmpty { accumulatorHasText = true }
