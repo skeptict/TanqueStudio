@@ -44,6 +44,24 @@ BOOL DTAppendPixelBufferSafely(AVAssetWriterInputPixelBufferAdaptor *adaptor,
                         datatype:(int64_t)datatype
                              dim:(NSData *)dim;
 
+/// Decode a Float32 tensor BLOB to raw samples, with no image interpretation.
+///
+/// Draw Things stores a clip's audio in the same `tensors` table as image
+/// tensors, fpzip-compressed Float32, shaped [channels, samples] — so the
+/// decompression is shared but nothing about the image layout applies.
+///
+/// @param data          The raw `data` column.
+/// @param typeCol       The `type` column; upper 32 bits select the codec.
+/// @param datatype      The `datatype` column; must be CCV_32F.
+/// @param elementCount  Expected number of floats, from the `dim` column. The
+///                      result is rejected unless it holds exactly this many —
+///                      a short decode would otherwise play as truncated noise.
+/// @return              `elementCount` float32 values, or nil.
++ (nullable NSData *)decodeFloatBlob:(NSData *)data
+                             typeCol:(int64_t)typeCol
+                            datatype:(int64_t)datatype
+                        elementCount:(NSUInteger)elementCount;
+
 @end
 
 NS_ASSUME_NONNULL_END

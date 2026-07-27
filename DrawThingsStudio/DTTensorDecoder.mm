@@ -309,6 +309,53 @@ static NSImage * _Nullable imageFromFloat16(const uint16_t *pixels, int width, i
     return nil;
 }
 
++ (nullable NSData *)decodeFloatBlob:(NSData *)data
+                             typeCol:(int64_t)typeCol
+                            datatype:(int64_t)datatype
+                        elementCount:(NSUInteger)elementCount {
+    if (!data || data.length == 0 || elementCount == 0) return nil;
+
+    int32_t  elemType = (int32_t)(datatype & 0xFFFFFFFF);
+    uint32_t codecId  = (uint32_t)((typeCol >> 32) & 0xFFFFFFFF);
+    if (elemType != CCV_32F) return nil;   // audio is Float32; nothing else is expected
+
+    const size_t wanted = (size_t)elementCount * sizeof(float);
+
+    if (codecId == CODEC_FPZIP) {
+        // Allocate from the caller's expected count rather than from fpzip's
+        // return value: fpzip_read reports bytes read from the *compressed*
+        // stream, so sizing the output by it would silently truncate. A short
+        // decode has to fail loudly — truncated audio plays as noise.
+        FPZ *fpz = fpzip_read_from_buffer(data.bytes);
+        if (!fpz) return nil;
+        if (!fpzip_read_header(fpz)) { fpzip_read_close(fpz); return nil; }
+
+        size_t headerCount = (size_t)fpz->nx * fpz->ny * fpz->nz * fpz->nf;
+        if (headerCount != (size_t)elementCount) { fpzip_read_close(fpz); return nil; }
+
+        NSMutableData *out = [NSMutableData dataWithLength:wanted];
+        size_t read = fpzip_read(fpz, out.mutableBytes);
+        fpzip_read_close(fpz);
+        return read == 0 ? nil : out;
+    }
+
+    if (codecId == CODEC_ZIP) {
+        NSMutableData *out = [NSMutableData dataWithLength:wanted];
+        uLongf outLen = (uLongf)wanted;
+        if (uncompress((Bytef *)out.mutableBytes, &outLen,
+                       (const Bytef *)data.bytes, (uLong)data.length) != Z_OK) return nil;
+        if (outLen != wanted) return nil;
+        return out;
+    }
+
+    if (codecId == CODEC_NONE) {
+        if (data.length < wanted) return nil;
+        return [data subdataWithRange:NSMakeRange(0, wanted)];
+    }
+
+    return nil;
+}
+
 @end
 
 // MARK: - AVFoundation exception-safe helpers

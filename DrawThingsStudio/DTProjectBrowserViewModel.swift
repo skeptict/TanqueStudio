@@ -71,6 +71,12 @@ final class DTProjectBrowserViewModel {
         guard case .clip(let clipId, _, _)? = slotByRowid[entry.id] else { return nil }
         return clips[clipId]?.framesPerSecond
     }
+
+    /// This clip's soundtrack tensor id, when Draw Things recorded one.
+    func audioId(for entry: DTGenerationEntry) -> Int64? {
+        guard case .clip(let clipId, _, _)? = slotByRowid[entry.id] else { return nil }
+        return clips[clipId]?.audioId
+    }
     var selectedEntry: DTGenerationEntry?
     var searchText = ""
     var isLoading = false

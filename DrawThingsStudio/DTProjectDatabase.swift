@@ -82,6 +82,8 @@ struct DTClip: Hashable {
     let framesPerSecond: Double
     let width: Int
     let height: Int
+    /// Names this clip's soundtrack tensor (`audio_<id>`), when it has one.
+    var audioId: Int64? = nil
 }
 
 /// One row in the browser's grid: a still, or a whole clip collapsed to one cell.
@@ -358,14 +360,23 @@ final class DTProjectDatabase: @unchecked Sendable {
                 fb.fieldOffset(vtablePos: vtablePos, vtableSize: vtableSize, slot: slot)
             }
             // table Clip { clip_id: long; count: int; frames_per_second: double;
-            //              width: int; height: int } — slots 4, 6, 8, 10, 12.
+            //              width: int; height: int; audio_id: long }
+            //              — slots 4, 6, 8, 10, 12, 14.
+            //
+            // audio_id was added by Draw Things after our January schema snapshot
+            // and was missing here until 2026-07-27. It names an fpzip Float32
+            // tensor in the `tensors` table; every clip measured on this machine
+            // has one. A clip written by an older build simply has no slot 14,
+            // which reads as nil.
             let clipId = foff(4).map { fb.readInt64(at: tablePos + $0) } ?? pk0
             let count  = foff(6).map { Int(fb.readInt32(at: tablePos + $0)) } ?? 0
             let fps    = foff(8).map { fb.readDouble(at: tablePos + $0) } ?? 0
             let width  = foff(10).map { Int(fb.readInt32(at: tablePos + $0)) } ?? 0
             let height = foff(12).map { Int(fb.readInt32(at: tablePos + $0)) } ?? 0
+            let rawAudio = foff(14).map { fb.readInt64(at: tablePos + $0) } ?? 0
             clips[clipId] = DTClip(clipId: clipId, count: count,
-                                   framesPerSecond: fps, width: width, height: height)
+                                   framesPerSecond: fps, width: width, height: height,
+                                   audioId: rawAudio > 0 ? rawAudio : nil)
         }
         return clips
     }
@@ -593,6 +604,52 @@ final class DTProjectDatabase: @unchecked Sendable {
         }
         guard let end = jpegEnd, end > start else { return nil }
         return Data(data[start..<end])
+    }
+
+    // MARK: - Clip audio
+
+    /// A clip's soundtrack, straight out of the `tensors` table.
+    ///
+    /// Planar, not interleaved: all of channel 0's samples, then channel 1's.
+    struct AudioTrack {
+        let channels: Int
+        let framesPerChannel: Int
+        /// `channels * framesPerChannel` Float32 values, planar.
+        let samples: Data
+    }
+
+    /// Draw Things stores a clip's audio as an fpzip-compressed Float32 tensor
+    /// named `audio_<audioId>`, shaped [channels, samples]. Measured across every
+    /// clip on this machine: always stereo, always Float32.
+    func fetchAudio(audioId: Int64) -> AudioTrack? {
+        guard let db, audioId > 0 else { return nil }
+        var stmt: OpaquePointer?
+        defer { sqlite3_finalize(stmt) }
+
+        let sql = "SELECT type, datatype, dim, data FROM tensors WHERE name = ? LIMIT 1"
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return nil }
+        sqlite3_bind_text(stmt, 1, "audio_\(audioId)", -1, unsafeBitCast(-1, to: sqlite3_destructor_type.self))
+        guard sqlite3_step(stmt) == SQLITE_ROW else { return nil }
+
+        let typeCol = sqlite3_column_int64(stmt, 0)
+        let datatype = sqlite3_column_int64(stmt, 1)
+        guard let dimPtr = sqlite3_column_blob(stmt, 2) else { return nil }
+        let dim = Data(bytes: dimPtr, count: Int(sqlite3_column_bytes(stmt, 2)))
+        guard let dataPtr = sqlite3_column_blob(stmt, 3) else { return nil }
+        let blob = Data(bytes: dataPtr, count: Int(sqlite3_column_bytes(stmt, 3)))
+
+        // dim is 12 little-endian Int32; [0] = channels, [1] = samples per channel.
+        guard dim.count >= 8 else { return nil }
+        let channels = Int(dim.withUnsafeBytes { $0.loadUnaligned(fromByteOffset: 0, as: Int32.self) })
+        let frames = Int(dim.withUnsafeBytes { $0.loadUnaligned(fromByteOffset: 4, as: Int32.self) })
+        guard channels > 0, channels <= 8, frames > 0 else { return nil }
+
+        guard let samples = DTTensorDecoder.decodeFloatBlob(blob,
+                                                            typeCol: typeCol,
+                                                            datatype: datatype,
+                                                            elementCount: UInt(channels * frames))
+        else { return nil }
+        return AudioTrack(channels: channels, framesPerChannel: frames, samples: samples)
     }
 
     // MARK: - Wall Clock

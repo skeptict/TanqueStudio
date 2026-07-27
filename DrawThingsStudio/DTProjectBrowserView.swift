@@ -39,6 +39,7 @@ struct DTProjectBrowserView: View {
     /// preview's, so that resuming after a scrub carries on from where the
     /// scrubber was parked rather than from wherever the wall clock had got to.
     @State private var detailStartedAt = Date()
+    @State private var audio = DTClipAudioPlayer()
 
     private let multiSelectTip = CmdClickMultiSelectTip()
 
@@ -640,7 +641,12 @@ struct DTProjectBrowserView: View {
         // decoding a 369-frame clip takes long enough that the difference is
         // several seconds of clip already "played" before the first draw.
         .onChange(of: detailLoader.readyAt) { _, readyAt in
-            if readyAt != nil { detailStartedAt = Date(); detailFrameIndex = 0 }
+            guard readyAt != nil else { return }
+            detailStartedAt = Date()
+            detailFrameIndex = 0
+            // Start sound with the picture, not when the clip was selected —
+            // decoding the frames takes seconds.
+            audio.play()
         }
     }
 
@@ -730,7 +736,8 @@ struct DTProjectBrowserView: View {
                         fps: fps,
                         pausedIndex: detailFrameIndex,
                         isPlaying: isDetailPlaying,
-                        startedAt: detailStartedAt
+                        startedAt: detailStartedAt,
+                        audioTime: { audio.currentTime }
                     )
                     .aspectRatio(aspect, contentMode: .fit)
                 } else if let img = entry.thumbnail {
@@ -776,10 +783,12 @@ struct DTProjectBrowserView: View {
                     if isDetailPlaying {
                         detailFrameIndex = live
                         isDetailPlaying = false
+                        audio.pause()
                     } else {
                         // Rewind the origin so playback resumes from the scrubber.
                         detailStartedAt = Date().addingTimeInterval(-Double(detailFrameIndex) / fps)
                         isDetailPlaying = true
+                        audio.resume(fromFrame: detailFrameIndex, fps: fps)
                     }
                 } label: {
                     Image(systemName: isDetailPlaying ? "pause.fill" : "play.fill")
@@ -787,6 +796,28 @@ struct DTProjectBrowserView: View {
                 }
                 .buttonStyle(.storyFlowHeaderIcon)
                 .help(isDetailPlaying ? "Pause" : "Play")
+
+                if audio.isAvailable {
+                    Button {
+                        audio.isMuted.toggle()
+                        if audio.isMuted {
+                            // The clock passes back to `Date`, so re-base it where
+                            // the audio had reached — otherwise the picture jumps
+                            // to wherever wall time happened to be.
+                            detailStartedAt = Date().addingTimeInterval(-Double(live) / fps)
+                            audio.stop()
+                        } else if isDetailPlaying {
+                            // Unmuting mid-playback hands the clock to the audio,
+                            // so start it where the picture already is.
+                            audio.resume(fromFrame: live, fps: fps)
+                        }
+                    } label: {
+                        Image(systemName: audio.isMuted ? "speaker.slash.fill" : "speaker.wave.2.fill")
+                            .font(.system(size: 11))
+                    }
+                    .buttonStyle(.storyFlowHeaderIcon)
+                    .help(audio.isMuted ? "Play this clip's sound" : "Mute")
+                }
 
                 Slider(
                     value: Binding(
@@ -811,9 +842,10 @@ struct DTProjectBrowserView: View {
     /// Loads (or releases) the detail column's clip for the current selection.
     private func syncDetailClip() {
         guard let entry = browser.selectedEntry,
-              browser.frameCount(for: entry) != nil,
+              let frameCount = browser.frameCount(for: entry),
               let url = browser.selectedProject?.url else {
             detailLoader.cancel()
+            audio.unload()
             return
         }
         guard detailLoader.clipKey != entry.id else { return }
@@ -822,6 +854,15 @@ struct DTProjectBrowserView: View {
         detailLoader.load(clipKey: entry.id,
                           frameRowids: browser.frameRowids(for: entry),
                           from: url)
+        if let audioId = browser.audioId(for: entry) {
+            audio.load(clipKey: entry.id,
+                       audioId: audioId,
+                       frameCount: frameCount,
+                       fps: browser.framesPerSecond(for: entry) ?? 25,
+                       from: url)
+        } else {
+            audio.unload()
+        }
     }
 
     private func metadataRow(_ label: String, value: String) -> some View {

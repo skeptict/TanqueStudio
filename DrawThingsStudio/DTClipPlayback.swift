@@ -139,11 +139,19 @@ struct DTClipPlaybackView: View {
     /// Playback's own clock origin, owned by the caller so pausing can snap the
     /// scrubber to wherever playback had got to.
     let startedAt: Date
+    /// Seconds into the clip according to the audio, when sound is playing.
+    ///
+    /// **When there is audio, it is the clock.** Frames timed from `Date` and
+    /// sound played by the audio hardware run off different oscillators; over a
+    /// ten-second clip they separate visibly. Following the audio's own position
+    /// makes drift impossible rather than merely small.
+    var audioTime: () -> TimeInterval? = { nil }
 
     var body: some View {
         TimelineView(.animation(paused: !isPlaying)) { context in
+            let elapsed = audioTime() ?? context.date.timeIntervalSince(startedAt)
             let index = isPlaying
-                ? DTClipClock.frame(elapsed: context.date.timeIntervalSince(startedAt),
+                ? DTClipClock.frame(elapsed: elapsed,
                                     fps: fps,
                                     frameCount: frames.count)
                 : min(max(pausedIndex, 0), max(frames.count - 1, 0))
