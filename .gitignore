@@ -35,3 +35,4 @@ Tests/
 
 # Release archives
 Archives/
+.build-universal/
