@@ -90,6 +90,45 @@ final class StoryFlowPhase3Tests: XCTestCase {
         XCTAssertEqual(StoryFlowEngine.spokenFrameCount(in: "\"a b c\"", wordsPerSecond: 0), 1)
     }
 
+    // MARK: - sweepable parameters
+
+    /// `sweepableParameters` documents itself as exactly the keys `mergeDict`
+    /// understands, and that is load-bearing: a sweep whose parameter is in the set
+    /// but not in `mergeDict` runs silently and moves nothing, which looks identical
+    /// to a model ignoring the setting. Adding `inpaintTools`' three fields to
+    /// `mergeDict` broke the invariant once already.
+    func testEverySweepableParameterIsOneMergeDictActuallyApplies() {
+        // Drive each key through a real merge and assert the config moved. Numeric
+        // and boolean keys only — string keys need per-key valid values.
+        let numeric: [String: Double] = [
+            "batchSize": 2, "batch_size": 2, "guidanceScale": 5, "guidance_scale": 5,
+            "height": 512, "maskBlur": 3, "maskBlurOutset": 4, "mask_blur": 3,
+            "mask_blur_outset": 4, "numFrames": 7, "num_frames": 7, "refinerStart": 0.6,
+            "refiner_start": 0.6, "seed": 99, "shift": 2, "steps": 11,
+            "stochasticSamplingGamma": 0.4, "stochastic_sampling_gamma": 0.4,
+            "strength": 0.7, "width": 512,
+        ]
+        let untested = StoryFlowEngine.sweepableParameters.subtracting(numeric.keys).subtracting([
+            // String- or Bool-valued; covered by mergeDict's own coverage above.
+            "model", "negativePrompt", "negative_prompt", "refinerModel", "refiner_model",
+            "sampler", "seedMode", "seed_mode", "cfgZeroStar", "cfg_zero_star",
+            "resolutionDependentShift", "resolution_dependent_shift",
+            "preserveOriginalAfterInpaint", "preserve_original_after_inpaint",
+        ])
+        XCTAssertTrue(untested.isEmpty,
+                      "sweepable but unexercised here — add them: \(untested.sorted())")
+
+        for (key, value) in numeric {
+            var config = DrawThingsGenerationConfig()
+            let before = config
+            StoryFlowEngine.mergeDict([key: value], into: &config)
+            XCTAssertNotEqual(
+                String(describing: config), String(describing: before),
+                "sweeping '\(key)' changed nothing — it is in sweepableParameters but "
+                + "mergeDict does not apply it, so a sweep on it would silently no-op")
+        }
+    }
+
     // MARK: - Preflight
 
     private func passthrough(_ itemType: String, raw: String = "true") -> WorkflowStep {

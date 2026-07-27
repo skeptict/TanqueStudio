@@ -397,7 +397,7 @@ final class StoryFlowEngine {
                 log("  ⚠ size: missing or invalid parameters — skipped")
                 return
             }
-            mergeDict(obj, into: &currentConfig)
+            Self.mergeDict(obj, into: &currentConfig)
             log("  ✓ size → \(currentConfig.width)×\(currentConfig.height)")
 
         case .passthrough where step.parameters["itemType"] == "frames":
@@ -423,6 +423,36 @@ final class StoryFlowEngine {
 
         case .passthrough where step.parameters["itemType"] == "moodboardWeights":
             executeMoodboardWeights(step: step)
+
+        case .passthrough where step.parameters["itemType"] == "moodboardRemove":
+            guard let n = Self.passthroughNumber(step.parameters["rawValueJSON"] ?? "") else {
+                log("  ⚠ moodboardRemove: missing or invalid index — skipped")
+                return
+            }
+            let index = Int(n)
+            // DT calls `removeFromMoodboardAt(value)` and lets the canvas decide.
+            // Ours would trap on an out-of-range index, and a project that removes
+            // a slot it never filled is a real authoring mistake worth naming.
+            guard activeMoodboard.indices.contains(index) else {
+                log("  ⚠ moodboardRemove: no moodboard image at index \(index) "
+                  + "(\(activeMoodboard.count) present) — nothing removed")
+                return
+            }
+            activeMoodboard.remove(at: index)
+            log("  ✓ moodboardRemove \(index) → \(activeMoodboard.count) left")
+
+        case .passthrough where step.parameters["itemType"] == "inpaintTools":
+            // `Object.assign(configuration, value)` — identical to `config`, so the
+            // whole object merges. Three of its four keys were missing from
+            // `mergeDict` until now; `strength` was already there, which is exactly
+            // why this looked done from the config side and silently was not.
+            guard let obj = Self.passthroughObject(step.parameters["rawValueJSON"] ?? "") else {
+                log("  ⚠ inpaintTools: missing or invalid parameters — skipped")
+                return
+            }
+            Self.mergeDict(obj, into: &currentConfig)
+            log("  ✓ inpaintTools → strength \(currentConfig.strength), blur \(currentConfig.maskBlur), "
+              + "outset \(currentConfig.maskBlurOutset), preserve \(currentConfig.preserveOriginalAfterInpaint)")
 
         case .passthrough where step.parameters["itemType"] == "framesDialog":
             guard let obj = Self.passthroughObject(step.parameters["rawValueJSON"] ?? ""),
@@ -460,7 +490,7 @@ final class StoryFlowEngine {
                 log("  ⚠ configInline: empty or invalid JSON")
                 return
             }
-            mergeDict(dict, into: &currentConfig)
+            Self.mergeDict(dict, into: &currentConfig)
             log("  ✓ Applied inline config")
 
         case .passthrough:
@@ -484,7 +514,9 @@ final class StoryFlowEngine {
     static let sweepableParameters: Set<String> = [
         "batchSize", "batch_size", "cfgZeroStar", "cfg_zero_star",
         "guidanceScale", "guidance_scale", "height", "model",
+        "maskBlur", "maskBlurOutset", "mask_blur", "mask_blur_outset",
         "negativePrompt", "negative_prompt", "numFrames", "num_frames",
+        "preserveOriginalAfterInpaint", "preserve_original_after_inpaint",
         "refinerModel", "refinerStart", "refiner_model", "refiner_start",
         "resolutionDependentShift", "resolution_dependent_shift",
         "sampler", "seed", "seedMode", "seed_mode", "shift", "steps",
@@ -683,7 +715,7 @@ final class StoryFlowEngine {
             n.truncatingRemainder(dividingBy: 1) == 0 && abs(n) < 1e15 ? Int(n) as Any : n as Any
         } ?? picked
 
-        mergeDict([paramName: value], into: &currentConfig)
+        Self.mergeDict([paramName: value], into: &currentConfig)
         log("  ✓ sweep \(paramName) = \(picked)")
     }
 
@@ -782,14 +814,17 @@ final class StoryFlowEngine {
             log("  ⚠ Config var '\(varName)' not found or invalid JSON")
             return
         }
-        mergeDict(dict, into: &currentConfig)
+        Self.mergeDict(dict, into: &currentConfig)
         log("  ✓ Applied config #\(cleanName)")
     }
 
     /// Merge a raw JSON dictionary into a `DrawThingsGenerationConfig`.
     /// Handles both camelCase and snake_case key variants, and Int→String
     /// conversion for `sampler` and `seedMode` (DT HTTP API returns integers).
-    private func mergeDict(_ dict: [String: Any], into config: inout DrawThingsGenerationConfig) {
+    /// Static because it is pure — no engine state is read or written, only the
+    /// `config` passed in. That lets tests drive it directly, which is what pins
+    /// `sweepableParameters` to the keys this actually applies.
+    static func mergeDict(_ dict: [String: Any], into config: inout DrawThingsGenerationConfig) {
 
         // Helper: look up a key trying camelCase first, then snake_case fallback.
         func val(_ k1: String, _ k2: String? = nil) -> Any? {
@@ -826,14 +861,19 @@ final class StoryFlowEngine {
         if let v = boolVal("cfgZeroStar", "cfg_zero_star")                     { config.cfgZeroStar = v }
         if let v = strVal("refinerModel", "refiner_model")                     { config.refinerModel = v }
         if let v = dblVal("refinerStart", "refiner_start")                     { config.refinerStart = v }
+        // inpaintTools' three other fields. `strength` above is the fourth and was
+        // already here, which is why the instruction looked covered and was not.
+        if let v = dblVal("maskBlur", "mask_blur")                             { config.maskBlur = v }
+        if let v = intVal("maskBlurOutset", "mask_blur_outset")                { config.maskBlurOutset = v }
+        if let v = boolVal("preserveOriginalAfterInpaint", "preserve_original_after_inpaint") { config.preserveOriginalAfterInpaint = v }
 
         // sampler — accept String or Int (DT HTTP API returns Int)
         if let s = strVal("sampler")      { config.sampler = s }
-        else if let n = intVal("sampler") { config.sampler = samplerString(for: n) }
+        else if let n = intVal("sampler") { config.sampler = Self.samplerString(for: n) }
 
         // seedMode — accept String or Int
         if let s = strVal("seedMode", "seed_mode")      { config.seedMode = s }
-        else if let n = intVal("seedMode", "seed_mode") { config.seedMode = seedModeString(for: n) }
+        else if let n = intVal("seedMode", "seed_mode") { config.seedMode = Self.seedModeString(for: n) }
 
         // loras — replace entirely when present (not merged)
         if let lorasArr = dict["loras"] as? [[String: Any]] {
@@ -877,14 +917,14 @@ final class StoryFlowEngine {
     // Ordinal values from Draw Things config.fbs (draw-things-community repo).
     // Update here if DT adds new samplers.
 
-    private func samplerString(for n: Int) -> String {
+    private static func samplerString(for n: Int) -> String {
         // Canonical mapping: DrawThingsSampler.builtIn index == DT SamplerType ordinal.
         let samplers = DrawThingsSampler.builtIn
         guard n >= 0 && n < samplers.count else { return "DPM++ 2M Karras" }
         return samplers[n].name
     }
 
-    private func seedModeString(for n: Int) -> String {
+    private static func seedModeString(for n: Int) -> String {
         switch n {
         case 0: return "Legacy"
         case 1: return "Torch CPU Compatible"

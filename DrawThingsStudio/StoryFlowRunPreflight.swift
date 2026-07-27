@@ -78,7 +78,7 @@ struct StoryFlowRunPreflight {
     static let nativelyExecuted: Set<String> = [
         "concat", "wildcard", "sweep",
         "size", "frames", "negPrompt", "adaptSize", "moodboardWeights",
-        "framesDialog", "approve",
+        "framesDialog", "approve", "moodboardRemove", "inpaintTools",
     ]
 
     /// True if this step is a `framesDialog` with its `generate` flag set.

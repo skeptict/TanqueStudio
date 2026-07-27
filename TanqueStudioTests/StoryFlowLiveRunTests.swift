@@ -122,7 +122,11 @@ final class StoryFlowLiveRunTests: XCTestCase {
         engine.canPresentApproval = true
 
         var images: [(DrawThingsGenerationConfig, String)] = []
-        engine.onImageGenerated = { _, cfg, prompt, _ in images.append((cfg, prompt)) }
+        var renderedSizes: [CGSize] = []
+        engine.onImageGenerated = { img, cfg, prompt, _ in
+            images.append((cfg, prompt))
+            renderedSizes.append(img.size)
+        }
 
         // Stand in for the sheet: approve with edited text as soon as the engine
         // asks. Polling, because the pause happens inside the run's own Task.
@@ -148,6 +152,21 @@ final class StoryFlowLiveRunTests: XCTestCase {
         XCTAssertEqual(images.last?.0.width, 768, "adaptSize width.\n\(log)")
         XCTAssertEqual(images.last?.0.height, 512, "adaptSize height.\n\(log)")
 
+        // ⚠️ KNOWN DIVERGENCE, asserted so it cannot be forgotten. The config above is
+        // what goes on the wire and is correct, but Draw Things sizes a sub-1.0-strength
+        // img2img to its SOURCE image, and our canvas image is still the 1024×1024 first
+        // render — `size`/`adaptSize` change the config and not the canvas, where DT's
+        // `canvas.updateCanvasSize` changes both. So the returned image is 1024×1024
+        // even though 768×512 was asked for.
+        //
+        // Asserting the wrong-but-actual value on purpose: a config-only assertion
+        // passed this run while the artifact on disk disagreed, which is precisely the
+        // hole that let it through. Flip this to 768×512 when the canvas is resized too.
+        let returned = try XCTUnwrap(renderedSizes.last)
+        XCTAssertEqual(returned.width, 1024, accuracy: 1,
+                       "if this now reads 768, the canvas-resize gap is closed — update this test.")
+        XCTAssertEqual(returned.height, 1024, accuracy: 1)
+
         // framesDialog: 7 words inside the quoted span at 2.4 wps → 7/2.4*25 =
         // 72.9 → up to 80 → 81, plus 0 padding.
         XCTAssertEqual(images.last?.0.numFrames, 81, "framesDialog frame count.\n\(log)")
@@ -162,6 +181,19 @@ final class StoryFlowLiveRunTests: XCTestCase {
                       "expected slot 0 to take its weight.\n\(log)")
         XCTAssertTrue(log.contains("slot 1") && log.contains("no moodboard image"),
                       "expected the empty slot to be reported.\n\(log)")
+
+        // inpaintTools, read off the config that was sent. Three of these four keys
+        // were missing from `mergeDict` while `strength` was present, so asserting
+        // strength alone would have passed against a broken instruction.
+        let cfg = try XCTUnwrap(images.last?.0)
+        XCTAssertEqual(cfg.strength, 0.55, accuracy: 0.001, "inpaintTools strength.\n\(log)")
+        XCTAssertEqual(cfg.maskBlur, 3.5, accuracy: 0.001, "inpaintTools maskBlur.\n\(log)")
+        XCTAssertEqual(cfg.maskBlurOutset, 6, "inpaintTools maskBlurOutset.\n\(log)")
+        XCTAssertFalse(cfg.preserveOriginalAfterInpaint, "inpaintTools preserve flag.\n\(log)")
+
+        // moodboardRemove empties the one slot canvasToMoodboard filled.
+        XCTAssertTrue(log.contains("moodboardRemove 0 → 0 left"),
+                      "expected the moodboard to be emptied.\n\(log)")
     }
 
     // MARK: - approve, without a server
