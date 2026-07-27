@@ -228,6 +228,9 @@ DrawThingsStudio/
 
 ### Completed
 
+- [x] **StoryFlow 260723 Phase 3 — native execution** — `concat`, `wildcard` and `sweep` (stateful loop/once/shuffle/random trackers), `size`, `frames`, `negPrompt`, `adaptSize`, `moodboardWeights`, `moodboardRemove`, `inpaintTools`, `framesDialog`, and a human-in-the-loop `approve` sheet all run in-app with no DT script. Adopts the `concat` accumulator semantics, which retires the export re-emit hack
+- [x] **StoryFlow 260723 Phase 2** — the 34-entry instruction schema table, a generic step card that renders any entry, and the exit criterion: a Tanque Studio-authored project run in Draw Things' own pipeline
+- [x] **DT Project Browser — video clips** — frames collapse into one cell per clip, hover to play, scrub and hear audio in the detail panel, export cover frame / all frames / `.mp4`, Delete Series
 - [x] Generate workspace — four-panel layout, canvas zoom/pan, gallery strip
 - [x] Full generation config — all Draw Things parameters, LoRAs, img2img, batch
 - [x] Config presets — import from Draw Things `custom_configs.json`
@@ -283,8 +286,8 @@ DrawThingsStudio/
 
 In priority order:
 
-1. [ ] **Video handling — the general pass** — the DT Project Browser now plays clips (see Completed). Still open: audio (Draw Things stores an audio tensor per clip that Tanque Studio ignores), and a wider look at how series are handled outside the browser
-2. [ ] **StoryFlow 260723 Phase 3 — native execution** — run the DT-model-free subset in-app: run-time wildcards and parameter sweeps (stateful loop/once/shuffle/random trackers), `size`, `frames`, `framesDialog`, `negPrompt`, `adaptSize`, moodboard weights, `inpaintTools`, and a human-in-the-loop `approve` sheet. Adopts the new `concat` accumulator, which retires the export re-emit hack
+1. [ ] **Video handling — the general pass** — clip playback and audio both ship (see Completed). Still open: a wider look at how series are handled outside the DT Project Browser
+2. [ ] **StoryFlow canvas resize on `size` / `adaptSize`** — both set the config but leave the canvas image at its old dimensions, so a following img2img below full strength renders at the old size. Correct at the default strength 1.0. Crop-vs-scale is undecided
 3. [ ] **Config parity Batch F — SDXL conditioning** — also what StoryFlow's `xlMagic` needs
 4. [ ] **README polish** — screenshots, demo GIF
 

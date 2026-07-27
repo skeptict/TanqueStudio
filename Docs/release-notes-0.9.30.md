@@ -1,12 +1,4 @@
-# v0.9.30 — draft release notes
-
-> **Draft, not yet published.** Step 6 of `release-checklist.md` consumes this file:
-> `gh release create v0.9.30 … --notes-file Docs/release-notes-0.9.30.md`. Re-read the
-> *Release-note honesty* section of the checklist before publishing, and delete this block.
->
-> The first section is an **owed** item. 0.9.29 shipped the Intel fix labelled unverified,
-> and Ned's decision (2026-07-26) was to confirm it here rather than retro-edit the 0.9.29
-> notes — those were honest at publication and stay as they are. Do not drop it.
+# v0.9.30
 
 ## Intel / macOS 15 hang — CONFIRMED FIXED
 
@@ -40,9 +32,9 @@ more. Still open, and we'd still like to hear:
 
 StoryFlow no longer needs Draw Things' `StoryflowPipeline.js` for a growing share of what a
 project can contain. `concat`, `wildcard`, `sweep`, `size`, `frames`, `negPrompt`,
-`adaptSize`, `moodboardWeights` and `framesDialog` all execute inside Tanque Studio now, so
-a wildcard-and-sweep workflow runs end to end here — pick a subject per pass, step a config
-parameter through a list of values, render each one.
+`adaptSize`, `moodboardWeights`, `moodboardRemove`, `inpaintTools` and `framesDialog` all
+execute inside Tanque Studio now, so a wildcard-and-sweep workflow runs end to end here —
+pick a subject per pass, step a config parameter through a list of values, render each one.
 
 `approve` pauses a run and hands you the accumulated prompt to edit before it continues,
 matching the pipeline's human-in-the-loop review.
@@ -102,6 +94,11 @@ get their render steps and produce images.
 
 ## Known gaps
 
+- **`size` and `adaptSize` resize the render, not the canvas.** Both set the dimensions used
+  for the next render, and those are correct on the wire. But the canvas image itself keeps
+  its old size, so if you follow one with an img2img render *below full strength*, Draw
+  Things sizes the result to the canvas and you get the old dimensions back. At the default
+  strength of 1.0 the output is correct. Being fixed next.
 - The remaining passthrough instructions (mask, depth and pose operations, and the canvas
   operations Draw Things performs locally) are still preserved on save but not executed. A
   run says which ones it will skip, and whether skipping them changes the image.
