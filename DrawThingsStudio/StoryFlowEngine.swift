@@ -40,6 +40,11 @@ final class StoryFlowEngine {
 
     /// Remaining loop counts keyed by the loop step's UUID.
     private var loopCounters: [UUID: Int] = [:]
+    /// Sweep/wildcard trackers, keyed by instruction position.
+    private var wildcards = StoryFlowWildcardRegistry()
+    /// Total loop passes completed — the pipeline's `_loopCounter`. Trackers in
+    /// `loop` mode are pure in this, which is what keeps equal-length ones in step.
+    private var globalLoopCounter = 0
 
     /// Set by the endLoop handler to cause the run loop to jump to a specific index.
     private var jumpToIndex: Int? = nil
@@ -105,6 +110,10 @@ final class StoryFlowEngine {
         outputFolder = StoryFlowStorage.shared.outputFolder(for: workflow.name)
 
         loopCounters = [:]
+        // Fresh trackers per run: `once` and `shuffle` hold position, so reusing
+        // them across runs would quietly degrade them into `loop` and `random`.
+        wildcards = StoryFlowWildcardRegistry()
+        globalLoopCounter = 0
         jumpToIndex = nil
 
         // Lead with what this run will skip, so the log says it once up front rather
@@ -277,6 +286,9 @@ final class StoryFlowEngine {
                 let remaining = loopCounters[loopStep.id] ?? 0
                 if remaining > 1 {
                     loopCounters[loopStep.id] = remaining - 1
+                    // Mirrors the pipeline's `_loopCounter`: one increment per
+                    // completed pass, shared by every tracker.
+                    globalLoopCounter += 1
                     jumpToIndex = loopIdx + 1
                     log("  ↩ Loop back (\(remaining - 1) remaining)")
                 } else {
@@ -320,6 +332,9 @@ final class StoryFlowEngine {
             viewportScale = 1.0
             log("  ✓ Cropped canvas to \(Int(cropped.size.width))×\(Int(cropped.size.height))")
 
+        case .passthrough where step.parameters["itemType"] == "sweep":
+            executeSweep(step: step, at: currentIndex)
+
         case .configInline:
             let json = step.parameters["json"] ?? ""
             guard !json.isEmpty,
@@ -338,6 +353,81 @@ final class StoryFlowEngine {
     }
 
     // MARK: — Generate
+
+    // MARK: - sweep
+
+    /// Config parameters `sweep` can drive natively.
+    ///
+    /// Exactly the keys `mergeDict` understands — sweep is a one-key config
+    /// merge, so anything outside this set would be applied to nothing. Draw
+    /// Things does `configuration[paramName] = pickedValue` and would accept any
+    /// name; we cannot, so an unknown one is **reported rather than ignored**.
+    /// Silently dropping it would mean a swept parameter that simply never moves,
+    /// which looks exactly like a model that ignores the setting.
+    static let sweepableParameters: Set<String> = [
+        "batchSize", "batch_size", "cfgZeroStar", "cfg_zero_star",
+        "guidanceScale", "guidance_scale", "height", "model",
+        "negativePrompt", "negative_prompt", "numFrames", "num_frames",
+        "refinerModel", "refinerStart", "refiner_model", "refiner_start",
+        "resolutionDependentShift", "resolution_dependent_shift",
+        "sampler", "seed", "seedMode", "seed_mode", "shift", "steps",
+        "stochasticSamplingGamma", "stochastic_sampling_gamma",
+        "strength", "width"
+    ]
+
+    /// A passthrough step's object value.
+    ///
+    /// `rawValueJSON` is **JSON inside a JSON string** — the outer layer is a
+    /// quoted string whose contents are the object. That nesting is deliberate
+    /// (§8.3.3, it is how the format author stores these) and it is why parsing
+    /// the field directly yields nothing: the first parse returns a `String`, not
+    /// a dictionary. Unwrap once, then parse. Both shapes are accepted so a
+    /// hand-edited project that stores the object plainly still works.
+    static func passthroughObject(_ raw: String) -> [String: Any]? {
+        guard let data = raw.data(using: .utf8) else { return nil }
+        let parsed = try? JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed])
+        if let obj = parsed as? [String: Any] { return obj }
+        guard let inner = parsed as? String, let innerData = inner.data(using: .utf8) else { return nil }
+        return (try? JSONSerialization.jsonObject(with: innerData)) as? [String: Any]
+    }
+
+    /// Advances this sweep's tracker and applies the drawn card to the config.
+    ///
+    /// The tracker is keyed by **instruction position**, so two sweeps of the same
+    /// parameter advance independently — keying by content would silently
+    /// correlate them. `globalLoopCounter` is the total number of loop passes, so
+    /// trackers with equal card counts stay in lockstep the way the pipeline's do.
+    private func executeSweep(step: WorkflowStep, at index: Int) {
+        guard let raw = step.parameters["rawValueJSON"],
+              let obj = Self.passthroughObject(raw),
+              let paramName = obj["paramName"] as? String, !paramName.isEmpty else {
+            log("  ⚠ sweep: missing or invalid parameters — skipped")
+            return
+        }
+        let cards = (obj["cards"] as? [Any])?.map { "\($0)" } ?? []
+        guard !cards.isEmpty else {
+            log("  ⚠ sweep \(paramName): no cards — skipped")
+            return
+        }
+        guard Self.sweepableParameters.contains(paramName) else {
+            log("  ⚠ sweep: '\(paramName)' is not a config parameter Tanque Studio models — "
+              + "left unchanged. It will still apply when this project runs in Draw Things.")
+            return
+        }
+
+        let wild = (obj["wild"] as? String) ?? "loop"
+        let tracker = wildcards.register(at: index, wild: wild, cards: cards)
+        let picked = tracker.nextCard(globalLoopCounter: globalLoopCounter)
+
+        // Coerce the same way the export does (§8.3.3): the card list is stored as
+        // strings, but a numeric config field needs a number.
+        let value: Any = Double(picked.trimmingCharacters(in: .whitespaces)).map { n -> Any in
+            n.truncatingRemainder(dividingBy: 1) == 0 && abs(n) < 1e15 ? Int(n) as Any : n as Any
+        } ?? picked
+
+        mergeDict([paramName: value], into: &currentConfig)
+        log("  ✓ sweep \(paramName) = \(picked)")
+    }
 
     private func executeGenerate(step: WorkflowStep, variables: [WorkflowVariable]) async throws {
         let grpcClient = DrawThingsGRPCClient(
