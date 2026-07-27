@@ -335,6 +335,19 @@ final class StoryFlowEngine {
         case .passthrough where step.parameters["itemType"] == "sweep":
             executeSweep(step: step, at: currentIndex)
 
+        case .passthrough where step.parameters["itemType"] == "concat":
+            // Raw append, no separator — `concat = concat + value` (Ned: match
+            // Draw Things). Unlike `.promptInstruction`, which joins with ", ",
+            // so spacing is the author's to supply. That is why the exit-criterion
+            // project reads "a photograph of a " with a deliberate trailing space.
+            let text = Self.passthroughString(step.parameters["rawValueJSON"] ?? "")
+            let resolved = resolveTokens(text, variables: variables)
+            currentPrompt += resolved
+            log("  ✓ concat → \(currentPrompt.prefix(80))\(currentPrompt.count > 80 ? "…" : "")")
+
+        case .passthrough where step.parameters["itemType"] == "wildcard":
+            executeWildcard(step: step, at: currentIndex)
+
         case .configInline:
             let json = step.parameters["json"] ?? ""
             guard !json.isEmpty,
@@ -389,6 +402,33 @@ final class StoryFlowEngine {
         if let obj = parsed as? [String: Any] { return obj }
         guard let inner = parsed as? String, let innerData = inner.data(using: .utf8) else { return nil }
         return (try? JSONSerialization.jsonObject(with: innerData)) as? [String: Any]
+    }
+
+    /// A passthrough step's string value, unwrapped from its JSON quoting.
+    static func passthroughString(_ raw: String) -> String {
+        guard let data = raw.data(using: .utf8),
+              let s = (try? JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed])) as? String
+        else { return raw }
+        return s
+    }
+
+    /// Draws this wildcard's next card and appends it to the prompt.
+    ///
+    /// Same registry as `sweep` and the same position keying, so a wildcard and a
+    /// sweep at different indices never share a tracker. Appends raw, like
+    /// `concat` — the pipeline does `concat = concat + pickedCard`.
+    private func executeWildcard(step: WorkflowStep, at index: Int) {
+        guard let raw = step.parameters["rawValueJSON"],
+              let obj = Self.passthroughObject(raw),
+              let cards = (obj["cards"] as? [Any])?.map({ "\($0)" }), !cards.isEmpty else {
+            log("  ⚠ wildcard: missing or invalid cards — skipped")
+            return
+        }
+        let wild = (obj["wild"] as? String) ?? "loop"
+        let tracker = wildcards.register(at: index, wild: wild, cards: cards)
+        let picked = tracker.nextCard(globalLoopCounter: globalLoopCounter)
+        currentPrompt += picked
+        log("  ✓ wildcard [\(wild)] → \(picked)")
     }
 
     /// Advances this sweep's tracker and applies the drawn card to the config.

@@ -72,12 +72,20 @@ struct StoryFlowRunPreflight {
     /// accumulator, a `generate` empties it, and `clearPrompt` empties it too.
     let blankRenders: Int
 
+    /// Passthrough instruction types Tanque Studio now runs itself (Phase 3).
+    /// Kept beside the preflight so the banner and the engine cannot disagree
+    /// about what actually executes.
+    static let nativelyExecuted: Set<String> = ["concat", "wildcard", "sweep"]
+
     // MARK: — Construction
 
     init(workflow: Workflow) {
         var counts: [String: Int] = [:]
         for step in workflow.steps where step.type == .passthrough {
             let itemType = step.parameters["itemType"] ?? "unknown"
+            // Phase 3 executes these natively, so they are no longer skipped.
+            // The banner has to shrink as coverage grows, or it cries wolf.
+            guard !Self.nativelyExecuted.contains(itemType) else { continue }
             counts[itemType, default: 0] += 1
         }
 
@@ -88,6 +96,10 @@ struct StoryFlowRunPreflight {
         var blanks = 0
         for step in workflow.steps {
             switch step.type {
+            // `concat` and `wildcard` fill the accumulator just as a prompt step
+            // does, so a Generate after either is not blank.
+            case .passthrough where ["concat", "wildcard"].contains(step.parameters["itemType"] ?? ""):
+                accumulatorHasText = true
             case .promptInstruction:
                 if !(step.parameters["text"] ?? "").isEmpty { accumulatorHasText = true }
             case .generate:
