@@ -77,7 +77,36 @@ Neither was visible until a project with the full item set could actually be loa
 
 Also fixed: `frames8` now collapses to `frames` on pipeline export (matching the editor, which emits `{"frames": value}` for both). There is no `frames8` key in `allowedKeys`, so emitting it verbatim failed preflight as an unknown instruction.
 
-### 3.2 `concat` obsoletes the export re-emit hack
+### 3.2 `concat` obsoletes the export re-emit hack — **CORRECTED 2026-07-27, this section was wrong**
+
+> **⚠️ The claim below — that adopting `concat` deletes the re-emit hack — is false, and acting
+> on it as written would have produced a broken export.** Reading both executors side by side
+> found **two** divergences, not one:
+>
+> | | Tanque Studio (before) | Draw Things 260723 |
+> |---|---|---|
+> | accumulate | `currentPrompt + ", " + text` | `concat + value` — **no separator** |
+> | render | renders, **keeps** the prompt | renders, **clears** the accumulator |
+>
+> The hack existed because of the **second** difference: TS's prompt survived a render and DT's
+> did not, so re-rendering at a new config required re-sending the text. Switching to `concat`
+> alone changes how the text is *spelled* and leaves the duplication exactly where it was.
+>
+> **What actually resolved it (Ned, 2026-07-27 — "match Draw Things wherever possible"):**
+> `.generate` now empties `currentPrompt`, matching the pipeline. With the accumulator behaving
+> the same in both engines the mapping is one-to-one and stateless, so `lastPrompt` /
+> `prevWasPrompt` are deleted and a bare generate exports as `{"prompt": ""}`. Shipped in
+> `0137660`.
+>
+> **The migration risk is real and silent**: a workflow that rendered one prompt at three configs
+> now renders one image and two blanks. `StoryFlowRunPreflight.blankRenders` counts generates
+> that would fire on an empty accumulator and warns before the run.
+>
+> **Also note** that `concat` appends **raw**, unlike `.promptInstruction`'s `", "` join — so
+> spacing is the author's to supply. That is why the exit-criterion project's first fragment
+> ends in a deliberate trailing space.
+>
+> The original text is kept below for context; treat its conclusion as superseded.
 
 The v0.9.21 codec fix (Open Brain, 2026-06-28) works around DT having no explicit render trigger: a `generate` step re-emits the preceding `prompt` because *the prompt instruction is what fires the render*. That hack has a cost — the prompt text is duplicated in the export, and the codec carries `lastPrompt`/`prevWasPrompt` state to avoid double-firing.
 
