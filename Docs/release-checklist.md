@@ -100,8 +100,13 @@ git push origin vX.Y.Z
 
 ## 6. Publish
 
+Notes live in the repo at `Docs/release-notes-X.Y.Z.md` and are drafted as the work lands,
+not written from the git log on release day. **Check whether one already exists before
+writing a new one** — a draft is where a previous release's owed follow-up gets parked, and
+the whole point is that it survives the session that noticed it.
+
 ```bash
-gh release create vX.Y.Z --title "…" --notes-file <notes> --target main Archives/TanqueStudio-X.Y.Z.zip
+gh release create vX.Y.Z --title "…" --notes-file Docs/release-notes-X.Y.Z.md --target main Archives/TanqueStudio-X.Y.Z.zip
 ```
 
 Then confirm it actually landed as Latest — `gh release view` does not report this, so
