@@ -152,20 +152,17 @@ final class StoryFlowLiveRunTests: XCTestCase {
         XCTAssertEqual(images.last?.0.width, 768, "adaptSize width.\n\(log)")
         XCTAssertEqual(images.last?.0.height, 512, "adaptSize height.\n\(log)")
 
-        // ⚠️ KNOWN DIVERGENCE, asserted so it cannot be forgotten. The config above is
-        // what goes on the wire and is correct, but Draw Things sizes a sub-1.0-strength
-        // img2img to its SOURCE image, and our canvas image is still the 1024×1024 first
-        // render — `size`/`adaptSize` change the config and not the canvas, where DT's
-        // `canvas.updateCanvasSize` changes both. So the returned image is 1024×1024
-        // even though 768×512 was asked for.
+        // The returned image, not just the config that asked for it. Draw Things
+        // sizes a sub-1.0-strength img2img to its SOURCE, so this only comes back
+        // 768×512 if `adaptSize` re-framed the canvas as well as the config — which
+        // is the whole point of the fix. It read 1024×1024 before.
         //
-        // Asserting the wrong-but-actual value on purpose: a config-only assertion
-        // passed this run while the artifact on disk disagreed, which is precisely the
-        // hole that let it through. Flip this to 768×512 when the canvas is resized too.
+        // Keep this assertion on the artifact. The config-only version of it passed
+        // while the PNG on disk disagreed, which is exactly how the gap survived.
         let returned = try XCTUnwrap(renderedSizes.last)
-        XCTAssertEqual(returned.width, 1024, accuracy: 1,
-                       "if this now reads 768, the canvas-resize gap is closed — update this test.")
-        XCTAssertEqual(returned.height, 1024, accuracy: 1)
+        XCTAssertEqual(returned.width, 768, accuracy: 1,
+                       "canvas was not re-framed — img2img rendered at the old size.\n\(log)")
+        XCTAssertEqual(returned.height, 512, accuracy: 1)
 
         // framesDialog: 7 words inside the quoted span at 2.4 wps → 7/2.4*25 =
         // 72.9 → up to 80 → 81, plus 0 padding.

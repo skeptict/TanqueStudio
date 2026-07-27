@@ -90,6 +90,97 @@ final class StoryFlowPhase3Tests: XCTestCase {
         XCTAssertEqual(StoryFlowEngine.spokenFrameCount(in: "\"a b c\"", wordsPerSecond: 0), 1)
     }
 
+    // MARK: - Canvas re-framing
+
+    /// A solid image of a known pixel size, with one differently-coloured pixel at
+    /// a known place so a crop's *position* is checkable and not just its size.
+    private func swatch(width: Int, height: Int, markAt mark: (x: Int, y: Int)?) -> NSImage {
+        let cs = CGColorSpaceCreateDeviceRGB()
+        let ctx = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8,
+                            bytesPerRow: width * 4, space: cs,
+                            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+        ctx.setFillColor(CGColor(red: 0, green: 0, blue: 0, alpha: 1))
+        ctx.fill(CGRect(x: 0, y: 0, width: width, height: height))
+        if let mark {
+            ctx.setFillColor(CGColor(red: 1, green: 1, blue: 1, alpha: 1))
+            ctx.fill(CGRect(x: mark.x, y: mark.y, width: 1, height: 1))
+        }
+        let cg = ctx.makeImage()!
+        return NSImage(cgImage: cg, size: NSSize(width: width, height: height))
+    }
+
+    private func pixelSize(_ image: NSImage) -> (Int, Int) {
+        var r = NSRect(origin: .zero, size: image.size)
+        let cg = image.cgImage(forProposedRect: &r, context: nil, hints: nil)!
+        return (cg.width, cg.height)
+    }
+
+    /// The case the live run actually hit: adaptSize clamps to 768×512 and the
+    /// canvas must follow, or a sub-1.0-strength img2img renders at 1024×1024.
+    func testTrimShrinksBothAxesToTheRequestedCanvas() {
+        let trimmed = StoryFlowEngine.trimToCanvas(swatch(width: 1024, height: 1024, markAt: nil),
+                                                   size: CGSize(width: 768, height: 512))
+        XCTAssertEqual(pixelSize(try! XCTUnwrap(trimmed)).0, 768)
+        XCTAssertEqual(pixelSize(try! XCTUnwrap(trimmed)).1, 512)
+    }
+
+    /// Centred, not corner-anchored — DT recentres at zoom 1 after resizing. A
+    /// corner crop is the same *size* as a centred one, so size assertions alone
+    /// cannot tell them apart; this marks the exact centre pixel and looks for it.
+    func testTrimKeepsTheMiddleRatherThanACorner() throws {
+        // 100×100 → 10×10 keeps x,y in 45..<55. Mark the centre and a corner.
+        let image = swatch(width: 100, height: 100, markAt: (x: 50, y: 50))
+        let trimmed = try XCTUnwrap(StoryFlowEngine.trimToCanvas(image, size: CGSize(width: 10, height: 10)))
+        var r = NSRect(origin: .zero, size: trimmed.size)
+        let cg = try XCTUnwrap(trimmed.cgImage(forProposedRect: &r, context: nil, hints: nil))
+        let bitmap = NSBitmapImageRep(cgImage: cg)
+        // The marked pixel sits at the centre of the source, so it must survive.
+        var found = false
+        for x in 0..<cg.width where !found {
+            for y in 0..<cg.height where !found {
+                if let c = bitmap.colorAt(x: x, y: y), c.brightnessComponent > 0.5 { found = true }
+            }
+        }
+        XCTAssertTrue(found, "the source's centre pixel was cropped away — this is a corner crop")
+    }
+
+    /// Only ever trims. Growing a canvas in DT reveals empty space around the
+    /// image; padding an img2img source with invented pixels would be worse.
+    func testTrimNeverUpscalesOrPads() {
+        let image = swatch(width: 512, height: 512, markAt: nil)
+        let bigger = StoryFlowEngine.trimToCanvas(image, size: CGSize(width: 2048, height: 2048))
+        XCTAssertEqual(pixelSize(try! XCTUnwrap(bigger)).0, 512)
+        XCTAssertEqual(pixelSize(try! XCTUnwrap(bigger)).1, 512)
+    }
+
+    /// One axis shrinking and the other growing is exactly what adaptSize's
+    /// independent per-axis clamp produces, and it must not drag the other axis
+    /// along.
+    func testTrimHandlesOneAxisShrinkingAndTheOtherGrowing() {
+        let trimmed = StoryFlowEngine.trimToCanvas(swatch(width: 1024, height: 512, markAt: nil),
+                                                   size: CGSize(width: 768, height: 1024))
+        XCTAssertEqual(pixelSize(try! XCTUnwrap(trimmed)).0, 768, "shrinking axis")
+        XCTAssertEqual(pixelSize(try! XCTUnwrap(trimmed)).1, 512, "growing axis stays put")
+    }
+
+    /// An exact-fit target must return the image untouched rather than round-trip
+    /// it through a redundant crop.
+    func testTrimIsANoOpAtTheSameSize() {
+        let image = swatch(width: 640, height: 640, markAt: nil)
+        let trimmed = StoryFlowEngine.trimToCanvas(image, size: CGSize(width: 640, height: 640))
+        XCTAssertEqual(pixelSize(try! XCTUnwrap(trimmed)).0, 640)
+        XCTAssertEqual(pixelSize(try! XCTUnwrap(trimmed)).1, 640)
+    }
+
+    /// A degenerate target clamps to one pixel instead of producing a zero-area
+    /// crop, which `CGImage.cropping` would reject and turn into a nil canvas.
+    func testTrimClampsADegenerateTargetToOnePixel() {
+        let trimmed = StoryFlowEngine.trimToCanvas(swatch(width: 64, height: 64, markAt: nil),
+                                                   size: CGSize(width: 0, height: 0))
+        XCTAssertEqual(pixelSize(try! XCTUnwrap(trimmed)).0, 1)
+        XCTAssertEqual(pixelSize(try! XCTUnwrap(trimmed)).1, 1)
+    }
+
     // MARK: - sweepable parameters
 
     /// `sweepableParameters` documents itself as exactly the keys `mergeDict`

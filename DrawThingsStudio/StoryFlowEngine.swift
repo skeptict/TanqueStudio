@@ -390,15 +390,15 @@ final class StoryFlowEngine {
             // DT does `Object.assign(configuration, value)` then
             // `canvas.updateCanvasSize(configuration)` — the whole object, not
             // just width/height, which is why this merges rather than reading
-            // two keys. The canvas half needs no equivalent here: Tanque Studio
-            // renders at the config's dimensions, so the next generate already
-            // uses them.
+            // two keys. `updateCanvasSize` is the canvas half, and it matters:
+            // see `reframeCanvasToConfig`.
             guard let obj = Self.passthroughObject(step.parameters["rawValueJSON"] ?? "") else {
                 log("  ⚠ size: missing or invalid parameters — skipped")
                 return
             }
             Self.mergeDict(obj, into: &currentConfig)
             log("  ✓ size → \(currentConfig.width)×\(currentConfig.height)")
+            reframeCanvasToConfig("size")
 
         case .passthrough where step.parameters["itemType"] == "frames":
             guard let n = Self.passthroughNumber(step.parameters["rawValueJSON"] ?? "") else {
@@ -625,6 +625,9 @@ final class StoryFlowEngine {
         viewportPosition = .zero
         viewportScale = 1.0
         log("  ✓ adaptSize → \(currentConfig.width)×\(currentConfig.height)")
+        // `adaptAndResetCanvas` calls updateCanvasSize before resetting zoom and
+        // recentring, so the canvas is re-framed too, not just the config.
+        reframeCanvasToConfig("adaptSize")
     }
 
     /// Sets the weight of each moodboard slot named in the instruction.
@@ -890,6 +893,55 @@ final class StoryFlowEngine {
 
     /// Crop `image` using the locked viewport formula.
     /// CGImage uses bottom-left origin, so Y is flipped before calling `cropping(to:)`.
+    /// Trims an image to a canvas of `size`, keeping the middle.
+    ///
+    /// Draw Things' `updateCanvasSize` changes the canvas **frame**; it does not
+    /// resample what is on it. So shrinking the canvas re-frames the image rather
+    /// than squashing it, and `adaptAndResetCanvas` then recentres at zoom 1 —
+    /// which is why the crop is centred and not anchored at a corner.
+    ///
+    /// **Only ever trims.** An axis where the target is at least as large as the
+    /// image is left alone: growing a canvas in Draw Things reveals empty space
+    /// around the image, and padding an img2img source with invented pixels would
+    /// be worse than leaving it. Returns `nil` only if the image cannot be read.
+    static func trimToCanvas(_ image: NSImage, size: CGSize) -> NSImage? {
+        var proposedRect = NSRect(origin: .zero, size: image.size)
+        guard let cgImage = image.cgImage(forProposedRect: &proposedRect, context: nil, hints: nil)
+        else { return nil }
+
+        let pw = CGFloat(cgImage.width)
+        let ph = CGFloat(cgImage.height)
+        let cropW = min(pw, max(1, size.width.rounded()))
+        let cropH = min(ph, max(1, size.height.rounded()))
+        guard cropW < pw || cropH < ph else { return image }   // nothing to trim
+
+        // A centred rect is symmetric, so the CGImage bottom-left origin and the
+        // NSImage top-left one give the same rectangle here.
+        let rect = CGRect(x: ((pw - cropW) / 2).rounded(.down),
+                          y: ((ph - cropH) / 2).rounded(.down),
+                          width: cropW, height: cropH)
+        guard let cropped = cgImage.cropping(to: rect) else { return nil }
+        return NSImage(cgImage: cropped, size: NSSize(width: cropW, height: cropH))
+    }
+
+    /// Re-frames the canvas after an instruction changed the render dimensions.
+    ///
+    /// Without this the config and the canvas disagree, and the disagreement is
+    /// **silent at full strength and wrong below it**: Draw Things sizes a
+    /// sub-1.0-strength img2img to its source image, so a stale 1024×1024 canvas
+    /// returns a 1024×1024 render however small the requested size was.
+    private func reframeCanvasToConfig(_ instruction: String) {
+        guard let image = currentCanvasImage else { return }
+        let target = CGSize(width: currentConfig.width, height: currentConfig.height)
+        guard let trimmed = Self.trimToCanvas(image, size: target) else {
+            log("  ⚠ \(instruction): could not re-frame the canvas — img2img may render at the old size")
+            return
+        }
+        guard trimmed.size != image.size else { return }
+        currentCanvasImage = trimmed
+        log("  ✓ canvas re-framed to \(Int(trimmed.size.width))×\(Int(trimmed.size.height))")
+    }
+
     private func cropImage(_ image: NSImage, position: CGPoint, scale: CGFloat) -> NSImage? {
         guard scale > 0 else { return nil }
         var proposedRect = NSRect(origin: .zero, size: image.size)
