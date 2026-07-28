@@ -45,21 +45,66 @@ final class StoryStudioRenderController {
     // MARK: - Render
 
     func renderScene(_ scene: StoryScene, project: StoryProject) {
-        run(StoryFlowCompiler.compileScene(scene, project: project), scenes: [scene])
+        run(StoryFlowCompiler.compileScene(scene, project: project), scenes: [scene], project: project)
     }
 
     func renderChapter(_ chapter: StoryChapter, project: StoryProject) {
         let scenes = chapter.sortedScenes
         guard !scenes.isEmpty else { return }
-        run(StoryFlowCompiler.compileChapter(chapter, project: project), scenes: scenes)
+        run(StoryFlowCompiler.compileChapter(chapter, project: project), scenes: scenes, project: project)
+    }
+
+    /// The model a scene will actually render with — its own override if it names
+    /// one, otherwise the project's base config.
+    ///
+    /// Mirrors the compiler's precedence exactly (`StoryFlowCompiler` emits the base
+    /// config step first, then an inline step whose dict has the scene's overrides
+    /// applied last — "scene config overrides win over everything above"). If that
+    /// ordering ever changes, this has to change with it, or the guard below starts
+    /// blocking renders that would have worked.
+    private func effectiveModel(for scene: StoryScene, project: StoryProject) -> String {
+        if let overrides = scene.configOverridesJSON,
+           let model = Self.modelName(inConfigJSON: overrides), !model.isEmpty {
+            return model
+        }
+        return Self.modelName(inConfigJSON: project.baseConfigJSON) ?? ""
+    }
+
+    /// `JSONSerialization`, not `JSONDecoder` — a base config carries Draw Things'
+    /// integer `sampler`/`seedMode` enums, which the `Decodable` conformance throws on.
+    private static func modelName(inConfigJSON json: String) -> String? {
+        guard let data = json.data(using: .utf8),
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        else { return nil }
+        return object["model"] as? String
     }
 
     func cancel() {
         engine.cancel()
     }
 
-    private func run(_ compiled: StoryFlowCompiler.Compiled, scenes: [StoryScene]) {
+    private func run(_ compiled: StoryFlowCompiler.Compiled, scenes: [StoryScene], project: StoryProject) {
         guard !isRunning else { return }
+
+        // Refuse a render that cannot produce an image.
+        //
+        // Draw Things with no model loaded returns raw NOISE rather than an error,
+        // and Story Studio then saved it as a variant you could Approve — so the
+        // failure looked like a bad render instead of a missing setting. The engine
+        // does log a warning, but only into the step log behind the Debug Log
+        // disclosure. Failing here puts the reason in the panel, in red, where the
+        // render status already appears.
+        let unset = scenes.filter { effectiveModel(for: $0, project: project).isEmpty }
+        if !unset.isEmpty {
+            let which = scenes.count == 1
+                ? "This scene has"
+                : "\(unset.count) of \(scenes.count) scenes have"
+            engine.runState = .failed(
+                "\(which) no model set, which would render noise. "
+                + "Set \"model\" in Project Info → Base Config (JSON), or in the scene's config overrides."
+            )
+            return
+        }
         scenesByOutputName = Dictionary(uniqueKeysWithValues: scenes.map { ($0.id.uuidString, $0) })
         logCompiledWorkflow(compiled)
         engine.run(workflow: compiled.workflow, variables: compiled.variables)

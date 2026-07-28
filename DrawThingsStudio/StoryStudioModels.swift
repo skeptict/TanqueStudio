@@ -54,8 +54,97 @@ final class StoryProject {
         self.modifiedAt = modifiedAt
     }
 
+    /// Base config a new project starts with.
+    ///
+    /// **This used to be `JSONEncoder().encode(DrawThingsGenerationConfig())`, whose
+    /// `model` is the empty string** — so a brand-new project rendered with nothing
+    /// loaded and Draw Things returned raw noise, which was then saved as a variant
+    /// you could Approve. Story Studio's out-of-the-box state could not produce an
+    /// image. `StoryStudioRenderController` now refuses that render outright; this
+    /// makes the default renderable instead.
+    ///
+    /// Draw Things' own Krea 2 Turbo config, taken verbatim from the app apart from
+    /// two deliberate changes:
+    ///
+    /// - **`seed` is -1, not the captured 4070466221.** The engine only rolls a fresh
+    ///   seed when `seed < 0`, so a literal seed here would make every render of
+    ///   every new project produce the identical image.
+    /// - **`numFrames` is 0, not 121.** That is a video setting; 121 would ask Draw
+    ///   Things for 121 frames on every still.
+    ///
+    /// It carries keys TanqueStudio does not model (`teaCache*`, `causalInference`,
+    /// `stage2*`, `motionScale`…). `mergeDict` ignores unknown keys, so they are
+    /// inert — kept so the text matches what Draw Things itself shows you, which is
+    /// what makes it recognisable when pasted back and forth.
+    ///
+    /// ⚠️ Read through `mergeDict`, never `JSONDecoder`, which matters: `sampler` and
+    /// `seedMode` are Draw Things' **integer** enums here, and the `Decodable`
+    /// conformance would throw on them (`try c.decode(String.self, forKey: .sampler)`).
+    /// `applyConfigVar` uses `JSONSerialization` + `mergeDict`, which maps Int→String.
     static var defaultConfigJSON: String {
-        (try? String(data: JSONEncoder().encode(DrawThingsGenerationConfig()), encoding: .utf8)) ?? "{}"
+        """
+        {
+        "aestheticScore": 6,
+        "batchCount": 1,
+        "batchSize": 1,
+        "cfgZeroInitSteps": 0,
+        "cfgZeroStar": false,
+        "clipSkip": 1,
+        "clipWeight": 1,
+        "controls": [],
+        "cropLeft": 0,
+        "cropTop": 0,
+        "decodingTileHeight": 640,
+        "decodingTileOverlap": 128,
+        "decodingTileWidth": 640,
+        "diffusionTileHeight": 1024,
+        "diffusionTileOverlap": 128,
+        "diffusionTileWidth": 1024,
+        "fps": 5,
+        "guidanceEmbed": 3.5,
+        "guidanceScale": 1,
+        "height": 768,
+        "hiresFix": false,
+        "hiresFixHeight": 576,
+        "hiresFixStrength": 0.7,
+        "hiresFixWidth": 768,
+        "imageGuidanceScale": 1.5,
+        "imagePriorSteps": 5,
+        "loras": [],
+        "maskBlur": 1.5,
+        "maskBlurOutset": 0,
+        "model": "krea_2_turbo_q8p.ckpt",
+        "negativeAestheticScore": 2.5,
+        "negativeOriginalImageHeight": 512,
+        "negativeOriginalImageWidth": 512,
+        "negativePromptForImagePrior": true,
+        "numFrames": 0,
+        "originalImageHeight": 768,
+        "originalImageWidth": 1024,
+        "preserveOriginalAfterInpaint": true,
+        "refinerStart": 0.85,
+        "resolutionDependentShift": false,
+        "sampler": 10,
+        "seed": -1,
+        "seedMode": 2,
+        "separateClipL": false,
+        "separateOpenClipG": false,
+        "separateT5": false,
+        "sharpness": 0,
+        "shift": 3,
+        "speedUpWithGuidanceEmbed": true,
+        "steps": 8,
+        "stochasticSamplingGamma": 0.3,
+        "strength": 1,
+        "t5TextEncoder": true,
+        "targetImageHeight": 768,
+        "targetImageWidth": 1024,
+        "tiledDecoding": false,
+        "tiledDiffusion": false,
+        "width": 1024,
+        "zeroNegativePrompt": true
+        }
+        """
     }
 
     var sortedChapters: [StoryChapter] { chapters.sorted { $0.sortOrder < $1.sortOrder } }
