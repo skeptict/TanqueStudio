@@ -192,9 +192,29 @@ quietly become a test that passes either way.
 **Verified on the wire (2026-07-27)**, not inferred — a real render at 512×512 with
 `sdxlOriginalImage 256×192`, `sdxlTargetImage 1024×768`, `sdxlNegativeOriginal
 2048×1536` in `request_log.txt`, and Draw Things returned an image rather than
-rejecting the request. That run used `z_image_turbo`, so it establishes the
-plumbing; the *visual* effect of the parameters on an SDXL model is a separate
-claim and is not made here.
+rejecting the request.
+
+**And verified to change the picture (2026-07-28), which took a second model to
+establish.** Two A/B pairs, each same seed, same prompt, same model, same
+1024×1024, differing only in the six values:
+
+| Model | Conditioning | Pixel difference |
+|---|---|---|
+| `juggernaut_reborn` (**SD 1.5**) | 768×576 / 1024×768 / 1792×1344 → 2048×1536 | **MSE 0.00, PSNR ∞ — identical** |
+| `juggernaut_xl_ragnarok` (**SDXL**) | 256×192 → 2048×1536 | **MSE 2899, PSNR 13.5 dB** |
+
+**⚠️ The first result is correct behaviour, not a bug, and it cost an hour to
+realise.** Size conditioning is an SDXL feature; SD 1.5 has no such inputs, so Draw
+Things rightly ignores all six. The trap is the model's *name*: "Juggernaut
+**Reborn**" is an SD 1.5 checkpoint, while the SDXL line is "Juggernaut **XL**" —
+so a checkpoint that sounds like the SDXL one silently produced a null result that
+looked like broken plumbing. **The cheap tell is the companion text encoders: SD 1.5
+ships one (`clip vit l`), SDXL ships two (`clip` + `open clip`).** Check that before
+concluding an SDXL-only parameter does nothing.
+
+Measured with `ffmpeg … psnr`; note that comparing PNG checksums is **not** a
+substitute, because the files embed differing config metadata and so differ even
+when every pixel matches.
 
 **Batch F — Video extras + Performance** (motionBucketId, condAug, startFrameCfg, stage2\*, causal\*, teaCache\*): lowest priority; SVD-era and perf knobs.
 
