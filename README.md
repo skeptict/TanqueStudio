@@ -293,8 +293,9 @@ DrawThingsStudio/
 
 In priority order:
 
-1. [ ] **Video handling — the general pass** — clip playback and audio both ship (see Completed). Still open: a wider look at how series are handled outside the DT Project Browser
-2. [ ] **README polish** — screenshots, demo GIF
+1. [ ] **Export All should offer video as `.mp4`** — Export All pages over raw database rows rather than the grouped slots the grid shows, so a project with five clips writes ~1,285 loose frames named by rowid with no frame numbers. The pieces to fix it exist (`collapseIntoSlots` for the grouping, the `.movie` path from Export Series for the assembly); the work is walking slots instead of rows and adding a chooser. **Decide the audio question first**: `VideoAssembler` writes video-only, so `.mp4` export is silent today even though clips carry soundtracks that the browser plays — either teach the assembler an audio track or say so in the UI before making it a bulk operation. Keep the byte-exact frame export alongside it, since an `.mp4` is a lossy re-encode and can't give an exact frame back
+2. [ ] **Video handling — the general pass** — clip playback, audio, and frame-accurate Send to Generate / Export This Frame all ship (see Completed). Still open: a wider look at how series are handled outside the DT Project Browser, and whether "expandable in place" (spec §7) is still wanted now that playback and the detail scrubber exist
+3. [ ] **README polish** — screenshots, demo GIF
 
 ### Backlog
 

@@ -150,6 +150,7 @@ struct GenerateLeftPanel: View {
                 Text("Negative Prompt")
                     .font(TanqueDS.Font.body)
                     .foregroundStyle(TanqueDS.Color.textSecondary)
+                    .accordionHitTarget($vm.showNegativePrompt)
             }
         }
     }

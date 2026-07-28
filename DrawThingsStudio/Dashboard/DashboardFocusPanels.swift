@@ -81,10 +81,12 @@ struct FocusRoomDrawer: View {
         DisclosureGroup(isExpanded: isExpanded) {
             content().padding(.top, 4).padding(.bottom, 14)
         } label: {
-            AccordionLabel(title: title)
+            AccordionLabel(title: title).accordionHitTarget(isExpanded)
         }
         .padding(.horizontal, 16)
-        .padding(.vertical, 13)
+        // 6 of the former 13 now lives inside the label, where it is clickable
+        // rather than dead space, so the row's height is unchanged.
+        .padding(.vertical, 7)
         .overlay(alignment: .bottom) {
             Rectangle().fill(DashboardDS.border).frame(height: 1)
         }

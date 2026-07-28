@@ -157,3 +157,34 @@ struct DashboardCheckboxToggleStyle: ToggleStyle {
 extension ToggleStyle where Self == DashboardCheckboxToggleStyle {
     static var dashboardCheckbox: DashboardCheckboxToggleStyle { DashboardCheckboxToggleStyle() }
 }
+
+// MARK: - Disclosure hit target
+
+/// Makes a `DisclosureGroup` label toggle its group from anywhere along the row,
+/// not just from the chevron.
+///
+/// SwiftUI gives a plain `Text` label a hit area of exactly its own glyphs, so a
+/// section titled PROMPT in a 320pt drawer leaves most of the row dead and the
+/// 10pt chevron as the only reliable target. That is a precision-clicking tax on
+/// every section header in the app.
+///
+/// **Not applied to the whole DisclosureGroup, deliberately.** The chevron runs
+/// its own built-in toggle; a gesture covering it too would fire both and cancel
+/// out, leaving the one control that always worked looking broken. Keeping this
+/// on the label means the two never overlap.
+///
+/// Despite living in `DashboardDS`, this is not Dashboard-specific — the classic
+/// Generate panel and Story Studio use it too.
+extension View {
+    func accordionHitTarget(_ isExpanded: Binding<Bool>) -> some View {
+        self
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.vertical, 6)
+            .contentShape(Rectangle())
+            .onTapGesture {
+                withAnimation(.easeInOut(duration: 0.18)) {
+                    isExpanded.wrappedValue.toggle()
+                }
+            }
+    }
+}

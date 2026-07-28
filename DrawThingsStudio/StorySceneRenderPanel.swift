@@ -301,6 +301,7 @@ struct StorySceneRenderPanel: View {
                 Text("Debug Log")
                     .font(TanqueDS.Font.bodySmall)
                     .foregroundStyle(TanqueDS.Color.textSecondary)
+                    .accordionHitTarget($showDebugLog)
             }
         }
         .padding(TanqueDS.Spacing.md)
