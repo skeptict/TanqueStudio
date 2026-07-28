@@ -1,6 +1,6 @@
 # Connection Reliability — Specification
 
-**Status:** approved design, ready for implementation
+**Status:** §2a–2e shipped in v0.9.29. §2f added 2026-07-27 and shipped in v0.9.32.
 **Decided:** 2026-07-05 (Ned) — fix the wedged-connection bug cluster found during v0.9.23 testing. Queued right after Learnability Phase 1 (merged `d6b7676`).
 
 ## 1. Problem (confirmed by reading code, not speculation — 2026-07-05 live triage)
@@ -39,6 +39,24 @@ Net effect observed: "disconnected" badge (`ContentView.swift:126`, cosmetic `!v
 ### 2e. Error-message wording (smaller, related item)
 
 - "Draw Things returned no image" (`GenerateViewModel.swift:444,820`) presumes local-only rendering ("the model isn't downloaded in Draw Things") — doesn't account for DT+ cloud bridge users, where no local download is needed. TS cannot distinguish not-local / not-bridged / bad-sampler / bad-secret from DT's response (no error code differentiates them) — but the wording should stop presuming local-only, and should branch on known state: if `models` is empty/stale (per 2d's real signal) at generate time, lead with "you may not be connected — check Settings" instead of guessing three causes blind.
+
+### 2f. Timeout on the render RPC itself (added 2026-07-27)
+
+**Why this is a late addition, and the lesson in it.** §1's bug list named `fetchModels`, `fetchLoRAs`, and `echo` — the three calls the 2026-07-05 triage grepped for. `generateImage` was not on that list and so §2a never covered it, which left the app in the odd state of bounding every *cheap* call while the *expensive* one, the only call that can legitimately run for hours, stayed unbounded. The grep was accurate; the inventory it produced was read as complete when it was only complete for the calls that had misbehaved that day.
+
+Found during the v0.9.31 release run: `StoryFlowLiveRunTests.testTheStoredConfigDescribesTheImageItCameWith` timed out at 300s against `192.168.1.34`. The request was well-formed (640×448, confirmed in `request_log.txt`); the identical request succeeded 3/3 against this Mac's own Draw Things and failed 3/3 against the remote in the same session; a 1024×1024 render with the same model and frame count succeeded on that same remote a minute later. So: not the model, not the config, not the frame count. The server accepted the connection, accepted the request, and never answered. Every caller — Generate, inpaint, and `StoryFlowEngine.executeGenerate` — awaited forever with nothing surfaced. Long-standing, unrelated to the four fixes in v0.9.31.
+
+Note that `executeGenerate` already handles a genuine zero-image response correctly (`guard let img = images.first else { log("⚠ No image returned"); return }`). That path was never reached. The hang was purely the unbounded RPC.
+
+- Same race-against-a-sleep as `performEcho`, for the same stated reason: the package builds its own `CallOptions` internally and exposes no deadline to callers.
+- **Do not reuse `echoTimeout`.** 15s is right for a handshake and catastrophic for a render. The budget is derived per-request instead: `120s + (megapixels × steps × frames × batchSize × batchCount) × 8s`, doubled when hires fix is on, clamped to **[5 min, 6 h]**. The rate is deliberately far slower than real hardware — this is a watchdog, not an ETA, and the two failure modes are not symmetric: overshooting costs a longer wait before an error appears, undershooting kills a healthy render.
+- Both render paths are covered — the high-level client (txt2img/img2img) and the low-level service (inpaint).
+- Throws `DrawThingsError.generationTimedOut(seconds:)`, kept **distinct from `.timeout`**: the causes and the advice differ, and `loadAssets()` matches on `.timeout` specifically. Its message states how long we waited and that the render may still be running server-side, because callers surface `localizedDescription` verbatim.
+- `CancellationError` and `DrawThingsError` now pass through `generateImage`'s catch untouched rather than being rewrapped as `.requestFailed(-1, …)`. The sleep child makes cancellation surface from inside the call where it previously could not, and rewrapping would route a deliberate Cancel into the red-error arm instead of `GenerateViewModel`'s quiet reset.
+- Escape hatch: `tanqueStudio.dtGenerateTimeoutMinutes` (UserDefaults, minutes, ≤ 0 or absent = derive). **No UI** — deliberately, so the change had no visual surface to verify. Promoting it to a real setting is a follow-up, not a prerequisite.
+- Cancelling client-side does **not** stop the server. Draw Things keeps rendering; the guarantee is only that we stop waiting.
+
+**Verification (done, not planned):** the watchdog fires end-to-end against the real remote in 3.5s with a forced 3s budget; a healthy 512×512 render against the local server still returns an image; both new `request_log.txt` lines confirmed in the actual log. 16 unit tests pin the budget arithmetic (`GenerateTimeoutTests`) — the failure mode that matters is a budget too *short*, and no build or smoke test catches a healthy render killed mid-flight. Two further tests are `TS_LIVE_DT`-gated. The original hang itself was **not** reproduced: that remote answers normally now, so the live proof comes from the forced-short-budget test rather than from the original failure.
 
 ## 3. Out of scope
 
