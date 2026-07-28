@@ -280,6 +280,10 @@ DrawThingsStudio/
 - [x] StoryFlow 260723 Phase 2 — author the new instructions. A declarative schema table (34 instructions, transcribed from the format author's editor rather than invented) plus one generic step card that renders any entry from it, so `concat`, `wildcard`, `sweep`, `size`, `negPrompt`, `approve`, `framesDialog` and the long passthrough backlog are all authorable from the add-step menu. Export-only — these run inside Draw Things. **Verified the way that actually counts**: a workflow authored from scratch in Tanque Studio was exported, pasted into Draw Things' own StoryFlow pipeline script, and run. Preflight passed and three images rendered, with the prompts, guidance sweep, seed and dimensions read back out of Draw Things' database to confirm `concat` assembled around the wildcard with exact spacing and `sweep` reached a real config field as real numbers. `interrogate` is deliberately excluded and stays passthrough-only
 - [x] Clips play in the DT Project Browser — hover a video render and it plays in place at the frame rate Draw Things recorded; click it and the detail panel gives play/pause and a frame scrubber. Playback decodes the clip's frames once and draws one per display tick rather than assembling a movie, and the frame shown is derived from elapsed time, so a dropped tick costs one frame instead of putting playback behind the clock. Export asks what you want: the cover frame, every frame as numbered JPEGs, or an assembled .mp4 at the clip's own frame rate
 - [x] DT Project Browser on the Dashboard palette — the last screen still asking for a dark colour scheme inside the Dashboard's light shell
+- [x] StoryFlow canvas resize on `size` / `adaptSize` — both used to set the config and leave the canvas image at its old dimensions, so a following img2img below full strength rendered at the old size. The canvas is now trimmed to the new dimensions as a centred crop, and it only ever trims: growing a canvas in Draw Things reveals empty space, so padding an img2img source with invented pixels would be worse than leaving that axis alone
+- [x] Render dimensions floored to a multiple of 64 — Draw Things silently floors width and height, so a 700×500 request came back 640×448 while the config saved beside that image still claimed 700×500. Since a stored config exists to make a render reproducible, one that doesn't describe its own PNG defeats the point. Now applied on every render path — both Generate entry points and StoryFlow. Floor, never round: 700 becomes 640, not the nearer 704
+- [x] Settings on the paper palette — the screen painted itself dark inside the app's light shell, so every control the system draws for itself resolved for the wrong scheme and vanished: Shared Secret, API Key, both Test Connection buttons, both Browse buttons. Fixed in both hosts, the Dashboard page and the ⌘, window
+- [x] Opening an output folder in Finder — a sandboxed app cannot hand Launch Services a path it holds no live claim on, so the folder buttons failed for image folders outside the container. Writing already worked, which disguised it as a Finder quirk
 - [x] Dashboard + Focus Rooms navigation (v0.9.25) — real home screen (Continue card, live system status, Quick Start presets, Recent Generations, Projects/Labs mini-lists) replaces landing straight in Generate; Focus Room's full-bleed canvas + single accordion drawer replaces the four stacked panels for everyday use. Full feature parity with the classic Generate view: LLM Assist, complete Actions (Save/Copy/Send/video export), error/warning surfacing, Paint/Crop/Color-Draw editing, Video Generations batch grouping + frame scrubber. Chosen after a layout-forks spike comparing three navigation concepts.
 
 ### Upcoming
@@ -287,9 +291,8 @@ DrawThingsStudio/
 In priority order:
 
 1. [ ] **Video handling — the general pass** — clip playback and audio both ship (see Completed). Still open: a wider look at how series are handled outside the DT Project Browser
-2. [ ] **StoryFlow canvas resize on `size` / `adaptSize`** — both set the config but leave the canvas image at its old dimensions, so a following img2img below full strength renders at the old size. Correct at the default strength 1.0. Crop-vs-scale is undecided
-3. [ ] **Config parity Batch F — SDXL conditioning** — also what StoryFlow's `xlMagic` needs
-4. [ ] **README polish** — screenshots, demo GIF
+2. [ ] **Config parity Batch F — SDXL conditioning** — also what StoryFlow's `xlMagic` needs
+3. [ ] **README polish** — screenshots, demo GIF
 
 ### Backlog
 
