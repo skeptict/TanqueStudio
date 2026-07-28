@@ -133,6 +133,32 @@ struct DrawThingsGenerationConfig: Codable {
     var diffusionTileHeight: Int
     var diffusionTileOverlap: Int
 
+    // SDXL size-conditioning group. Raw pixels, all defaulting to 0.
+    //
+    // ⚠️ 0 does NOT mean "not sent". The client wrapper substitutes the render's
+    // own dimensions for any of these left at zero:
+    //
+    //     configT.originalImageWidth = UInt32(originalImageWidth > 0 ? originalImageWidth : width)
+    //     (Configuration.swift:414–419)
+    //
+    // Two consequences. Surfacing these changes no existing render, because zero
+    // reproduces exactly what Draw Things already received. And a wire-level test
+    // must use values DIFFERENT from width/height — against a 1024×1024 render, a
+    // conditioning value of 1024 proves nothing, since the substitution produces
+    // the same number.
+    //
+    // These are not image dimensions. SDXL uses them to re-scale latent data
+    // across overlapping render steps — composition, then objects, then fine
+    // detail — which is why the useful values are 4:3 regardless of the render's
+    // own aspect ratio. `XLMagicTable` holds the harmonic presets that make the
+    // combination tractable.
+    var originalImageWidth: Int
+    var originalImageHeight: Int
+    var targetImageWidth: Int
+    var targetImageHeight: Int
+    var negativeOriginalImageWidth: Int
+    var negativeOriginalImageHeight: Int
+
     struct LoRAConfig: Codable {
         var file: String
         var weight: Double
@@ -195,6 +221,13 @@ struct DrawThingsGenerationConfig: Codable {
         diffusionTileWidth      = try c.decodeIfPresent(Int.self,    forKey: .diffusionTileWidth)   ?? 1024
         diffusionTileHeight     = try c.decodeIfPresent(Int.self,    forKey: .diffusionTileHeight)  ?? 1024
         diffusionTileOverlap    = try c.decodeIfPresent(Int.self,    forKey: .diffusionTileOverlap) ?? 128
+        // Zero means "let the client substitute width/height" — see the group's note.
+        originalImageWidth          = try c.decodeIfPresent(Int.self, forKey: .originalImageWidth)          ?? 0
+        originalImageHeight         = try c.decodeIfPresent(Int.self, forKey: .originalImageHeight)         ?? 0
+        targetImageWidth            = try c.decodeIfPresent(Int.self, forKey: .targetImageWidth)            ?? 0
+        targetImageHeight           = try c.decodeIfPresent(Int.self, forKey: .targetImageHeight)           ?? 0
+        negativeOriginalImageWidth  = try c.decodeIfPresent(Int.self, forKey: .negativeOriginalImageWidth)  ?? 0
+        negativeOriginalImageHeight = try c.decodeIfPresent(Int.self, forKey: .negativeOriginalImageHeight) ?? 0
     }
 
     init(
@@ -233,7 +266,13 @@ struct DrawThingsGenerationConfig: Codable {
         tiledDiffusion: Bool = false,
         diffusionTileWidth: Int = 1024,
         diffusionTileHeight: Int = 1024,
-        diffusionTileOverlap: Int = 128
+        diffusionTileOverlap: Int = 128,
+        originalImageWidth: Int = 0,
+        originalImageHeight: Int = 0,
+        targetImageWidth: Int = 0,
+        targetImageHeight: Int = 0,
+        negativeOriginalImageWidth: Int = 0,
+        negativeOriginalImageHeight: Int = 0
     ) {
         self.width = width
         self.height = height
@@ -271,6 +310,12 @@ struct DrawThingsGenerationConfig: Codable {
         self.diffusionTileWidth = diffusionTileWidth
         self.diffusionTileHeight = diffusionTileHeight
         self.diffusionTileOverlap = diffusionTileOverlap
+        self.originalImageWidth = originalImageWidth
+        self.originalImageHeight = originalImageHeight
+        self.targetImageWidth = targetImageWidth
+        self.targetImageHeight = targetImageHeight
+        self.negativeOriginalImageWidth = negativeOriginalImageWidth
+        self.negativeOriginalImageHeight = negativeOriginalImageHeight
     }
 
     /// Returns true if the model name identifies a video-generation model

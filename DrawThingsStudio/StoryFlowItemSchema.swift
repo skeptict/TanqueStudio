@@ -257,7 +257,7 @@ extension StoryFlowItemSchema {
                         kind: .number(default: 7, range: 1...8, step: 1, isInteger: true)),
               ]),
               pipelineType: "object",
-              summary: "SDXL size-conditioning multipliers. Needs config-parity Batch F to execute."),
+              summary: "SDXL size-conditioning. Three harmonic slider positions (1–8) resolved through the shared latent table."),
 
         .init(itemType: "inpaintTools", group: .canvas, icon: "paintbrush.pointed",
               shape: .object([

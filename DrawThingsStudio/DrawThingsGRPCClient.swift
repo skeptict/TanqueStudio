@@ -671,6 +671,17 @@ final class DrawThingsGRPCClient: DrawThingsProvider {
             maskBlurOutset: Int32(config.maskBlurOutset),
             preserveOriginalAfterInpaint: config.preserveOriginalAfterInpaint,
             stochasticSamplingGamma: Float(config.stochasticSamplingGamma),
+            // SDXL size conditioning, raw pixels, passed straight through. Zero is
+            // meaningful rather than absent: the client substitutes the render's own
+            // width/height for any of these left at 0 (Configuration.swift:414–419),
+            // which is exactly what Draw Things received before these were modeled.
+            // ⚠️ The client declares height BEFORE width in each pair.
+            originalImageHeight: Int32(config.originalImageHeight),
+            originalImageWidth: Int32(config.originalImageWidth),
+            targetImageHeight: Int32(config.targetImageHeight),
+            targetImageWidth: Int32(config.targetImageWidth),
+            negativeOriginalImageHeight: Int32(config.negativeOriginalImageHeight),
+            negativeOriginalImageWidth: Int32(config.negativeOriginalImageWidth),
             resolutionDependentShift: useResolutionDependentShift,
             t5TextEncoder: useT5,
             // Tiling is the OPPOSITE of hires fix below: the client passes tile

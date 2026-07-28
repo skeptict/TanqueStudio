@@ -103,6 +103,17 @@ final class RequestLogger {
             entry += "(\(config.decodingTileWidth * 64)\u{00D7}\(config.decodingTileHeight * 64) px)\n"
             entry += "decodingTileOverlap:      \(config.decodingTileOverlap) units (\(config.decodingTileOverlap * 64) px)\n"
         }
+        // SDXL size conditioning. Logged only when set — but note what "not set"
+        // means downstream: the client substitutes the render's own width/height for
+        // any of these left at 0 at encode time, so the FlatBuffer never carries a
+        // zero. This line reports what TanqueStudio chose, not what the wire ends up
+        // holding, and those differ precisely in the unset case.
+        if config.originalImageWidth > 0 || config.targetImageWidth > 0
+            || config.negativeOriginalImageWidth > 0 {
+            entry += "sdxlOriginalImage:        \(config.originalImageWidth)\u{00D7}\(config.originalImageHeight)\n"
+            entry += "sdxlTargetImage:          \(config.targetImageWidth)\u{00D7}\(config.targetImageHeight)\n"
+            entry += "sdxlNegativeOriginal:     \(config.negativeOriginalImageWidth)\u{00D7}\(config.negativeOriginalImageHeight)\n"
+        }
         if !config.loras.isEmpty {
             entry += "loras:\n"
             for lora in config.loras {

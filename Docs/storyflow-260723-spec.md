@@ -142,9 +142,17 @@ Export-only support for both is unaffected and cheap.
 
 ### 3.5 `sweep` and `xlMagic` are gated on config-parity work already on the roadmap
 
-`sweep` writes arbitrary `configuration[paramName]` values, so its usefulness scales directly with how much of the DT config TanqueStudio models. `xlMagic` writes `originalImage{Width,Height}` / `targetImage{Width,Height}` / `negativeOriginalImage{Width,Height}` — fields 28/29 and neighbours in `Docs/grpc-config-parity-spec.md`, all currently **N (not-modeled)** and assigned to parity **Batch F (SDXL Conditioning)**. `inpaintTools` maps exactly onto parity Batch B, which shipped in v0.9.28.
+**`xlMagic` is no longer gated — SDXL conditioning landed 2026-07-27.** It executes natively, and the six fields are modeled, sweepable, on the wire and in saved metadata.
 
-This is a useful synthesis: the parity batches and StoryFlow adoption are the same work seen from two directions. Batch F was ranked "lower priority, mostly niche" — `xlMagic` is a concrete user-facing reason to do it.
+`sweep` writes arbitrary `configuration[paramName]` values, so its usefulness scales directly with how much of the DT config TanqueStudio models. `xlMagic` writes `originalImage{Width,Height}` / `targetImage{Width,Height}` / `negativeOriginalImage{Width,Height}` — fields 28/29 and neighbours in `Docs/grpc-config-parity-spec.md`, formerly **N (not-modeled)**. `inpaintTools` maps exactly onto parity Batch B, which shipped in v0.9.28.
+
+This is a useful synthesis: the parity batches and StoryFlow adoption are the same work seen from two directions. It was ranked "lower priority, mostly niche" — `xlMagic` was the concrete user-facing reason to do it, and that held for a third time.
+
+**What the instruction actually carries, and the part worth not re-deriving:** three slider positions, 1–8, **not pixel sizes**. All three index one shared eight-entry table (`XLMagicTable.latentSizes`), which is what reduces the raw parameters' 887,503,681 combinations to 512 harmonic ones. The table is 4:3 throughout **regardless of the render's aspect ratio** — these rescale latent data across overlapping render steps, so deriving them from the render's own shape would look reasonable and be wrong.
+
+The pipeline's `xlMagic` case (`StoryflowPipeline_260723.js:1174`) reads `value.original` / `value.target` / `value.negative` and sets **only those six fields**. The authoring script (`misc/XL Magic Config v03.js`) additionally emits canvas size, hires fix and tiled decoding — that fuller behaviour belongs to TanqueStudio's own XL Magic drawer helper, not to the instruction. Keeping them separate is why a workflow's canvas size survives an `xlMagic` step untouched.
+
+Slider values arrive as **strings** from editor-authored projects, the same convention as `sweep` cards (§8.3.3), so the reader coerces rather than requiring JSON numbers.
 
 ---
 

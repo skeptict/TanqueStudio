@@ -262,4 +262,57 @@ final class StoryFlowLiveRunTests: XCTestCase {
         XCTAssertNil(engine.pendingApproval, "cancel left the approval pending")
         XCTAssertEqual(engine.runState, .cancelled)
     }
+
+    // MARK: - XL Magic
+
+    /// An `xlMagic` instruction reaches a real render with all six SDXL conditioning
+    /// values set.
+    ///
+    /// ⚠️ The values here are chosen so the test can actually fail. The client
+    /// substitutes the render's own width/height for any conditioning field left at
+    /// zero (`Configuration.swift:414–419`), so against a 512×512 render a
+    /// conditioning value of 512 would be indistinguishable from "never sent".
+    /// Sliders 1 / 4 / 8 give 256×192, 1024×768 and 2048×1536 — six numbers, none of
+    /// them 512, and all three pairs distinct from each other so a field copied into
+    /// the wrong slot cannot pass either.
+    func testXLMagicReachesARealRender() async throws {
+        try requireLiveServer()
+        let engine = StoryFlowEngine()
+
+        var config: DrawThingsGenerationConfig?
+        engine.onImageGenerated = { _, cfg, _, _ in config = cfg }
+
+        var wf = Workflow(name: "xl magic probe")
+        var cfgStep = WorkflowStep(type: .configInstruction)
+        cfgStep.parameters["configVars"] = "#ZIT1.0"
+        var inline = WorkflowStep(type: .configInline)
+        inline.parameters["json"] = #"{"width":512,"height":512,"steps":4}"#
+        var magic = WorkflowStep(type: .passthrough)
+        magic.parameters["itemType"] = "xlMagic"
+        magic.parameters["rawValueJSON"] = "\"{\\\"original\\\":1,\\\"target\\\":4,\\\"negative\\\":8}\""
+        var prompt = WorkflowStep(type: .promptInstruction)
+        prompt.parameters["text"] = "a single red apple on a table"
+        wf.steps = [cfgStep, inline, magic, prompt, WorkflowStep(type: .generate)]
+
+        try await run(wf, engine: engine)
+        let log = engine.stepLog.joined(separator: "\n")
+        let cfg = try XCTUnwrap(config, "no image was generated.\n\(log)")
+
+        XCTAssertEqual(cfg.originalImageWidth, 256, "slider 1 → 256×192.\n\(log)")
+        XCTAssertEqual(cfg.originalImageHeight, 192)
+        XCTAssertEqual(cfg.targetImageWidth, 1024, "slider 4 → 1024×768.\n\(log)")
+        XCTAssertEqual(cfg.targetImageHeight, 768)
+        XCTAssertEqual(cfg.negativeOriginalImageWidth, 2048, "slider 8 → 2048×1536.\n\(log)")
+        XCTAssertEqual(cfg.negativeOriginalImageHeight, 1536)
+
+        // None of the six may equal the render size, or the assertions above could
+        // be satisfied by the client's substitution rather than by our values.
+        XCTAssertEqual(cfg.width, 512)
+        for value in [cfg.originalImageWidth, cfg.originalImageHeight,
+                      cfg.targetImageWidth, cfg.targetImageHeight,
+                      cfg.negativeOriginalImageWidth, cfg.negativeOriginalImageHeight] {
+            XCTAssertNotEqual(value, cfg.width, "value collides with the render size — the test cannot fail")
+        }
+        XCTAssertTrue(log.contains("xlMagic"), "the instruction was not reported.\n\(log)")
+    }
 }

@@ -161,6 +161,41 @@ Exact, in the right order, with width and height not transposed — 512→8 and 
 
 **Batch E — Text Encoders + SDXL Conditioning** (13 + 10 fields): plumbing-heavy, mostly niche; disabled rows acceptable long-term per policy.
 
+> **⚠️ Naming: "Batch F" means SDXL Conditioning everywhere except this document.**
+> `Docs/storyflow-260723-spec.md` §3.5, the README, and `StoryFlowItemSchema`'s own
+> summary string all say "Batch F (SDXL Conditioning)", while the table here assigns
+> SDXL Conditioning to **E** and video/performance knobs to **F**. The label is not
+> worth renaming — it is referenced from code — but read "Batch F" as *SDXL
+> conditioning* unless the surrounding text is about `motionBucketId` and friends.
+
+**SDXL size conditioning — COMPLETE 2026-07-27.** The six fields `xlMagic` needs
+(rows 28/29, 32/33, 38/39) are modeled and reach all four plumbing surfaces, plus
+`mergeDict`/`sweepableParameters` and a native XL Magic helper in the drawer.
+
+**⚠️ Zero is not "absent" for these fields, and it changes how they must be tested.**
+The client substitutes the render's own dimensions for any conditioning field left
+at 0:
+
+```swift
+configT.originalImageWidth = UInt32(originalImageWidth > 0 ? originalImageWidth : width)
+// Configuration.swift:414–419
+```
+
+Two consequences. Surfacing the group changes no existing render, because zero
+reproduces exactly what Draw Things already received — the same argument tiling
+used. And **a wire-level check must use values distinct from the render size**:
+against a 512×512 render, a conditioning value of 512 is indistinguishable from
+never having been sent. The live test picks sliders 1/4/8 (256×192, 1024×768,
+2048×1536) for that reason and asserts the absence of any collision, so it cannot
+quietly become a test that passes either way.
+
+**Verified on the wire (2026-07-27)**, not inferred — a real render at 512×512 with
+`sdxlOriginalImage 256×192`, `sdxlTargetImage 1024×768`, `sdxlNegativeOriginal
+2048×1536` in `request_log.txt`, and Draw Things returned an image rather than
+rejecting the request. That run used `z_image_turbo`, so it establishes the
+plumbing; the *visual* effect of the parameters on an SDXL model is a separate
+claim and is not made here.
+
 **Batch F — Video extras + Performance** (motionBucketId, condAug, startFrameCfg, stage2\*, causal\*, teaCache\*): lowest priority; SVD-era and perf knobs.
 
 Batches B, C, E, F have no dependency on the client bump (schema identical across pins). Batch A depends on the parity branch; Batch D depended on the bump, which has landed (`c8f8493`) — D is complete. Upscaler/faceRestoration rows (Batch A/Model) get cleaner empty-string semantics after the bump (`f1cc454`) but TS already nil-maps empties itself, so no hard dependency.

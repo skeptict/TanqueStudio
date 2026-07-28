@@ -284,6 +284,7 @@ DrawThingsStudio/
 - [x] Render dimensions floored to a multiple of 64 — Draw Things silently floors width and height, so a 700×500 request came back 640×448 while the config saved beside that image still claimed 700×500. Since a stored config exists to make a render reproducible, one that doesn't describe its own PNG defeats the point. Now applied on every render path — both Generate entry points and StoryFlow. Floor, never round: 700 becomes 640, not the nearer 704
 - [x] Settings on the paper palette — the screen painted itself dark inside the app's light shell, so every control the system draws for itself resolved for the wrong scheme and vanished: Shared Secret, API Key, both Test Connection buttons, both Browse buttons. Fixed in both hosts, the Dashboard page and the ⌘, window
 - [x] Opening an output folder in Finder — a sandboxed app cannot hand Launch Services a path it holds no live claim on, so the folder buttons failed for image folders outside the container. Writing already worked, which disguised it as a Finder quirk
+- [x] SDXL size conditioning + XL Magic — SDXL takes six latent size-conditioning values that rescale latent data across overlapping render steps, from composition through to fine detail. They interact, and most of the 887 million combinations distort the image, which is why almost nobody touches them. All six are now modeled end to end (wire, saved metadata, StoryFlow config merges and sweeps), and the drawer gains an **XL Magic** section: a native port of wetcircuit's Draw Things script that constrains all three to one shared eight-entry table, so there are 512 sane combinations chosen with three sliders. StoryFlow's `xlMagic` instruction executes natively as part of the same work. Verified on the wire against a live server — the six values appear in the request log and Draw Things returns an image
 - [x] Dashboard + Focus Rooms navigation (v0.9.25) — real home screen (Continue card, live system status, Quick Start presets, Recent Generations, Projects/Labs mini-lists) replaces landing straight in Generate; Focus Room's full-bleed canvas + single accordion drawer replaces the four stacked panels for everyday use. Full feature parity with the classic Generate view: LLM Assist, complete Actions (Save/Copy/Send/video export), error/warning surfacing, Paint/Crop/Color-Draw editing, Video Generations batch grouping + frame scrubber. Chosen after a layout-forks spike comparing three navigation concepts.
 
 ### Upcoming
@@ -291,8 +292,7 @@ DrawThingsStudio/
 In priority order:
 
 1. [ ] **Video handling — the general pass** — clip playback and audio both ship (see Completed). Still open: a wider look at how series are handled outside the DT Project Browser
-2. [ ] **Config parity Batch F — SDXL conditioning** — also what StoryFlow's `xlMagic` needs
-3. [ ] **README polish** — screenshots, demo GIF
+2. [ ] **README polish** — screenshots, demo GIF
 
 ### Backlog
 

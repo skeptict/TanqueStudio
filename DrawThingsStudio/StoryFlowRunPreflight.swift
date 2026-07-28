@@ -79,6 +79,7 @@ struct StoryFlowRunPreflight {
         "concat", "wildcard", "sweep",
         "size", "frames", "negPrompt", "adaptSize", "moodboardWeights",
         "framesDialog", "approve", "moodboardRemove", "inpaintTools",
+        "xlMagic",
     ]
 
     /// True if this step is a `framesDialog` with its `generate` flag set.

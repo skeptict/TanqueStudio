@@ -328,6 +328,19 @@ enum ImageStorageManager {
             v2["diffusionTileHeight"]  = config.diffusionTileHeight
             v2["diffusionTileOverlap"] = config.diffusionTileOverlap
         }
+        // SDXL size conditioning — written only when actually set, following the
+        // only-when-on rule above. Zero means the client substituted width/height,
+        // which the record already states, so writing zeros would add no information.
+        if config.originalImageWidth > 0  { v2["originalImageWidth"]  = config.originalImageWidth }
+        if config.originalImageHeight > 0 { v2["originalImageHeight"] = config.originalImageHeight }
+        if config.targetImageWidth > 0    { v2["targetImageWidth"]    = config.targetImageWidth }
+        if config.targetImageHeight > 0   { v2["targetImageHeight"]   = config.targetImageHeight }
+        if config.negativeOriginalImageWidth > 0 {
+            v2["negativeOriginalImageWidth"] = config.negativeOriginalImageWidth
+        }
+        if config.negativeOriginalImageHeight > 0 {
+            v2["negativeOriginalImageHeight"] = config.negativeOriginalImageHeight
+        }
         if !config.negativePrompt.isEmpty {
             v2["negativePrompt"] = config.negativePrompt
         }
@@ -426,6 +439,17 @@ enum ImageStorageManager {
             dict["diffusionTileWidth"]   = config.diffusionTileWidth
             dict["diffusionTileHeight"]  = config.diffusionTileHeight
             dict["diffusionTileOverlap"] = config.diffusionTileOverlap
+        }
+        // SDXL size conditioning — only when set, as above.
+        if config.originalImageWidth > 0  { dict["originalImageWidth"]  = config.originalImageWidth }
+        if config.originalImageHeight > 0 { dict["originalImageHeight"] = config.originalImageHeight }
+        if config.targetImageWidth > 0    { dict["targetImageWidth"]    = config.targetImageWidth }
+        if config.targetImageHeight > 0   { dict["targetImageHeight"]   = config.targetImageHeight }
+        if config.negativeOriginalImageWidth > 0 {
+            dict["negativeOriginalImageWidth"] = config.negativeOriginalImageWidth
+        }
+        if config.negativeOriginalImageHeight > 0 {
+            dict["negativeOriginalImageHeight"] = config.negativeOriginalImageHeight
         }
         if !config.loras.isEmpty {
             dict["loras"] = config.loras.map { ["file": $0.file, "weight": $0.weight] }

@@ -264,6 +264,16 @@ final class StoryFlowPhase3Tests: XCTestCase {
             "refiner_start": 0.6, "seed": 99, "shift": 2, "steps": 11,
             "stochasticSamplingGamma": 0.4, "stochastic_sampling_gamma": 0.4,
             "strength": 0.7, "width": 512,
+            // SDXL size conditioning. Values are deliberately not 512 — `width` and
+            // `height` above use that, and these fields' own "unset" behaviour is for
+            // the client to substitute width/height, so a shared value could let a
+            // wrong-field merge pass unnoticed.
+            "originalImageWidth": 768, "original_image_width": 768,
+            "originalImageHeight": 576, "original_image_height": 576,
+            "targetImageWidth": 1024, "target_image_width": 1024,
+            "targetImageHeight": 768, "target_image_height": 768,
+            "negativeOriginalImageWidth": 1792, "negative_original_image_width": 1792,
+            "negativeOriginalImageHeight": 1344, "negative_original_image_height": 1344,
         ]
         let untested = StoryFlowEngine.sweepableParameters.subtracting(numeric.keys).subtracting([
             // String- or Bool-valued; covered by mergeDict's own coverage above.

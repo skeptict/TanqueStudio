@@ -459,6 +459,26 @@ final class StoryFlowEngine {
             log("  ✓ inpaintTools → strength \(currentConfig.strength), blur \(currentConfig.maskBlur), "
               + "outset \(currentConfig.maskBlurOutset), preserve \(currentConfig.preserveOriginalAfterInpaint)")
 
+        case .passthrough where step.parameters["itemType"] == "xlMagic":
+            // `xlMagic(value.original, value.target, value.negative)` — three slider
+            // positions, 1...8, resolved through the shared eight-entry latent table
+            // (`StoryflowPipeline_260723.js:418`, verified identical to the authoring
+            // script's own table).
+            //
+            // ⚠️ The INSTRUCTION sets only these six fields. The XL Magic *script*
+            // also emits width/height, hires fix and tiled decoding, but the pipeline's
+            // `xlMagic` case does not — so neither do we. `XLMagicTable.apply` is the
+            // fuller behaviour and belongs to the Generate panel's helper, not here.
+            guard let obj = Self.passthroughObject(step.parameters["rawValueJSON"] ?? ""),
+                  let sizes = Self.xlMagicSizes(from: obj) else {
+                log("  ⚠ xlMagic: missing or invalid slider values — skipped")
+                return
+            }
+            sizes.apply(to: &currentConfig)
+            log("  ✓ xlMagic → original \(sizes.original.width)×\(sizes.original.height), "
+              + "target \(sizes.target.width)×\(sizes.target.height), "
+              + "negative \(sizes.negative.width)×\(sizes.negative.height)")
+
         case .passthrough where step.parameters["itemType"] == "framesDialog":
             guard let obj = Self.passthroughObject(step.parameters["rawValueJSON"] ?? ""),
                   let wps = Self.numberValue(obj["wps"]), wps > 0 else {
@@ -520,14 +540,58 @@ final class StoryFlowEngine {
         "batchSize", "batch_size", "cfgZeroStar", "cfg_zero_star",
         "guidanceScale", "guidance_scale", "height", "model",
         "maskBlur", "maskBlurOutset", "mask_blur", "mask_blur_outset",
-        "negativePrompt", "negative_prompt", "numFrames", "num_frames",
+        "negativeOriginalImageHeight", "negativeOriginalImageWidth",
+        "negativePrompt", "negative_original_image_height",
+        "negative_original_image_width", "negative_prompt",
+        "numFrames", "num_frames",
+        "originalImageHeight", "originalImageWidth",
+        "original_image_height", "original_image_width",
         "preserveOriginalAfterInpaint", "preserve_original_after_inpaint",
+        "targetImageHeight", "targetImageWidth",
+        "target_image_height", "target_image_width",
         "refinerModel", "refinerStart", "refiner_model", "refiner_start",
         "resolutionDependentShift", "resolution_dependent_shift",
         "sampler", "seed", "seedMode", "seed_mode", "shift", "steps",
         "stochasticSamplingGamma", "stochastic_sampling_gamma",
         "strength", "width"
     ]
+
+    /// The three latent sizes an `xlMagic` instruction resolves to.
+    struct XLMagicSizes: Equatable {
+        let original: XLMagicTable.Size
+        let target: XLMagicTable.Size
+        let negative: XLMagicTable.Size
+
+        func apply(to config: inout DrawThingsGenerationConfig) {
+            config.originalImageWidth          = original.width
+            config.originalImageHeight         = original.height
+            config.targetImageWidth            = target.width
+            config.targetImageHeight           = target.height
+            config.negativeOriginalImageWidth  = negative.width
+            config.negativeOriginalImageHeight = negative.height
+        }
+    }
+
+    /// Reads an `xlMagic` instruction's three slider positions and resolves them.
+    ///
+    /// Static and separate from the dispatch so the **key names** are testable. The
+    /// keys are Draw Things' own — `xlMagic(value.original, value.target,
+    /// value.negative)` at `StoryflowPipeline_260723.js:1174` — and a typo in any of
+    /// them would fail the guard above and log "skipped", which is the same silent
+    /// non-application that hid three of `inpaintTools`' four fields.
+    ///
+    /// Returns nil only when a key is absent or non-numeric. Out-of-range positions
+    /// are clamped rather than rejected, matching the pipeline.
+    static func xlMagicSizes(from obj: [String: Any]) -> XLMagicSizes? {
+        guard let original = numberValue(obj["original"]),
+              let target = numberValue(obj["target"]),
+              let negative = numberValue(obj["negative"]) else { return nil }
+        return XLMagicSizes(
+            original: XLMagicTable.latentSize(forSlider: Int(original)),
+            target: XLMagicTable.latentSize(forSlider: Int(target)),
+            negative: XLMagicTable.latentSize(forSlider: Int(negative))
+        )
+    }
 
     /// A passthrough step's object value.
     ///
@@ -884,6 +948,15 @@ final class StoryFlowEngine {
         if let v = dblVal("maskBlur", "mask_blur")                             { config.maskBlur = v }
         if let v = intVal("maskBlurOutset", "mask_blur_outset")                { config.maskBlurOutset = v }
         if let v = boolVal("preserveOriginalAfterInpaint", "preserve_original_after_inpaint") { config.preserveOriginalAfterInpaint = v }
+        // SDXL size conditioning. `xlMagic` carries slider positions and resolves them
+        // through `XLMagicTable`, but these keys are also what the XL Magic script's
+        // own emitted JSON uses, so a config instruction carrying that JSON applies too.
+        if let v = intVal("originalImageWidth", "original_image_width")           { config.originalImageWidth = v }
+        if let v = intVal("originalImageHeight", "original_image_height")         { config.originalImageHeight = v }
+        if let v = intVal("targetImageWidth", "target_image_width")               { config.targetImageWidth = v }
+        if let v = intVal("targetImageHeight", "target_image_height")             { config.targetImageHeight = v }
+        if let v = intVal("negativeOriginalImageWidth", "negative_original_image_width")   { config.negativeOriginalImageWidth = v }
+        if let v = intVal("negativeOriginalImageHeight", "negative_original_image_height") { config.negativeOriginalImageHeight = v }
 
         // sampler — accept String or Int (DT HTTP API returns Int)
         if let s = strVal("sampler")      { config.sampler = s }

@@ -26,6 +26,7 @@ struct FocusRoomDrawer: View {
     @State private var canvasExpanded = false
     @State private var hiresFixExpanded = false
     @State private var tilingExpanded = false
+    @State private var xlMagicExpanded = false
     @State private var paramsExpanded = false
     @State private var lorasExpanded = false
     @State private var img2imgExpanded = false
@@ -43,6 +44,7 @@ struct FocusRoomDrawer: View {
                     section("Canvas Size", isExpanded: $canvasExpanded) { CanvasSizeSection(vm: vm) }
                     section("Hires Fix", isExpanded: $hiresFixExpanded) { HiresFixSection(vm: vm) }
                     section("Tiling", isExpanded: $tilingExpanded) { TilingSection(vm: vm) }
+                    section("XL Magic", isExpanded: $xlMagicExpanded) { XLMagicSection(vm: vm) }
                     section("Parameters", isExpanded: $paramsExpanded) { ParametersSection(vm: vm) }
                     section("LoRAs", isExpanded: $lorasExpanded) { LoRAsSection(vm: vm) }
                     section("img2img & Moodboard", isExpanded: $img2imgExpanded) { Img2ImgMoodboardSection(vm: vm) }
@@ -433,6 +435,200 @@ struct HiresFixSection: View {
     }
 
     private static func floor64(_ v: Int) -> Int { max(64, (v / 64) * 64) }
+}
+
+// MARK: - XL Magic (SDXL size conditioning)
+
+/// A native port of wetcircuit's "XL Magic Config" Draw Things script.
+///
+/// SDXL takes six latent size-conditioning values — original, target and
+/// negative-original width/height — that rescale latent data across overlapping
+/// render steps: composition, then objects, then fine detail. They interact, and
+/// most combinations distort. The script's contribution is to constrain all three
+/// to one shared eight-entry table, so there are 512 sane combinations rather than
+/// the 887,503,681 the raw parameters allow. `XLMagicTable` holds those tables.
+///
+/// **Applied on a button press, not live.** The script is a two-step flow that
+/// ends in a config you paste, and this mirrors it deliberately: the helper writes
+/// canvas size as well as conditioning, so applying on every slider nudge would
+/// silently overwrite a canvas size set elsewhere in the drawer. The preview shows
+/// exactly what the button will write.
+struct XLMagicSection: View {
+    @Bindable var vm: GenerateViewModel
+    @State private var selection = XLMagicTable.Selection()
+
+    private var preset: XLMagicTable.Preset {
+        XLMagicTable.preset(ratio: selection.ratio, resolution: selection.resolution)
+    }
+
+    /// True once any of the six fields is set. Zero means "unset", for which the
+    /// client substitutes the render's own dimensions — so this is also the signal
+    /// for whether Clear has anything to do.
+    private var isActive: Bool {
+        vm.config.originalImageWidth > 0
+            || vm.config.targetImageWidth > 0
+            || vm.config.negativeOriginalImageWidth > 0
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            picker("Resolution", selection: $selection.resolution,
+                   options: XLMagicTable.Resolution.allCases, label: \.label)
+            picker("Ratio", selection: $selection.ratio,
+                   options: XLMagicTable.Ratio.allCases, label: \.label)
+
+            readout("Canvas", "\(preset.size.width)\u{00D7}\(preset.size.height)")
+
+            Divider().overlay(DashboardDS.border)
+
+            slider("Latent", value: $selection.originalSlider,
+                   recommended: XLMagicTable.recommendedOriginal,
+                   help: "Pose and composition, and the size of the subject. Lower favours portraits and prompt adherence.")
+            slider("Objects", value: $selection.targetSlider,
+                   recommended: XLMagicTable.recommendedTarget,
+                   help: "Scene objects. A step either way often fixes fingers and other small details.")
+            slider("Fine-line", value: $selection.negativeSlider,
+                   recommended: XLMagicTable.recommendedNegative,
+                   help: "Hair and fabric texture. Higher sharpens; lower helps blend inpainting.")
+
+            // Only the large tier carries first-pass presets in the script's table.
+            if preset.hiresFixOptions.count > 1 {
+                Divider().overlay(DashboardDS.border)
+                hiresFixPicker
+            }
+
+            Divider().overlay(DashboardDS.border)
+
+            HStack {
+                Text("Tiled decode").font(TanqueDS.Font.mono(11.5)).foregroundStyle(DashboardDS.muted2)
+                Spacer()
+                Toggle("", isOn: $selection.tiledDecoding)
+                    .labelsHidden().toggleStyle(.dashboardCheckbox)
+            }
+            .help("The script's memory-saver preset: 1024px tiles, 128px overlap.")
+
+            if selection.tiledDecoding {
+                HStack {
+                    Text("iPhone tiles").font(TanqueDS.Font.mono(11.5)).foregroundStyle(DashboardDS.muted2)
+                    Spacer()
+                    Toggle("", isOn: $selection.iPhoneTiles)
+                        .labelsHidden().toggleStyle(.dashboardCheckbox)
+                }
+                .help("Smaller 512px tiles with 64px overlap.")
+            }
+
+            Divider().overlay(DashboardDS.border)
+
+            Button("Apply XL Magic") {
+                XLMagicTable.apply(selection, to: &vm.config)
+            }
+            .buttonStyle(DashboardGhostButtonStyle())
+
+            if isActive {
+                currentValues
+                Button("Clear conditioning") {
+                    vm.config.originalImageWidth = 0
+                    vm.config.originalImageHeight = 0
+                    vm.config.targetImageWidth = 0
+                    vm.config.targetImageHeight = 0
+                    vm.config.negativeOriginalImageWidth = 0
+                    vm.config.negativeOriginalImageHeight = 0
+                }
+                .buttonStyle(DashboardGhostButtonStyle())
+                .help("Back to Draw Things' default, where each value follows the render's own size.")
+            }
+        }
+    }
+
+    /// What is actually on the config now — deliberately read back from `vm.config`
+    /// rather than from `selection`, so it still tells the truth about a value that
+    /// arrived from an imported config or a StoryFlow run rather than this panel.
+    @ViewBuilder
+    private var currentValues: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            readout("Original", "\(vm.config.originalImageWidth)\u{00D7}\(vm.config.originalImageHeight)")
+            readout("Target", "\(vm.config.targetImageWidth)\u{00D7}\(vm.config.targetImageHeight)")
+            readout("Negative", "\(vm.config.negativeOriginalImageWidth)\u{00D7}\(vm.config.negativeOriginalImageHeight)")
+        }
+    }
+
+    @ViewBuilder
+    private var hiresFixPicker: some View {
+        HStack {
+            Text("1st pass").font(TanqueDS.Font.mono(11.5)).foregroundStyle(DashboardDS.muted2)
+            Spacer()
+            Picker("", selection: $selection.hiresFixIndex) {
+                ForEach(preset.hiresFixOptions.indices, id: \.self) { index in
+                    if let size = preset.hiresFixOptions[index] {
+                        Text("\(size.width)\u{00D7}\(size.height)").tag(index)
+                    } else {
+                        Text("no HRF").tag(index)
+                    }
+                }
+            }
+            .labelsHidden()
+            .font(TanqueDS.Font.mono(11.5))
+            .frame(width: 130)
+        }
+        .help("Start at a lower resolution, then finish at full size. Lower first passes allow higher latent scaling.")
+    }
+
+    @ViewBuilder
+    private func picker<T: Hashable>(_ title: String,
+                                     selection: Binding<T>,
+                                     options: [T],
+                                     label: KeyPath<T, String>) -> some View {
+        HStack {
+            Text(title).font(TanqueDS.Font.mono(11.5)).foregroundStyle(DashboardDS.muted2)
+            Spacer()
+            Picker("", selection: selection) {
+                ForEach(options, id: \.self) { option in
+                    Text(option[keyPath: label]).tag(option)
+                }
+            }
+            .labelsHidden()
+            .font(TanqueDS.Font.mono(11.5))
+            .frame(width: 170)
+        }
+    }
+
+    @ViewBuilder
+    private func slider(_ title: String,
+                        value: Binding<Int>,
+                        recommended: ClosedRange<Int>,
+                        help: String) -> some View {
+        let size = XLMagicTable.latentSize(forSlider: value.wrappedValue)
+        VStack(alignment: .leading, spacing: 2) {
+            HStack {
+                Text(title).font(TanqueDS.Font.mono(11.5)).foregroundStyle(DashboardDS.muted2)
+                Spacer()
+                Text("\(value.wrappedValue)")
+                    .font(TanqueDS.Font.mono(11.5))
+                    .foregroundStyle(recommended.contains(value.wrappedValue) ? DashboardDS.text : DashboardDS.muted2)
+                Text("\(size.width)\u{00D7}\(size.height)")
+                    .font(TanqueDS.Font.mono(10.5))
+                    .foregroundStyle(DashboardDS.muted2)
+                    .frame(width: 74, alignment: .trailing)
+            }
+            Slider(value: Binding(
+                get: { Double(value.wrappedValue) },
+                set: { value.wrappedValue = Int($0.rounded()) }
+            ), in: 1...8, step: 1)
+            .controlSize(.small)
+            // The script's own guidance: the three spread low, medium, high.
+            // Advisory, not enforced — exploration is the point of the sliders.
+            .help(help + " Recommended \(recommended.lowerBound)–\(recommended.upperBound).")
+        }
+    }
+
+    @ViewBuilder
+    private func readout(_ title: String, _ value: String) -> some View {
+        HStack {
+            Text(title).font(TanqueDS.Font.mono(11.5)).foregroundStyle(DashboardDS.muted2)
+            Spacer()
+            Text(value).font(TanqueDS.Font.mono(11.5)).foregroundStyle(DashboardDS.text)
+        }
+    }
 }
 
 // MARK: - Tiling (parity Batch D)
