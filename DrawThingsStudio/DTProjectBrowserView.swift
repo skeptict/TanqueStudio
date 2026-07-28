@@ -604,6 +604,38 @@ struct DTProjectBrowserView: View {
         }
     }
 
+    /// Writes the frame currently under the scrubber, at full size.
+    ///
+    /// A save panel rather than the folder picker the other exports use — this
+    /// writes exactly one file, so naming it is the point. The default name carries
+    /// the frame number because "which frame was that" is the thing you lose.
+    private func exportCurrentFrame(_ entry: DTGenerationEntry) {
+        let index = detailFrameIndex
+        let rowid = browser.rowid(for: entry, frameIndex: index)
+        let base = browser.selectedProject?.name.replacingOccurrences(of: ".sqlite3", with: "") ?? "frame"
+
+        let panel = NSSavePanel()
+        panel.canCreateDirectories = true
+        panel.nameFieldStringValue = "\(base)-frame-\(String(format: "%04d", index + 1)).jpg"
+        panel.allowedContentTypes = [.jpeg]
+        panel.message = "Save frame \(index + 1) at full size"
+        panel.begin { response in
+            guard response == .OK, let url = panel.url else { return }
+            Task {
+                guard let data = await browser.fullImageData(rowid: rowid) else {
+                    browser.exportSummary = "Could not read frame \(index + 1) from the database."
+                    return
+                }
+                do {
+                    try data.write(to: url)
+                    browser.exportSummary = "Wrote frame \(index + 1) to \(url.lastPathComponent)."
+                } catch {
+                    browser.exportSummary = "Could not write \(url.lastPathComponent): \(error.localizedDescription)"
+                }
+            }
+        }
+    }
+
     private func chooseFolderAndExport(_ scope: DTProjectBrowserViewModel.ExportScope) {
         let panel = NSOpenPanel()
         panel.canChooseDirectories = true
@@ -683,6 +715,16 @@ struct DTProjectBrowserView: View {
                             NSPasteboard.general.setString(configJSON(for: entry), forType: .string)
                         }
                         .buttonStyle(DashboardGhostButtonStyle())
+                    }
+
+                    // Scrubbing to the one good frame in a 257-frame clip and then
+                    // being offered only "cover frame / every frame / .mp4" is the
+                    // gap this closes. Only shown for clips — for a still, Export
+                    // Series already means exactly this.
+                    if browser.frameCount(for: entry) != nil {
+                        Button("Export This Frame…") { exportCurrentFrame(entry) }
+                            .buttonStyle(DashboardGhostButtonStyle())
+                            .help("Write frame \(detailFrameIndex + 1) to disk at full size.")
                     }
                 }
 
@@ -901,7 +943,21 @@ struct DTProjectBrowserView: View {
                 DrawThingsGenerationConfig.LoRAConfig(file: $0.file, weight: Double($0.weight), mode: "all")
             }
         }
-        if let thumb = entry.thumbnail  { vm.sourceImage = thumb }
+        // The image, deliberately resolved rather than taken from `entry`.
+        //
+        // Two things `entry.thumbnail` got wrong. For a clip it is always the COVER
+        // frame, so scrubbing to frame 137 and pressing the button directly beneath
+        // the scrubber silently handed Generate frame 0. And for everything it is the
+        // HALF-size preview, so img2img started from a downscaled picture.
+        //
+        // Navigate immediately and fill the source in when it arrives: the metadata
+        // above is already applied, and blocking the jump on a JPEG decode would make
+        // the button feel broken.
+        let rowid = browser.rowid(for: entry, frameIndex: detailFrameIndex)
+        if let thumb = entry.thumbnail { vm.sourceImage = thumb }   // instant stand-in
+        Task {
+            if let full = await browser.fullImage(rowid: rowid) { vm.sourceImage = full }
+        }
         onNavigateToGenerate()
     }
 

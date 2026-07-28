@@ -72,6 +72,47 @@ final class DTProjectBrowserViewModel {
         return clips[clipId]?.framesPerSecond
     }
 
+    /// The full-resolution image for one row, for handing to Generate or writing
+    /// to disk.
+    ///
+    /// **Not the same picture as `entry.thumbnail`.** Draw Things keeps two preview
+    /// tables and `fetchThumbnail` prefers the *half*-size one, which is right for a
+    /// grid cell and wrong for anything that leaves the browser — an img2img source
+    /// or an exported file. `fetchThumbnailJPEGData` prefers the full-size table,
+    /// the same bytes Export writes, so this and Export agree.
+    ///
+    /// Off the main actor: this reads and decodes a JPEG.
+    func fullImage(rowid: Int64) async -> NSImage? {
+        await fullImageData(rowid: rowid).flatMap(NSImage.init(data:))
+    }
+
+    /// The stored JPEG bytes for one row, unmodified.
+    ///
+    /// Exporting hands these straight to disk rather than re-encoding an `NSImage`,
+    /// so a saved frame is byte-for-byte what Draw Things stored — the same
+    /// guarantee the project-wide export already makes.
+    func fullImageData(rowid: Int64) async -> Data? {
+        guard let url = selectedProject?.url else { return nil }
+        return await Task.detached(priority: .userInitiated) { () -> Data? in
+            // Keyed by rowid, not an array — subscript rather than `.first`.
+            guard let db = DTProjectDatabase(fileURL: url),
+                  let entry = db.fetchEntries(rowids: [rowid])[rowid]
+            else { return nil }
+            return db.fetchThumbnailJPEGData(previewId: entry.previewId)
+        }.value
+    }
+
+    /// The rowid of one frame of a clip, or of the still itself.
+    ///
+    /// Clamped rather than trapping: the scrubber's index and the loaded frame list
+    /// are separate pieces of state, and a clip whose frames are still loading can
+    /// legitimately be asked for an index it does not have yet.
+    func rowid(for entry: DTGenerationEntry, frameIndex: Int) -> Int64 {
+        let rowids = frameRowids(for: entry)
+        guard !rowids.isEmpty else { return entry.id }
+        return rowids[min(max(frameIndex, 0), rowids.count - 1)]
+    }
+
     /// This clip's soundtrack tensor id, when Draw Things recorded one.
     func audioId(for entry: DTGenerationEntry) -> Int64? {
         guard case .clip(let clipId, _, _)? = slotByRowid[entry.id] else { return nil }
