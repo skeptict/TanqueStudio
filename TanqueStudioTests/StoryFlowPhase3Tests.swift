@@ -274,6 +274,17 @@ final class StoryFlowPhase3Tests: XCTestCase {
             "targetImageHeight": 768, "target_image_height": 768,
             "negativeOriginalImageWidth": 1792, "negative_original_image_width": 1792,
             "negativeOriginalImageHeight": 1344, "negative_original_image_height": 1344,
+            // Hires fix and tiling. Values are deliberately all distinct so a merge
+            // writing the right number into the wrong field cannot pass.
+            "batchCount": 3, "batch_count": 3, "fps": 24,
+            "hiresFixWidth": 896, "hiresFixHeight": 640,
+            "hiresFixStrength": 0.55, "second_stage_strength": 0.55,
+            "decodingTileWidth": 704, "decoding_tile_width": 704,
+            "decodingTileHeight": 576, "decoding_tile_height": 576,
+            "decodingTileOverlap": 192, "decoding_tile_overlap": 192,
+            "diffusionTileWidth": 1088, "diffusion_tile_width": 1088,
+            "diffusionTileHeight": 960, "diffusion_tile_height": 960,
+            "diffusionTileOverlap": 256, "diffusion_tile_overlap": 256,
         ]
         let untested = StoryFlowEngine.sweepableParameters.subtracting(numeric.keys).subtracting([
             // String- or Bool-valued; covered by mergeDict's own coverage above.
@@ -281,6 +292,11 @@ final class StoryFlowPhase3Tests: XCTestCase {
             "sampler", "seedMode", "seed_mode", "cfgZeroStar", "cfg_zero_star",
             "resolutionDependentShift", "resolution_dependent_shift",
             "preserveOriginalAfterInpaint", "preserve_original_after_inpaint",
+            "hiresFix", "hires_fix", "tiledDecoding", "tiled_decoding",
+            "tiledDiffusion", "tiled_diffusion",
+            // A "1024x768" string rather than a number — Draw Things' own metadata
+            // shape. Exercised by `testDrawThingsMetadataShapeForHiresFixIsUnderstood`.
+            "first_stage_size",
         ])
         XCTAssertTrue(untested.isEmpty,
                       "sweepable but unexercised here — add them: \(untested.sorted())")

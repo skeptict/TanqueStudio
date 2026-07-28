@@ -537,6 +537,15 @@ final class StoryFlowEngine {
     /// Silently dropping it would mean a swept parameter that simply never moves,
     /// which looks exactly like a model that ignores the setting.
     static let sweepableParameters: Set<String> = [
+        "batchCount", "batch_count",
+        "decodingTileHeight", "decodingTileOverlap", "decodingTileWidth",
+        "decoding_tile_height", "decoding_tile_overlap", "decoding_tile_width",
+        "diffusionTileHeight", "diffusionTileOverlap", "diffusionTileWidth",
+        "diffusion_tile_height", "diffusion_tile_overlap", "diffusion_tile_width",
+        "first_stage_size", "fps",
+        "hiresFix", "hiresFixHeight", "hiresFixStrength", "hiresFixWidth",
+        "hires_fix", "second_stage_strength",
+        "tiledDecoding", "tiledDiffusion", "tiled_decoding", "tiled_diffusion",
         "batchSize", "batch_size", "cfgZeroStar", "cfg_zero_star",
         "guidanceScale", "guidance_scale", "height", "model",
         "maskBlur", "maskBlurOutset", "mask_blur", "mask_blur_outset",
@@ -957,6 +966,37 @@ final class StoryFlowEngine {
         if let v = intVal("targetImageHeight", "target_image_height")             { config.targetImageHeight = v }
         if let v = intVal("negativeOriginalImageWidth", "negative_original_image_width")   { config.negativeOriginalImageWidth = v }
         if let v = intVal("negativeOriginalImageHeight", "negative_original_image_height") { config.negativeOriginalImageHeight = v }
+        if let v = intVal("batchCount", "batch_count")                          { config.batchCount = v }
+        if let v = intVal("fps")                                               { config.fps = v }
+
+        // Hires fix and tiling. Both groups are stored here in RAW PIXELS and both
+        // of Draw Things' JSON shapes are in pixels too, so nothing converts —
+        // the ÷64 happens at the wire (ours for tiles, the client's for hires fix).
+        if let v = boolVal("hiresFix", "hires_fix")                            { config.hiresFix = v }
+        if let v = intVal("hiresFixWidth")                                     { config.hiresFixWidth = v }
+        if let v = intVal("hiresFixHeight")                                    { config.hiresFixHeight = v }
+        if let v = dblVal("hiresFixStrength", "second_stage_strength")         { config.hiresFixStrength = v }
+        if let v = boolVal("tiledDecoding", "tiled_decoding")                  { config.tiledDecoding = v }
+        if let v = intVal("decodingTileWidth", "decoding_tile_width")          { config.decodingTileWidth = v }
+        if let v = intVal("decodingTileHeight", "decoding_tile_height")        { config.decodingTileHeight = v }
+        if let v = intVal("decodingTileOverlap", "decoding_tile_overlap")      { config.decodingTileOverlap = v }
+        if let v = boolVal("tiledDiffusion", "tiled_diffusion")                { config.tiledDiffusion = v }
+        if let v = intVal("diffusionTileWidth", "diffusion_tile_width")        { config.diffusionTileWidth = v }
+        if let v = intVal("diffusionTileHeight", "diffusion_tile_height")      { config.diffusionTileHeight = v }
+        if let v = intVal("diffusionTileOverlap", "diffusion_tile_overlap")    { config.diffusionTileOverlap = v }
+
+        // ⚠️ Draw Things' METADATA json carries the hires-fix first pass as a single
+        // "1024x768" STRING rather than two numbers, and there is no
+        // `hires_fix_width`/`hires_fix_height` anywhere in its source — inventing
+        // those as snake_case aliases would have produced keys nothing writes.
+        // (`ImageConverter.swift:1758` writes it, `:2161` reads it back the same way.)
+        if let size = strVal("first_stage_size") {
+            let parts = size.split(separator: "x").compactMap { Int($0.trimmingCharacters(in: .whitespaces)) }
+            if parts.count == 2 {
+                config.hiresFixWidth = parts[0]
+                config.hiresFixHeight = parts[1]
+            }
+        }
 
         // sampler — accept String or Int (DT HTTP API returns Int)
         if let s = strVal("sampler")      { config.sampler = s }

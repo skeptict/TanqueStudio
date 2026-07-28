@@ -228,6 +228,112 @@ final class XLMagicTableTests: XCTestCase {
         XCTAssertEqual(config.decodingTileWidth, 777)
     }
 
+    // MARK: - The script's emitted config, end to end
+
+    /// The whole point of the XL Magic script is a config blob you paste somewhere.
+    /// Pasting it into a StoryFlow `config` instruction has to apply **all** of it.
+    ///
+    /// This is the case that motivated finishing `mergeDict`: the conditioning was
+    /// landing while `hiresFix*` and `tiledDecoding*` were silently dropped, so a
+    /// pasted config produced a render at the right latent scaling with no hires fix
+    /// and no tiling — wrong in a way nothing reported.
+    ///
+    /// The JSON below is assembled exactly as `misc/XL Magic Config v03.js` builds
+    /// it (`configSizes` + `configHRF` + `configTiled`), for large 1:1 with the
+    /// default sliders, first pass 512×512, and the non-iPhone tile preset.
+    func testTheScriptsEmittedConfigAppliesInFull() throws {
+        let json = """
+        {
+        "width": 1536,
+        "height": 1536,
+        "originalImageWidth": 768,
+        "originalImageHeight": 576,
+        "targetImageWidth": 1024,
+        "targetImageHeight": 768,
+        "negativeOriginalImageWidth": 1792,
+        "negativeOriginalImageHeight": 1344,
+        "hiresFix": true,
+        "hiresFixWidth": 512,
+        "hiresFixHeight": 512,
+        "hiresFixStrength": 0.6,
+        "tiledDecoding": true,
+        "decodingTileWidth": 1024,
+        "decodingTileHeight": 1024,
+        "decodingTileOverlap": 128
+        }
+        """
+        let dict = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: Data(json.utf8)) as? [String: Any])
+
+        var config = DrawThingsGenerationConfig()
+        StoryFlowEngine.mergeDict(dict, into: &config)
+
+        XCTAssertEqual(config.width, 1536)
+        XCTAssertEqual(config.height, 1536)
+
+        XCTAssertEqual(config.originalImageWidth, 768)
+        XCTAssertEqual(config.originalImageHeight, 576)
+        XCTAssertEqual(config.targetImageWidth, 1024)
+        XCTAssertEqual(config.targetImageHeight, 768)
+        XCTAssertEqual(config.negativeOriginalImageWidth, 1792)
+        XCTAssertEqual(config.negativeOriginalImageHeight, 1344)
+
+        XCTAssertTrue(config.hiresFix, "hires fix was dropped — the half this test exists for")
+        XCTAssertEqual(config.hiresFixWidth, 512)
+        XCTAssertEqual(config.hiresFixHeight, 512)
+        XCTAssertEqual(config.hiresFixStrength, 0.6, accuracy: 0.0001)
+
+        XCTAssertTrue(config.tiledDecoding, "tiled decoding was dropped")
+        XCTAssertEqual(config.decodingTileWidth, 1024)
+        XCTAssertEqual(config.decodingTileHeight, 1024)
+        XCTAssertEqual(config.decodingTileOverlap, 128)
+    }
+
+    /// Every key the script can emit must be one `mergeDict` understands. Asserting
+    /// the *set* rather than a sampled instance means a future script version adding
+    /// a key gets caught here rather than by a user whose paste half-applied.
+    func testEveryKeyTheScriptEmitsIsOneMergeDictApplies() {
+        let emitted: Set<String> = [
+            "width", "height",
+            "originalImageWidth", "originalImageHeight",
+            "targetImageWidth", "targetImageHeight",
+            "negativeOriginalImageWidth", "negativeOriginalImageHeight",
+            "hiresFix", "hiresFixWidth", "hiresFixHeight", "hiresFixStrength",
+            "tiledDecoding", "decodingTileWidth", "decodingTileHeight", "decodingTileOverlap",
+        ]
+        let unknown = emitted.subtracting(StoryFlowEngine.sweepableParameters)
+        XCTAssertTrue(unknown.isEmpty,
+                      "the script emits keys mergeDict cannot apply: \(unknown.sorted())")
+    }
+
+    /// Draw Things' *metadata* JSON writes the first pass as one `"1024x768"` string
+    /// and the strength as `second_stage_strength` — there is no `hires_fix_width`
+    /// key anywhere in its source (`ImageConverter.swift:1758`/`:2161`). Pasting DT
+    /// metadata into a config step should still work.
+    func testDrawThingsMetadataShapeForHiresFixIsUnderstood() {
+        var config = DrawThingsGenerationConfig()
+        StoryFlowEngine.mergeDict([
+            "hires_fix": true,
+            "first_stage_size": "1024x768",
+            "second_stage_strength": 0.45,
+        ], into: &config)
+
+        XCTAssertTrue(config.hiresFix)
+        XCTAssertEqual(config.hiresFixWidth, 1024)
+        XCTAssertEqual(config.hiresFixHeight, 768)
+        XCTAssertEqual(config.hiresFixStrength, 0.45, accuracy: 0.0001)
+    }
+
+    /// A malformed pair must leave the dimensions alone rather than half-applying.
+    func testAMalformedFirstStageSizeIsIgnored() {
+        var config = DrawThingsGenerationConfig(width: 1024, height: 1024)
+        config.hiresFixWidth = 640
+        config.hiresFixHeight = 640
+        StoryFlowEngine.mergeDict(["first_stage_size": "not-a-size"], into: &config)
+        XCTAssertEqual(config.hiresFixWidth, 640)
+        XCTAssertEqual(config.hiresFixHeight, 640)
+    }
+
     // MARK: - The zero-means-substitute contract
 
     /// The client wrapper substitutes the render's own dimensions for any of these
