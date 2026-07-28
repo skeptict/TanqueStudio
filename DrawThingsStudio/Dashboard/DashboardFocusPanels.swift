@@ -470,6 +470,23 @@ struct XLMagicSection: View {
             || vm.config.negativeOriginalImageWidth > 0
     }
 
+    /// Recovers slider positions from whatever is on the config.
+    ///
+    /// The section's `selection` is `@State`, so collapsing the accordion destroys
+    /// it and it comes back at the script's defaults — leaving the sliders reading
+    /// 3/4/7 while the config still held 8/8/8, i.e. the panel contradicting itself.
+    /// Reading the config back on appear keeps one source of truth, and it also
+    /// means a value that arrived from an imported config or a StoryFlow `xlMagic`
+    /// run shows up here rather than being invisible.
+    private func adoptSlidersFromConfig() {
+        func slider(forWidth width: Int) -> Int? {
+            XLMagicTable.latentSizes.firstIndex { $0.width == width }.map { $0 + 1 }
+        }
+        if let s = slider(forWidth: vm.config.originalImageWidth) { selection.originalSlider = s }
+        if let s = slider(forWidth: vm.config.targetImageWidth) { selection.targetSlider = s }
+        if let s = slider(forWidth: vm.config.negativeOriginalImageWidth) { selection.negativeSlider = s }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             picker("Resolution", selection: $selection.resolution,
@@ -478,6 +495,18 @@ struct XLMagicSection: View {
                    options: XLMagicTable.Ratio.allCases, label: \.label)
 
             readout("Canvas", "\(preset.size.width)\u{00D7}\(preset.size.height)")
+                // Each preset carries its own first-pass default — the script opens
+                // its menu at `hrfDefault`, which is 5 (512×512) for large square and
+                // 0 elsewhere. Adopting it on change keeps us faithful, and also
+                // prevents a stale index surviving into a preset with a shorter list,
+                // where the Picker would have a selection matching no tag and render
+                // blank.
+                .onChange(of: selection.ratio) { _, _ in
+                    selection.hiresFixIndex = preset.defaultHiresFixIndex
+                }
+                .onChange(of: selection.resolution) { _, _ in
+                    selection.hiresFixIndex = preset.defaultHiresFixIndex
+                }
 
             Divider().overlay(DashboardDS.border)
 
@@ -538,6 +567,7 @@ struct XLMagicSection: View {
                 .help("Back to Draw Things' default, where each value follows the render's own size.")
             }
         }
+        .onAppear(perform: adoptSlidersFromConfig)
     }
 
     /// What is actually on the config now — deliberately read back from `vm.config`
@@ -602,10 +632,15 @@ struct XLMagicSection: View {
             HStack {
                 Text(title).font(TanqueDS.Font.mono(11.5)).foregroundStyle(DashboardDS.muted2)
                 Spacer()
-                Text("\(value.wrappedValue)")
+                Text(verbatim: "\(value.wrappedValue)")
                     .font(TanqueDS.Font.mono(11.5))
                     .foregroundStyle(recommended.contains(value.wrappedValue) ? DashboardDS.text : DashboardDS.muted2)
-                Text("\(size.width)\u{00D7}\(size.height)")
+                // ⚠️ `verbatim:` is load-bearing. `Text("\(anInt)")` takes the
+                // LocalizedStringKey overload, which formats integers for the locale
+                // and renders 1792 as "1,792" — so a dimension pair reads as four
+                // numbers. The `readout` rows escape this only because they are handed
+                // an already-built String. Same defect as the 1920px canvas field.
+                Text(verbatim: "\(size.width)\u{00D7}\(size.height)")
                     .font(TanqueDS.Font.mono(10.5))
                     .foregroundStyle(DashboardDS.muted2)
                     .frame(width: 74, alignment: .trailing)
