@@ -114,8 +114,19 @@ final class RequestLogger {
 
     // MARK: - Response
 
+    /// The client-side watchdog in force for the request just logged. Recorded up
+    /// front so a log that ends in a timeout shows what deadline it was measured
+    /// against, without having to re-derive it from the config.
+    func logGRPCDeadline(seconds: Int) {
+        append("deadline:                 \(seconds)s (client-side watchdog)\n")
+    }
+
     func logGRPCResponse(imageCount: Int) {
         append("→ Draw Things returned \(imageCount) image(s)\n")
+    }
+
+    func logGRPCTimeout(after seconds: Int) {
+        append("→ TIMED OUT after \(seconds)s — Draw Things never answered the render call\n")
     }
 
     // MARK: - Utilities

@@ -89,6 +89,126 @@ final class DrawThingsGRPCClient: DrawThingsProvider {
         }
     }
 
+    // MARK: - Generation timeout
+
+    // The render RPC had no client-side bound until v0.9.32. A Draw Things server
+    // that accepts the connection but never answers the generate call left every
+    // caller — the Generate panel, inpaint, and StoryFlowEngine.executeGenerate —
+    // awaiting forever with nothing surfaced. Observed 2026-07-27 against a remote
+    // server: the same request that succeeded 3/3 locally hung 3/3 remotely, ran
+    // past five minutes, and eventually returned zero images.
+    //
+    // `echo` solves the same problem with `echoTimeout`, but its 15s is nowhere near
+    // enough here: a legitimate render takes minutes, and a long video render takes
+    // hours. So the bound is derived from the request rather than fixed. Everything
+    // below is deliberately pessimistic — overshooting costs a longer wait before an
+    // error appears, undershooting kills a healthy render, and those are not
+    // symmetric mistakes.
+
+    /// Cost of one megapixel-step, in seconds. Far slower than any real hardware:
+    /// this is a watchdog budget, not an ETA.
+    private static let secondsPerMegapixelStep: Double = 8
+
+    /// Fixed allowance for everything that isn't sampling — model load, weight paging
+    /// on a cold server, VAE decode, and shipping the result back over the wire.
+    private static let generateTimeoutBaseSeconds: Double = 120
+
+    /// Never fire before this. Even a trivially small render can sit behind a
+    /// multi-gigabyte model load on a server that has just started.
+    private static let generateTimeoutFloorSeconds: Double = 300        // 5 min
+
+    /// Absolute ceiling, so "bounded" stays literally true even for a 450-frame
+    /// video whose derived budget would otherwise run past it.
+    private static let generateTimeoutCeilingSeconds: Double = 6 * 3600 // 6 h
+
+    /// UserDefaults key holding a manual override of the watchdog, in minutes.
+    /// Absent or <= 0 means "derive it from the request".
+    ///
+    /// There is deliberately no UI for this. It exists so a user whose renders
+    /// legitimately outrun the derived budget can raise it without waiting for a
+    /// build:
+    ///
+    ///     defaults write tanque.org.TanqueStudio tanqueStudio.dtGenerateTimeoutMinutes -int 90
+    ///
+    /// Promoting it to a real setting is a follow-up, not a prerequisite — the
+    /// derived budget is meant to be right for essentially every render.
+    static let generateTimeoutOverrideKey = "tanqueStudio.dtGenerateTimeoutMinutes"
+
+    /// The watchdog budget for one render, derived from the work the request asks for.
+    ///
+    /// Pure and `static` so it can be asserted directly, the same way `tileUnits` is:
+    /// the risk in this whole change is a budget that is too *short*, and that failure
+    /// mode is a healthy render killed mid-flight, which no build or smoke test catches.
+    /// See `GenerateTimeoutTests`.
+    static func generateTimeoutBudget(for config: DrawThingsGenerationConfig) -> Duration {
+        let megapixels = Double(max(config.width, 1) * max(config.height, 1)) / 1_000_000
+
+        // numFrames 0 means "let Draw Things pick", and `convertConfig` sends DT's own
+        // 14 in that case — but only a video model acts on it, so only a video model
+        // should be charged for it here. Charging every still 14x would inflate the
+        // ordinary case to the point where the watchdog stops being useful.
+        let frames = config.numFrames > 0 ? config.numFrames : (config.isVideoModel ? 14 : 1)
+
+        // Hires fix is a second sampling pass over the same canvas. A flat doubling is
+        // coarse, but it errs long, which is the safe direction.
+        let passes = config.hiresFix ? 2.0 : 1.0
+
+        let units = megapixels
+            * Double(max(config.steps, 1))
+            * Double(frames)
+            * Double(max(config.batchSize, 1))
+            * Double(max(config.batchCount, 1))
+
+        let seconds = generateTimeoutBaseSeconds + units * passes * secondsPerMegapixelStep
+        let clamped = min(max(seconds, generateTimeoutFloorSeconds), generateTimeoutCeilingSeconds)
+        return .seconds(clamped)
+    }
+
+    /// `generateTimeoutBudget(for:)` unless the user has set an explicit override.
+    /// Separated from the defaults read so both halves stay testable.
+    static func resolveGenerateTimeout(for config: DrawThingsGenerationConfig,
+                                       overrideMinutes: Double) -> Duration {
+        guard overrideMinutes > 0 else { return generateTimeoutBudget(for: config) }
+        return .seconds(overrideMinutes * 60)
+    }
+
+    /// Carries a non-Sendable payload ([NSImage]) out of the task group below.
+    /// Nothing actually crosses an isolation domain — the producing child task and
+    /// the consuming caller are both on the main actor — so this only exists to
+    /// satisfy `TaskGroup`'s `ChildTaskResult: Sendable` requirement.
+    private struct MainActorBox<T>: @unchecked Sendable {
+        let value: T
+    }
+
+    /// Races `operation` against a sleep, the same shape as `performEcho`, for the
+    /// same reason: the package builds its own `CallOptions` internally and exposes
+    /// no deadline to callers, so the bound has to be enforced on this side.
+    ///
+    /// Cancelling the group does not stop the server — Draw Things keeps rendering.
+    /// What this guarantees is only that *we* stop waiting.
+    ///
+    /// Internal rather than private so the race itself can be exercised against a
+    /// deliberately hanging operation — a budget that is correct on paper proves
+    /// nothing about whether the group actually unblocks. See `GenerateTimeoutTests`.
+    func withGenerateTimeout<T>(
+        _ timeout: Duration,
+        operation: @escaping @MainActor () async throws -> T
+    ) async throws -> T {
+        let seconds = Int(timeout.components.seconds)
+        return try await withThrowingTaskGroup(of: MainActorBox<T>.self) { group in
+            group.addTask { @MainActor in MainActorBox(value: try await operation()) }
+            group.addTask {
+                try await Task.sleep(for: timeout)
+                throw DrawThingsError.generationTimedOut(seconds: seconds)
+            }
+            defer { group.cancelAll() }
+            guard let first = try await group.next() else {
+                throw DrawThingsError.generationTimedOut(seconds: seconds)
+            }
+            return first.value
+        }
+    }
+
     // MARK: - Image Generation
 
     func generateImage(
@@ -114,6 +234,13 @@ final class DrawThingsGRPCClient: DrawThingsProvider {
         // Convert our config to DrawThingsConfiguration
         let grpcConfig = convertConfig(config)
         RequestLogger.shared.logGRPCRequest(config: grpcConfig, prompt: prompt, negativePrompt: config.negativePrompt)
+
+        let timeout = Self.resolveGenerateTimeout(
+            for: config,
+            overrideMinutes: UserDefaults.standard.double(forKey: Self.generateTimeoutOverrideKey)
+        )
+        let timeoutSeconds = Int(timeout.components.seconds)
+        RequestLogger.shared.logGRPCDeadline(seconds: timeoutSeconds)
 
         onProgress?(.starting)
 
@@ -144,6 +271,9 @@ final class DrawThingsGRPCClient: DrawThingsProvider {
             // Generate the image - pass source image, mask, and moodboard hints if set
             let hints = moodboardHints
             moodboardHints = []   // clear before await so concurrent calls don't double-use
+            // Hoisted for the timeout-race closures below, which would otherwise need
+            // an explicit `self.` capture — same reason `performEcho` takes a local copy.
+            let secret = sharedSecret
 
             // Inpainting: the high-level client encodes the mask with the image-tensor
             // format (imageToDTTensor), which is the wrong shape for a mask and crashes
@@ -157,33 +287,37 @@ final class DrawThingsGRPCClient: DrawThingsProvider {
                 let configData = try grpcConfig.toFlatBufferData()
                 let imageData = try ImageHelpers.imageToDTTensor(source, forceRGB: true)
                 let maskData = try ImageHelpers.createMaskFromAlpha(mask)
-                let resultData = try await service.generateImage(
-                    prompt: prompt,
-                    negativePrompt: config.negativePrompt,
-                    configuration: configData,
-                    image: imageData,
-                    mask: maskData,
-                    hints: hints,
-                    sharedSecret: sharedSecret,
-                    progressHandler: { signpost in
-                        guard let mapped = Self.mapSignpost(signpost, totalSteps: totalSteps) else { return }
-                        await MainActor.run { onProgress?(mapped) }
-                    }
-                )
+                let resultData = try await withGenerateTimeout(timeout) {
+                    try await service.generateImage(
+                        prompt: prompt,
+                        negativePrompt: config.negativePrompt,
+                        configuration: configData,
+                        image: imageData,
+                        mask: maskData,
+                        hints: hints,
+                        sharedSecret: secret,
+                        progressHandler: { signpost in
+                            guard let mapped = Self.mapSignpost(signpost, totalSteps: totalSteps) else { return }
+                            await MainActor.run { onProgress?(mapped) }
+                        }
+                    )
+                }
                 onProgress?(.complete)
                 RequestLogger.shared.logGRPCResponse(imageCount: resultData.count)
                 return try resultData.map { try ImageHelpers.dtTensorToImage($0) }
             }
 
-            let images = try await client.generateImage(
-                prompt: prompt,
-                negativePrompt: config.negativePrompt,
-                configuration: grpcConfig,
-                image: sourceImage,
-                mask: mask,
-                hints: hints,
-                sharedSecret: sharedSecret
-            )
+            let images = try await withGenerateTimeout(timeout) {
+                try await client.generateImage(
+                    prompt: prompt,
+                    negativePrompt: config.negativePrompt,
+                    configuration: grpcConfig,
+                    image: sourceImage,
+                    mask: mask,
+                    hints: hints,
+                    sharedSecret: secret
+                )
+            }
 
             onProgress?(.complete)
             RequestLogger.shared.logGRPCResponse(imageCount: images.count)
@@ -196,6 +330,26 @@ final class DrawThingsGRPCClient: DrawThingsProvider {
             // PlatformImage is NSImage on macOS, so we can return directly
             return images
 
+        } catch is CancellationError {
+            // The caller's task was cancelled (user hit Cancel, or left paint mode
+            // mid-inpaint). This only started surfacing here once the timeout race
+            // added a `Task.sleep` child — cancellation reaches the sleep long before
+            // the gRPC call notices. Rethrow it as-is: both GenerateViewModel paths
+            // have a `catch is CancellationError` arm that resets state quietly, and
+            // rewrapping it as `.requestFailed` would route a deliberate cancel into
+            // the red-error arm instead.
+            throw CancellationError()
+        } catch let error as DrawThingsError {
+            // Notably `.generationTimedOut` — its message is the whole point, and
+            // callers surface `localizedDescription` directly. Rewrapping would bury
+            // it inside "Request failed (-1): …" and destroy the case for anyone
+            // wanting to match on it.
+            if case .generationTimedOut(let seconds) = error {
+                logger.error("Generation timed out after \(seconds)s with no response")
+                RequestLogger.shared.logGRPCTimeout(after: seconds)
+            }
+            onProgress?(.failed(error.localizedDescription))
+            throw error
         } catch {
             onProgress?(.failed(error.localizedDescription))
             throw DrawThingsError.requestFailed(-1, error.localizedDescription)

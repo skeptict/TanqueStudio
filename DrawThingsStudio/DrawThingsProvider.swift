@@ -679,6 +679,11 @@ enum DrawThingsError: LocalizedError {
     case invalidResponse
     case imageDecodingFailed
     case timeout
+    /// The render RPC was accepted but produced nothing within its watchdog budget.
+    /// Kept distinct from `.timeout` (which means echo/connection) because the cause
+    /// and the advice differ: here the server is reachable and simply never answered,
+    /// and the render may well still be running on it.
+    case generationTimedOut(seconds: Int)
     case cancelled
 
     var errorDescription: String? {
@@ -689,8 +694,21 @@ enum DrawThingsError: LocalizedError {
         case .invalidResponse: return "Invalid response from Draw Things"
         case .imageDecodingFailed: return "Failed to decode generated image"
         case .timeout: return "Request timed out"
+        case .generationTimedOut(let seconds):
+            return "Draw Things didn't return an image within \(Self.durationText(seconds)). "
+                 + "It accepted the request but never answered — the render may still be "
+                 + "running on the server. Check Draw Things, then try again."
         case .cancelled: return "Generation cancelled"
         }
+    }
+
+    /// Rough, human-readable elapsed time for the timeout message. Not a precise
+    /// format — the reader only needs to know whether they waited seconds or hours.
+    static func durationText(_ seconds: Int) -> String {
+        if seconds < 90 { return "\(seconds)s" }
+        let minutes = seconds / 60
+        if minutes < 60 { return "\(minutes) min" }
+        return String(format: "%.1f hours", Double(seconds) / 3600)
     }
 }
 
