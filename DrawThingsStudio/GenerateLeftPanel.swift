@@ -440,11 +440,10 @@ struct GenerateLeftPanel: View {
     }
 
     private func applySize(targetArea: Double) {
-        let ratio = Double(vm.config.width) / Double(vm.config.height)
-        let newW = max(64.0, (sqrt(targetArea * ratio) / 64.0).rounded() * 64.0)
-        let newH = max(64.0, (sqrt(targetArea / ratio) / 64.0).rounded() * 64.0)
-        vm.config.width  = Int(newW)
-        vm.config.height = Int(newH)
+        let ratio = Double(vm.config.width) / Double(max(1, vm.config.height))
+        let size = CanvasSizing.dimensions(ratio: ratio, area: targetArea)
+        vm.config.width  = size.w
+        vm.config.height = size.h
     }
 
     private var sizeTierSection: some View {

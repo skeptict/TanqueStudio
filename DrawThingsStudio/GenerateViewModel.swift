@@ -1146,22 +1146,34 @@ final class GenerateViewModel {
 
     // MARK: — Aspect ratio
 
+    /// Reshapes the canvas to `w:h`, holding its pixel count roughly fixed.
+    ///
+    /// The 64-grid search lives in `CanvasSizing` because four controls need the same
+    /// answer — this, the drawer's size tiers, the classic panel's tiers, and the
+    /// dashboard's quick-start presets — and they were each rounding for themselves.
     func applyAspectRatio(w: Int, h: Int) {
-        let area = Double(config.width * config.height)
-        let ratio = Double(w) / Double(h)
-        let newW = max(64, Int((sqrt(area * ratio) / 64).rounded() * 64))
-        let newH = max(64, Int((sqrt(area / ratio) / 64).rounded() * 64))
-        config.width = newW
-        config.height = newH
+        guard h > 0, config.width > 0, config.height > 0 else { return }
+        // Multiply in Double: an imported config can carry dimensions whose product
+        // overflows Int32-ish territory, and this used to be an Int multiply.
+        let area = Double(config.width) * Double(config.height)
+        let size = CanvasSizing.dimensions(ratio: Double(w) / Double(h), area: area)
+        config.width = size.w
+        config.height = size.h
     }
 
     // MARK: — Current ratio detection
 
+    /// Whether the `w:h` chip should read as active.
+    ///
+    /// Asks "is this the canvas that chip produces?" rather than "is this canvas exactly
+    /// that ratio?". The two differ because the 64px grid cannot express most ratios
+    /// exactly, and the old fixed 0.02 tolerance answered the second question — leaving
+    /// 3:4, 4:3 and 16:9 dark the instant you pressed them. See `CanvasSizing`.
     func isCurrentRatio(w: Int, h: Int) -> Bool {
-        guard config.height > 0 else { return false }
-        let current = Double(config.width) / Double(config.height)
-        let target  = Double(w) / Double(h)
-        return abs(current - target) < 0.02
+        guard h > 0 else { return false }
+        return CanvasSizing.isFixedPoint(width: config.width,
+                                         height: config.height,
+                                         ratio: Double(w) / Double(h))
     }
 }
 

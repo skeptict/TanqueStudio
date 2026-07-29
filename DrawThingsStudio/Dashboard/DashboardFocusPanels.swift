@@ -329,13 +329,10 @@ struct CanvasSizeSection: View {
         ("Small", 512 * 512), ("Medium", 1024 * 1024), ("Large", 1536 * 1536),
     ]
 
-    // Same budget math as applyAspectRatio, holding ratio fixed instead of area.
+    // Same 64-grid search as applyAspectRatio, holding ratio fixed instead of area.
     private func dimensions(forBudget budget: Int) -> (w: Int, h: Int) {
         let ratio = Double(vm.config.width) / Double(max(1, vm.config.height))
-        let h = sqrt(Double(budget) / ratio)
-        let w = ratio * h
-        return (max(64, Int((w / 64).rounded() * 64)),
-                max(64, Int((h / 64).rounded() * 64)))
+        return CanvasSizing.dimensions(ratio: ratio, area: Double(budget))
     }
 
     private var sizeRow: some View {

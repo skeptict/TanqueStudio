@@ -234,7 +234,7 @@ DrawThingsStudio/
 - [x] Generate workspace — four-panel layout, canvas zoom/pan, gallery strip
 - [x] Full generation config — all Draw Things parameters, LoRAs, img2img, batch
 - [x] Config presets — import from Draw Things `custom_configs.json`
-- [x] Canvas size presets and aspect ratio tiles
+- [x] Canvas size presets and aspect ratio tiles — dimensions land on Draw Things' 64px grid via a four-corner search (`CanvasSizing`) that keeps the closest ratio rather than rounding each axis on its own, and a chip reads as active when it is the canvas that chip produces
 - [x] Moodboard — gRPC reference/shuffle hints with per-image weights
 - [x] Assist tab — LLM operations with file-based operation definitions
 - [x] Actions tab — round-trip send to generate, crop-to-zoom img2img
@@ -309,8 +309,7 @@ In priority order:
      - **Run one engine pass per job, not one workflow for the whole queue.** `StoryFlowEngine`'s `catch` sits outside its step loop, so a single failure aborts everything after it — right for a workflow, wrong for a queue of independent jobs. Per-job runs give failure isolation, per-job progress and skip-this-one for free, with no engine change. ⚠️ **Story Studio's `renderChapter` has this same all-or-nothing property today** — it compiles every scene into one workflow, so one bad scene kills the rest of the chapter
      - **Build it as a front end that compiles to StoryFlow**, following the Story Studio precedent (`StoryFlowCompiler` + `StoryStudioRenderController`). Not inside the StoryFlow editor: a ten-job queue there is ~30 steps to scroll and drag, which is the tedium this exists to remove. And not inside Generate — an earlier attempt to queue renders there felt wrong because Generate is a *live* single-render surface with a current canvas, while a queue is a document; nesting one in the other creates two competing notions of "current"
      - The visible, editable expansion is the point. Scripting can already express the cross product; what it cannot do is let you see and prune what is about to run
-6. [ ] **Aspect ratio chips do not land on their ratio** — `applyAspectRatio` (`GenerateViewModel.swift`) and `CanvasSizeSection.dimensions(forBudget:)` round width and height to multiples of 64 *independently*, so the result can miss the requested ratio by more than the 0.02 tolerance `isCurrentRatio` uses to light the chip. At the 1024² budget **16:9 gives 1344×768, which is 7:4**; 3:4 gives 0.778 and 4:3 gives 1.286. Only 1:1 and 9:16 land inside tolerance, which is why three of the five chips go dark immediately after you press them — the app is correctly reporting that the canvas is not the ratio you asked for. Fix is to snap one axis to 64 and derive the other from it, picking whichever of the two candidate roundings is closest to the true ratio, rather than rounding both. Found 2026-07-29 while investigating a reported Color Draw canvas-size bug that turned out not to exist; most visible on a blank Color Draw canvas, which is nothing but its own shape
-7. [ ] **README polish** — screenshots, demo GIF
+6. [ ] **README polish** — screenshots, demo GIF
 
 ### Backlog
 
