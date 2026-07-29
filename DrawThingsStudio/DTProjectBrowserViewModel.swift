@@ -516,13 +516,15 @@ final class DTProjectBrowserViewModel {
         // only matters for a clip whose Clip row is missing.
         let fps = framesPerSecond(for: entry) ?? 25
         let coverRowid = entry.id
+        // Read on the main actor while the slot map is here; decoded off it below.
+        let audioId = (mode == .movie) ? audioId(for: entry) : nil
         isExporting = true
         exportSummary = nil
 
         exportTask = Task {
-            let result = await Task.detached(priority: .userInitiated) { () -> (written: Int, skipped: Int, error: String?) in
+            let result = await Task.detached(priority: .userInitiated) { () -> (written: Int, skipped: Int, error: String?, silent: Bool) in
                 guard let db = DTProjectDatabase(fileURL: url) else {
-                    return (0, 0, "Could not open database. The drive may have been ejected or the file may be corrupted.")
+                    return (0, 0, "Could not open database. The drive may have been ejected or the file may be corrupted.", false)
                 }
                 let entries = db.fetchEntries(rowids: rowids)
 
@@ -562,20 +564,36 @@ final class DTProjectBrowserViewModel {
                     }
                 }
 
-                guard isMovie else { return (written, skipped, nil) }
-                if Task.isCancelled { return (0, skipped, nil) }
+                guard isMovie else { return (written, skipped, nil, false) }
+                if Task.isCancelled { return (0, skipped, nil, false) }
                 guard !frameURLs.isEmpty else {
-                    return (0, skipped, "No frames could be read for this render.")
+                    return (0, skipped, "No frames could be read for this render.", false)
                 }
                 let output = folder.appendingPathComponent("\(baseName)_\(coverRowid).mp4")
+
+                // Draw Things generates a soundtrack per clip and every clip measured
+                // here carries one. Silence is a fallback, not the intent — but a clip
+                // whose audio will not decode still exports as a silent movie rather
+                // than failing the whole export.
+                var audio: VideoAssembler.Audio?
+                if let audioId, audioId > 0, let track = db.fetchAudio(audioId: audioId) {
+                    let rate = DTClipAudio.sampleRate(
+                        framesPerChannel: track.framesPerChannel,
+                        clipDuration: Double(frameURLs.count) / fps)
+                    if let wav = DTClipAudio.wav(from: track, sampleRate: rate) {
+                        audio = .init(wav: wav, channels: track.channels, sampleRate: rate)
+                    }
+                }
+
                 do {
                     try await VideoAssembler.assemble(frameURLs: frameURLs,
                                                       fps: Int32(fps.rounded()),
+                                                      audio: audio,
                                                       to: output)
                 } catch {
-                    return (0, skipped, "Could not assemble the movie: \(error.localizedDescription)")
+                    return (0, skipped, "Could not assemble the movie: \(error.localizedDescription)", false)
                 }
-                return (1, skipped, nil)
+                return (1, skipped, nil, audio == nil)
             }.value
 
             self.isExporting = false
@@ -584,7 +602,12 @@ final class DTProjectBrowserViewModel {
             } else if Task.isCancelled {
                 self.exportSummary = "Export cancelled — \(result.written) file(s) written."
             } else if mode == .movie {
-                self.exportSummary = "Exported 1 movie."
+                // Say when a movie came out silent. Draw Things generates a soundtrack
+                // per clip, so silence means we could not read it — worth telling the
+                // user rather than letting them discover it in a player.
+                self.exportSummary = result.silent
+                    ? "Exported 1 movie — no soundtrack found, so it is silent."
+                    : "Exported 1 movie with sound."
             } else {
                 self.exportSummary = result.skipped == 0
                     ? "Exported \(result.written) image(s)."
