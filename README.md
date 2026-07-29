@@ -333,7 +333,7 @@ In priority order:
 
 - [Draw Things](https://drawthings.ai) by Liu Liu
 - [DT-gRPC-Swift-Client](https://github.com/euphoriacyberware-ai/DT-gRPC-Swift-Client) — Swift gRPC client library for Draw Things
-- [dtm](https://github.com/kcjerrell/dtm) by KC Jerrell — FlatBuffer schemas and database parsing approach that informed the DT Project Browser
+- [dtm](https://github.com/kcjerrell/dtm) by KC Jerrell — FlatBuffer schemas and database parsing approach that informed the DT Project Browser; its clip playback design (decode once, blit one frame per display tick, index derived from elapsed time); and its `.mp4` export, which is where the audio-tensor layout, the AAC and BT.709 choices, and embedding the generation config in the exported file all come from. dtm reaches those through `ffmpeg` and Tanque Studio uses AVFoundation, so no code is shared — what was borrowed is the knowledge of what to do
 
 ## License
 
