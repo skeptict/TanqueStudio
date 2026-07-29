@@ -431,12 +431,11 @@ struct GenerateLeftPanel: View {
 
     // MARK: — Size Tiers
 
+    /// Exact match rather than the old ±20%-of-area band: with four tiers those bands
+    /// overlap between Large and XL, so a canvas could satisfy two and the first listed
+    /// would win by accident. Same rule the drawer uses. See `CanvasSizing.tier(matching:)`.
     private var currentSizeTier: String? {
-        let area = vm.config.width * vm.config.height
-        for tier in Self.sizeTiers {
-            if abs(Double(area) / tier.area - 1.0) < 0.2 { return tier.label }
-        }
-        return nil
+        CanvasSizing.tier(matching: vm.config.width, height: vm.config.height)?.short
     }
 
     private func applySize(targetArea: Double) {
@@ -449,11 +448,11 @@ struct GenerateLeftPanel: View {
     private var sizeTierSection: some View {
         CollapsibleSection("Canvas Size", key: "canvasSize") {
             HStack(spacing: 6) {
-                ForEach(Self.sizeTiers, id: \.label) { tier in
-                    let isActive = currentSizeTier == tier.label
-                    Button { applySize(targetArea: tier.area) } label: {
+                ForEach(CanvasSizing.tiers, id: \.label) { tier in
+                    let isActive = currentSizeTier == tier.short
+                    Button { applySize(targetArea: tier.budget) } label: {
                         VStack(spacing: 2) {
-                            Text(tier.label)
+                            Text(tier.short)
                                 .font(TanqueDS.Font.bodyMedium)
                                 .foregroundStyle(isActive ? TanqueDS.Color.brass : TanqueDS.Color.textSecondary)
                             Text(tier.hint)
@@ -470,7 +469,7 @@ struct GenerateLeftPanel: View {
                         )
                     }
                     .buttonStyle(.plain)
-                    .help("Scale to ~\(tier.hint)px on the long edge, keeping the current aspect ratio")
+                    .help("Scale to a \(tier.hint)\u{00B2} pixel budget, keeping the current aspect ratio")
                 }
             }
         }
@@ -710,12 +709,9 @@ struct GenerateLeftPanel: View {
 
     // MARK: — Constants
 
-    struct SizeTier { let label: String; let area: Double; let hint: String }
-    static let sizeTiers: [SizeTier] = [
-        SizeTier(label: "S", area: 262_144, hint: "512"),
-        SizeTier(label: "M", area: 589_824, hint: "768"),
-        SizeTier(label: "L", area: 1_048_576, hint: "1024"),
-    ]
+    // Size tiers now live in CanvasSizing.tiers — this panel and the Focus Room drawer had
+    // drifted to different budgets (512/768/1024 here vs 512/1024/1536 there), which is
+    // exactly the drift a second copy invites.
 
     static let seedModes = [
         "Legacy",

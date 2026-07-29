@@ -302,7 +302,7 @@ struct CanvasSizeSection: View {
             .help("Aspect ratio. Recomputes width \u{00D7} height at the current pixel budget.")
 
             HStack(spacing: 5) {
-                ForEach(sizeTiers, id: \.label) { tier in
+                ForEach(CanvasSizing.tiers, id: \.label) { tier in
                     let target = dimensions(forBudget: tier.budget)
                     let active = vm.config.width == target.w && vm.config.height == target.h
                     Button {
@@ -319,20 +319,16 @@ struct CanvasSizeSection: View {
                     .buttonStyle(.plain)
                 }
             }
-            .help("Size tier. Rescales to a 512\u{00B2} / 1024\u{00B2} / 1536\u{00B2} pixel budget at the current aspect ratio.")
+            .help("Size tier. Rescales to a 768\u{00B2} / 1024\u{00B2} / 1280\u{00B2} / 1536\u{00B2} pixel budget at the current aspect ratio. The first three match Draw Things' own tiers.")
 
             sizeRow
         }
     }
 
-    private let sizeTiers: [(label: String, budget: Int)] = [
-        ("Small", 512 * 512), ("Medium", 1024 * 1024), ("Large", 1536 * 1536),
-    ]
-
     // Same 64-grid search as applyAspectRatio, holding ratio fixed instead of area.
-    private func dimensions(forBudget budget: Int) -> (w: Int, h: Int) {
+    private func dimensions(forBudget budget: Double) -> (w: Int, h: Int) {
         let ratio = Double(vm.config.width) / Double(max(1, vm.config.height))
-        return CanvasSizing.dimensions(ratio: ratio, area: Double(budget))
+        return CanvasSizing.dimensions(ratio: ratio, area: budget)
     }
 
     private var sizeRow: some View {

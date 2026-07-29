@@ -87,3 +87,59 @@ enum CanvasSizing {
         return low == high ? [low] : [low, high]
     }
 }
+
+// MARK: - Size tiers
+
+extension CanvasSizing {
+
+    /// A pixel budget, named. Expressed as the side of the square it represents, because
+    /// that is how both Draw Things and this app label them — "1024" means 1024×1024 worth
+    /// of pixels, distributed across whatever aspect ratio is current.
+    struct Tier: Hashable {
+        let label: String
+        /// Short form, for the 260pt classic panel where the full word does not fit.
+        let short: String
+        /// Side of the equivalent square. `hint` shows this under the short label.
+        let side: Int
+
+        var budget: Double { Double(side) * Double(side) }
+        var hint: String { "\(side)" }
+    }
+
+    /// **Small, Medium and Large mirror Draw Things' own tiers**, so a canvas set here
+    /// matches one set there. Confirmed against DT's values for 1:1 (768/1024/1280 square)
+    /// and 16:9 (1024×576 small, 1728×960 large) — feeding those budgets through
+    /// `dimensions(ratio:area:)` reproduces DT's table exactly, which is also independent
+    /// corroboration of the corner search itself.
+    ///
+    /// Note DT's own 16:9 Large is **1728×960 — that is 1.8, not 16:9**. Draw Things
+    /// accepts a ratio error there rather than shrink the canvas to reach an exact ratio,
+    /// which is the same trade this file makes. Worth knowing before "fixing" it.
+    ///
+    /// **XL is ours, not DT's.** It preserves the 1536² that Large meant before we adopted
+    /// DT's numbers, so moving to DT's tiers did not take away the largest canvas the app
+    /// used to offer.
+    ///
+    /// ⚠️ These budgets are deliberately far apart (1.78×, 1.56×, 1.44×) so no two tiers can
+    /// produce the same dimensions and light at once. A test pins that.
+    static let tiers: [Tier] = [
+        Tier(label: "Small",  short: "S",  side: 768),
+        Tier(label: "Medium", short: "M",  side: 1024),
+        Tier(label: "Large",  short: "L",  side: 1280),
+        Tier(label: "XL",     short: "XL", side: 1536),
+    ]
+
+    /// The tier whose canvas at `ratio` is exactly this size, if any.
+    ///
+    /// Exact dimensions rather than a tolerance band on area: with four tiers the ±20%
+    /// bands the classic panel used to use would overlap between Large and XL, so a canvas
+    /// could match two tiers and the first one listed would win by accident.
+    static func tier(matching width: Int, height: Int) -> Tier? {
+        guard width > 0, height > 0 else { return nil }
+        let ratio = Double(width) / Double(height)
+        return tiers.first {
+            let size = dimensions(ratio: ratio, area: $0.budget)
+            return size.w == width && size.h == height
+        }
+    }
+}

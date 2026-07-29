@@ -89,7 +89,7 @@ final class CanvasSizingTests: XCTestCase {
     /// saved metadata ends up describing a size the image does not have.
     func testBothAxesStayOnTheGrid() {
         for chip in chips {
-            for budget in [512.0 * 512, 1024.0 * 1024, 1536.0 * 1536] {
+            for budget in CanvasSizing.tiers.map(\.budget) {
                 let size = CanvasSizing.dimensions(ratio: ratio(chip), area: budget)
                 XCTAssertEqual(size.w % CanvasSizing.grid, 0, "\(chip.label) width \(size.w)")
                 XCTAssertEqual(size.h % CanvasSizing.grid, 0, "\(chip.label) height \(size.h)")
@@ -134,7 +134,7 @@ final class CanvasSizingTests: XCTestCase {
     /// 16:9 and costs 44% of the pixels). Bounding the drift is what keeps that honest.
     func testAreaStaysNearTheRequestedBudget() {
         for chip in chips {
-            for budget in [512.0 * 512, 1024.0 * 1024, 1536.0 * 1536] {
+            for budget in CanvasSizing.tiers.map(\.budget) {
                 let size = CanvasSizing.dimensions(ratio: ratio(chip), area: budget)
                 let drift = abs(Double(size.w) * Double(size.h) - budget) / budget
                 XCTAssertLessThan(drift, 0.15,
@@ -164,6 +164,85 @@ final class CanvasSizingTests: XCTestCase {
         XCTAssertEqual(size.h % 64, 0)
         XCTAssertGreaterThanOrEqual(size.w, 64)
         XCTAssertGreaterThanOrEqual(size.h, 64)
+    }
+
+    // MARK: — Draw Things parity
+
+    /// **The reason the tier budgets are 768² / 1024² / 1280².** These are Draw Things' own
+    /// values, reported by Ned from the DT UI. DT's size-preset table is not in the
+    /// open-source checkout — it lives in the closed app layer alongside `updateCanvasSize`
+    /// — so this test *is* the record of what DT does, and it is worth more than a comment
+    /// because it fails if anyone retunes the search or the budgets.
+    ///
+    /// That feeding DT's budgets through our own corner search reproduces DT's table
+    /// exactly is also independent corroboration of the search itself: it was derived from
+    /// first principles and landed on the same answers DT ships.
+    func testTierBudgetsReproduceDrawThingsOwnTable() {
+        let drawThings: [(chip: String, ratio: Double, tier: String, w: Int, h: Int)] = [
+            ("1:1",  1.0,      "Small",  768, 768),
+            ("1:1",  1.0,      "Medium", 1024, 1024),
+            ("1:1",  1.0,      "Large",  1280, 1280),
+            ("16:9", 16.0 / 9, "Small",  1024, 576),
+            ("16:9", 16.0 / 9, "Large",  1728, 960),
+        ]
+        for row in drawThings {
+            guard let tier = CanvasSizing.tiers.first(where: { $0.label == row.tier }) else {
+                return XCTFail("no tier named \(row.tier)")
+            }
+            let size = CanvasSizing.dimensions(ratio: row.ratio, area: tier.budget)
+            XCTAssertEqual([size.w, size.h], [row.w, row.h],
+                           "\(row.chip) at \(row.tier) should match Draw Things")
+        }
+    }
+
+    /// DT's own 16:9 Large is 1728×960 — **1.8, not 1.778**. Pinned separately and
+    /// deliberately: it looks like a bug, and the next person to "fix" it toward an exact
+    /// ratio would silently diverge from Draw Things. DT accepts the error rather than
+    /// shrink the canvas, which is the same call this code makes.
+    func testDrawThingsSixteenNineLargeIsDeliberatelyNotSixteenNine() {
+        guard let large = CanvasSizing.tiers.first(where: { $0.label == "Large" }) else {
+            return XCTFail("no Large tier")
+        }
+        let size = CanvasSizing.dimensions(ratio: 16.0 / 9, area: large.budget)
+        XCTAssertEqual([size.w, size.h], [1728, 960])
+        XCTAssertEqual(Double(size.w) / Double(size.h), 1.8, accuracy: 1e-9)
+    }
+
+    /// XL is ours, and exists so adopting DT's Large (1280²) did not take away the biggest
+    /// canvas the app used to offer (1536²).
+    func testXLPreservesTheOldLargeBudget() {
+        guard let xl = CanvasSizing.tiers.last else { return XCTFail("no tiers") }
+        XCTAssertEqual(xl.label, "XL")
+        XCTAssertEqual(xl.side, 1536)
+        let square = CanvasSizing.dimensions(ratio: 1.0, area: xl.budget)
+        XCTAssertEqual([square.w, square.h], [1536, 1536])
+    }
+
+    /// No two tiers may produce the same canvas, or two chips would light at once — the
+    /// same class of bug as the ratio chips, one row down.
+    func testNoTwoTiersProduceTheSameCanvasForAnyChip() {
+        for chip in chips {
+            var seen: [String: String] = [:]
+            for tier in CanvasSizing.tiers {
+                let size = CanvasSizing.dimensions(ratio: ratio(chip), area: tier.budget)
+                let key = "\(size.w)x\(size.h)"
+                XCTAssertNil(seen[key],
+                             "\(chip.label): \(tier.label) and \(seen[key] ?? "") both give \(key)")
+                seen[key] = tier.label
+            }
+        }
+    }
+
+    /// A canvas produced by a tier must be recognised as that tier, and no other.
+    func testEveryTierRecognisesItsOwnCanvas() {
+        for chip in chips {
+            for tier in CanvasSizing.tiers {
+                let size = CanvasSizing.dimensions(ratio: ratio(chip), area: tier.budget)
+                XCTAssertEqual(CanvasSizing.tier(matching: size.w, height: size.h)?.label,
+                               tier.label,
+                               "\(chip.label) at \(tier.label) → \(size.w)×\(size.h)")
+            }
+        }
     }
 
     // MARK: — Wired up to the view model
