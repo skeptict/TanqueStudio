@@ -61,6 +61,23 @@ struct PNGMetadata {
     var hasPrompt: Bool { prompt != nil && !(prompt?.isEmpty ?? true) }
     var hasConfig: Bool { steps != nil || guidanceScale != nil || seed != nil || sampler != nil || model != nil }
     var hasLoRAs: Bool { !loras.isEmpty }
+
+    /// The metadata as it arrived, for the drawer's raw viewer: pretty-printed when
+    /// the chunk is JSON, verbatim otherwise (A1111 params, XMP).
+    ///
+    /// Deliberately rendered from `rawText`, not from the parsed fields — the viewer
+    /// exists to show what the file *carried* independent of what the applier chose
+    /// to read, which is the diagnostic the 10-of-58 import gap needed. Re-encoding
+    /// the parsed struct would show exactly the lossy view this is meant to check.
+    var displayJSON: String? {
+        guard let raw = rawText, !raw.isEmpty else { return nil }
+        guard let data = raw.data(using: .utf8),
+              let obj = try? JSONSerialization.jsonObject(with: data),
+              let pretty = try? JSONSerialization.data(withJSONObject: obj,
+                                                       options: [.prettyPrinted, .sortedKeys]),
+              let text = String(data: pretty, encoding: .utf8) else { return raw }
+        return text
+    }
 }
 
 // MARK: - Parser
