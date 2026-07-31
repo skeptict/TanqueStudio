@@ -74,3 +74,40 @@ and 4:3 exactly right at Large.** None of them were exact before.
 **Large is smaller than it used to be**, because Draw Things' Large is 1280² where
 ours was 1536². Nothing is lost: a fourth tier, **XL**, keeps the old 1536² budget —
 and at 16:9 it gives 2048×1152, which is exactly 16:9.
+
+## Export All exports what the grid shows
+
+Export All used to page over raw database rows while the grid showed grouped cells, so
+a project with five video clips wrote roughly **1,285 loose frames named by rowid**,
+with no frame numbers. It now walks the same cells you're looking at.
+
+When an export includes a clip, a sheet first asks what a clip should become — the
+same three choices Export Series offers for one clip, applied to all of them:
+
+- **One image per cell** — what the grid shows, one file each
+- **Every frame as JPEG** — the old behaviour, now a choice rather than the only option
+- **Movies for clips, images for stills** — one `.mp4` per clip, soundtrack included
+
+The sheet, the folder panel and the final summary all count from the same plan the
+exporter executes, so the number of files promised is the number written. A project
+with no clips skips the question entirely — the three answers would be identical.
+Export Selected gets the same treatment, and the byte-exact frame export remains
+available, since an `.mp4` is a lossy re-encode and cannot give an exact frame back.
+
+Verified on both Apple Silicon and an Intel iMac — which is also, quietly, the first
+confirmed run on Intel hardware in some time; if the launch failure listed in the
+backlog still exists, this build doesn't exhibit it.
+
+## The drawer shows an image's metadata, raw
+
+Dragging a rendered image into Generate restores only some of its settings — that gap
+is known, reported against 0.9.31, and still open. What was worse than the gap was
+that nothing showed you what the file actually carried, so a missing setting couldn't
+be told apart from a setting that was never there.
+
+The Focus Room drawer now has a **Metadata (raw)** section: the image's metadata
+record exactly as it arrived, pretty-printed when it's JSON, verbatim otherwise, with
+a Copy button. It works for dropped files and for the app's own gallery renders alike,
+and it shows every key in the file — including the ones Generate does not yet apply.
+It is the diagnostic first, on purpose; widening what actually gets applied is the
+next half of that roadmap item.
