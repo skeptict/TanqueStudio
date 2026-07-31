@@ -249,7 +249,7 @@ struct DTBulkExportSheet: View {
                     .font(.headline)
                     .foregroundStyle(DashboardDS.text)
                 Text("\(cellCount) cell\(cellCount == 1 ? "" : "s"), "
-                     + "\(clipCount) of them video clip\(clipCount == 1 ? "" : "s")")
+                     + "\(clipCount) of them \(clipCount == 1 ? "a video clip" : "video clips")")
                     .font(TanqueDS.Font.mono(11))
                     .foregroundStyle(DashboardDS.muted)
             }
