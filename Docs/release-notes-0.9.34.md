@@ -1,8 +1,5 @@
 # v0.9.34
 
-> **Draft.** Written as the work landed, not on release day. Add to it rather than
-> rewriting from the git log.
-
 ## Exported movies have sound
 
 Draw Things generates a soundtrack for every video clip it renders, and Tanque Studio
