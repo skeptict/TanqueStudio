@@ -31,6 +31,7 @@ struct FocusRoomDrawer: View {
     @State private var lorasExpanded = false
     @State private var img2imgExpanded = false
     @State private var actionsExpanded = false
+    @State private var metadataExpanded = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -49,6 +50,7 @@ struct FocusRoomDrawer: View {
                     section("LoRAs", isExpanded: $lorasExpanded) { LoRAsSection(vm: vm) }
                     section("img2img & Moodboard", isExpanded: $img2imgExpanded) { Img2ImgMoodboardSection(vm: vm) }
                     section("Actions", isExpanded: $actionsExpanded) { ActionsSection(vm: vm, modelContext: modelContext) }
+                    section("Metadata (raw)", isExpanded: $metadataExpanded) { ImportedMetadataSection(vm: vm) }
                 }
                 // Pin the accordion content to the drawer's width. Without this,
                 // a section whose ideal width mis-measures (vertical-axis
@@ -1235,6 +1237,50 @@ struct Img2ImgMoodboardSection: View {
         guard panel.runModal() == .OK, let url = panel.url,
               let data = try? Data(contentsOf: url), let image = NSImage(data: data) else { return }
         vm.sourceImage = image
+    }
+}
+
+// MARK: - Metadata (raw)
+
+/// The current image's metadata exactly as it arrived — the diagnostic for
+/// "what did Generate drop?". `applyMetadataToConfig` applies 10 of ~58 fields;
+/// this panel shows the whole record regardless, so a missing setting can be told
+/// apart from a setting that was never in the file in the first place.
+struct ImportedMetadataSection: View {
+    @Bindable var vm: GenerateViewModel
+    @State private var copied = false
+
+    var body: some View {
+        if let text = vm.currentMetadata?.displayJSON {
+            VStack(alignment: .leading, spacing: 8) {
+                ScrollView {
+                    Text(verbatim: text)
+                        .font(TanqueDS.Font.mono(10))
+                        .foregroundStyle(DashboardDS.text)
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(8)
+                }
+                .frame(maxHeight: 280)
+                .background(DashboardDS.surf2, in: RoundedRectangle(cornerRadius: 6))
+                Button(copied ? "Copied" : "Copy JSON") {
+                    let pb = NSPasteboard.general
+                    pb.clearContents()
+                    pb.setString(text, forType: .string)
+                    withAnimation { copied = true }
+                    Task {
+                        try? await Task.sleep(for: .seconds(1.4))
+                        withAnimation { copied = false }
+                    }
+                }
+                .buttonStyle(DashboardGhostButtonStyle())
+            }
+        } else {
+            Text("Drop an image with metadata onto the canvas, or pick a render, to see its raw record here.")
+                .font(TanqueDS.Font.mono(10))
+                .foregroundStyle(DashboardDS.muted)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
     }
 }
 

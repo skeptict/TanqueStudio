@@ -386,6 +386,9 @@ enum ImageStorageManager {
             }
         }
         m.format = .drawThings
+        // The stored config string is itself the raw record — keep it, so the
+        // drawer's metadata viewer works for gallery renders, not only file drops.
+        m.rawText = json
         return m
     }
 
