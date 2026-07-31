@@ -193,6 +193,17 @@ enum DTSeriesExportMode: String, CaseIterable, Identifiable {
         }
     }
 
+    /// Wording for a whole-project export, where the same choice applies to many
+    /// clips at once and "only" / "all" read as being about the project rather than
+    /// about one render.
+    var bulkTitle: String {
+        switch self {
+        case .coverFrame: return "One image per cell"
+        case .allFrames:  return "Every frame as JPEG"
+        case .movie:      return "Movies for clips, images for stills"
+        }
+    }
+
     func detail(frameCount: Int, fps: Double) -> String {
         switch self {
         case .coverFrame:
@@ -203,6 +214,83 @@ enum DTSeriesExportMode: String, CaseIterable, Identifiable {
             let seconds = fps > 0 ? Double(frameCount) / fps : 0
             return String(format: "One file, %.1fs at %g fps.", seconds, fps)
         }
+    }
+}
+
+/// Asks which shape a whole-project export should take.
+///
+/// The same three choices as a single clip, applied to every clip in the project —
+/// which is the point: "Export All" should do to all of them what "Export Series…"
+/// does to one, rather than offering a second, different set of options.
+///
+/// **Shown only when the export actually contains a clip.** For a project of stills
+/// all three modes produce identical output, and a chooser with one real answer is
+/// just a step in the way.
+///
+/// The file counts come from the plan, not from the mode, so the sheet cannot promise
+/// a different number than the exporter goes on to write — a five-clip project reads
+/// "5 movies with sound, plus 43 stills" against "1,285 files", which is the whole
+/// reason this screen exists.
+struct DTBulkExportSheet: View {
+    let title: String
+    let cellCount: Int
+    let clipCount: Int
+    /// Plan summary per mode, prepared by the caller from the view model.
+    let detail: (DTSeriesExportMode) -> String
+    let onCancel: () -> Void
+    let onExport: (DTSeriesExportMode) -> Void
+
+    @State private var mode: DTSeriesExportMode = .movie
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title)
+                    .font(.headline)
+                    .foregroundStyle(DashboardDS.text)
+                Text("\(cellCount) cell\(cellCount == 1 ? "" : "s"), "
+                     + "\(clipCount) of them video clip\(clipCount == 1 ? "" : "s")")
+                    .font(TanqueDS.Font.mono(11))
+                    .foregroundStyle(DashboardDS.muted)
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                ForEach(DTSeriesExportMode.allCases) { option in
+                    Button { mode = option } label: {
+                        HStack(alignment: .top, spacing: 9) {
+                            Image(systemName: mode == option ? "largecircle.fill.circle" : "circle")
+                                .foregroundStyle(mode == option ? DashboardDS.brass : DashboardDS.muted)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(option.bulkTitle)
+                                    .font(TanqueDS.Font.monoSemiBold(11.5))
+                                    .foregroundStyle(DashboardDS.text)
+                                Text(detail(option))
+                                    .font(TanqueDS.Font.mono(10.5))
+                                    .foregroundStyle(DashboardDS.muted)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                            Spacer(minLength: 0)
+                        }
+                        .padding(9)
+                        .background(mode == option ? DashboardDS.brassSubtle : Color.clear,
+                                    in: RoundedRectangle(cornerRadius: 7))
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+
+            HStack(spacing: 8) {
+                Spacer()
+                Button("Cancel", action: onCancel)
+                    .buttonStyle(DashboardGhostButtonStyle())
+                Button("Export…") { onExport(mode) }
+                    .buttonStyle(DashboardPrimaryButtonStyle())
+            }
+        }
+        .padding(20)
+        .frame(width: 400)
+        .background(DashboardDS.surf1)
     }
 }
 

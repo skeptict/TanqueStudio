@@ -436,63 +436,215 @@ final class DTProjectBrowserViewModel {
         selectedEntryIDs.removeAll()
     }
 
-    /// Writes the stored full-size JPEGs to `folder`. `.selected` exports the
-    /// checked entries; `.all` pages through the entire database (including
-    /// entries not yet loaded into the grid).
-    func startExport(_ scope: ExportScope, to folder: URL) {
+    /// What one clip needs in order to be written as a movie, read on the main actor
+    /// while the slot map is in reach and carried into the detached export.
+    struct ClipExportInfo: Sendable {
+        let clipId: Int64
+        let representativeRowid: Int64
+        let rowids: [Int64]
+        let fps: Double
+        let audioId: Int64?
+    }
+
+    /// Writes one clip as an `.mp4`, frames and soundtrack included.
+    ///
+    /// `nonisolated static` so both export paths share it: the per-clip
+    /// "Export Series…" and the project-wide Export All. They used to be separate
+    /// enough that only one of them knew about audio.
+    nonisolated static func writeMovie(db: DTProjectDatabase,
+                                       clip: ClipExportInfo,
+                                       baseName: String,
+                                       to folder: URL) async -> (ok: Bool, silent: Bool, skipped: Int, error: String?) {
+        // A movie's frames are scratch: written to a temp directory, handed to the
+        // assembler, then removed. Only the .mp4 lands in the folder the user chose.
+        let frameDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("tanque-clip-\(UUID().uuidString)", isDirectory: true)
+        try? FileManager.default.createDirectory(at: frameDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: frameDir) }
+
+        let entries = db.fetchEntries(rowids: clip.rowids)
+        var frameURLs: [URL] = []
+        var skipped = 0
+        for (index, rowid) in clip.rowids.enumerated() {
+            if Task.isCancelled { return (false, false, skipped, nil) }
+            guard let frame = entries[rowid],
+                  let data = db.fetchThumbnailJPEGData(previewId: frame.previewId) else {
+                skipped += 1
+                continue
+            }
+            let url = frameDir.appendingPathComponent(
+                String(format: "%@_%lld_%04d.jpg", baseName, clip.representativeRowid, index))
+            do {
+                try data.write(to: url)
+                frameURLs.append(url)
+            } catch {
+                skipped += 1
+            }
+        }
+
+        guard !frameURLs.isEmpty else {
+            return (false, false, skipped, "No frames could be read for this render.")
+        }
+
+        // Draw Things generates a soundtrack per clip and every clip measured here
+        // carries one. Silence is a fallback, not the intent — but a clip whose audio
+        // will not decode still exports as a silent movie rather than failing.
+        var audio: VideoAssembler.Audio?
+        if let audioId = clip.audioId, audioId > 0, let track = db.fetchAudio(audioId: audioId) {
+            let rate = DTClipAudio.sampleRate(framesPerChannel: track.framesPerChannel,
+                                              clipDuration: Double(frameURLs.count) / clip.fps)
+            if let wav = DTClipAudio.wav(from: track, sampleRate: rate) {
+                audio = .init(wav: wav, channels: track.channels, sampleRate: rate)
+            }
+        }
+
+        let output = folder.appendingPathComponent("\(baseName)_\(clip.representativeRowid).mp4")
+        do {
+            try await VideoAssembler.assemble(frameURLs: frameURLs,
+                                              fps: Int32(clip.fps.rounded()),
+                                              audio: audio,
+                                              to: output)
+        } catch {
+            return (false, false, skipped, "Could not assemble the movie: \(error.localizedDescription)")
+        }
+        return (true, audio == nil, skipped, nil)
+    }
+
+    /// Every slot this export covers, in grid order.
+    ///
+    /// **Slots, not rows.** Export All used to page raw database rows, which for a
+    /// project containing clips meant one file per *frame* — a five-clip project wrote
+    /// ~1,285 loose JPEGs named by rowid. The grid has always shown grouped slots;
+    /// export now walks the same grouping, so what you get matches what you saw.
+    private func slotsForExport(_ scope: ExportScope) -> [DTBrowserSlot] {
+        switch scope {
+        case .all:      return slots
+        case .selected: return slots.filter { selectedEntryIDs.contains($0.representativeRowid) }
+        }
+    }
+
+    /// What `mode` would write for `scope`, for the confirmation sheet.
+    func exportPlan(_ scope: ExportScope, mode: DTSeriesExportMode) -> DTExportPlan {
+        DTExportPlan.plan(slots: slotsForExport(scope), mode: mode)
+    }
+
+    /// True when this export would touch at least one clip — i.e. when the mode
+    /// chooser makes any difference at all.
+    func exportTouchesClips(_ scope: ExportScope) -> Bool {
+        slotsForExport(scope).contains { if case .clip = $0 { return true } else { return false } }
+    }
+
+    /// Writes the project to `folder` in the shape `mode` describes. `.selected`
+    /// exports the checked cells; `.all` exports every cell in the project.
+    func startExport(_ scope: ExportScope, mode: DTSeriesExportMode, to folder: URL) {
         guard let project = selectedProject, !isExporting else { return }
         let url = project.url
         let baseName = project.name.replacingOccurrences(of: ".sqlite3", with: "")
-        let picked = scope == .selected ? entries.filter { selectedEntryIDs.contains($0.id) } : []
+        let plan = exportPlan(scope, mode: mode)
+        // Clip metadata has to be read here, while the slot map and clip table are on
+        // the main actor, and carried into the detached work.
+        let clipInfo: [ClipExportInfo] = (plan.movies + plan.frameSequences).map { entry in
+            ClipExportInfo(clipId: entry.clipId,
+                           representativeRowid: entry.rowids.first ?? 0,
+                           rowids: entry.rowids,
+                           fps: clips[entry.clipId]?.framesPerSecond ?? 25,
+                           audioId: clips[entry.clipId]?.audioId)
+        }
         isExporting = true
         exportSummary = nil
 
         exportTask = Task {
-            let result = await Task.detached(priority: .userInitiated) { () -> (written: Int, skipped: Int, error: String?) in
+            let result = await Task.detached(priority: .userInitiated) { () -> (images: Int, movies: Int, silent: Int, skipped: Int, error: String?) in
                 guard let db = DTProjectDatabase(fileURL: url) else {
-                    return (0, 0, "Could not open database. The drive may have been ejected or the file may be corrupted.")
+                    return (0, 0, 0, 0, "Could not open database. The drive may have been ejected or the file may be corrupted.")
                 }
-                var work = picked
-                if scope == .all {
-                    work = []
-                    let total = db.entryCount()
-                    var offset = 0
-                    while offset < total, !Task.isCancelled {
-                        let page = db.fetchEntries(offset: offset, limit: 200)
-                        if page.isEmpty { break }
-                        work.append(contentsOf: page)
-                        offset += page.count
-                    }
-                }
-                var written = 0, skipped = 0
-                for entry in work {
+                var images = 0, movies = 0, silent = 0, skipped = 0
+
+                // Stills and clip cover frames — one stored JPEG each, byte for byte.
+                let stillEntries = db.fetchEntries(rowids: plan.images)
+                for rowid in plan.images {
                     if Task.isCancelled { break }
-                    guard let data = db.fetchThumbnailJPEGData(previewId: entry.previewId) else {
+                    guard let entry = stillEntries[rowid],
+                          let data = db.fetchThumbnailJPEGData(previewId: entry.previewId) else {
                         skipped += 1
                         continue
                     }
                     let filename = "\(baseName)_\(entry.id)_seed\(entry.seed).jpg"
                     do {
                         try data.write(to: folder.appendingPathComponent(filename))
-                        written += 1
+                        images += 1
                     } catch {
                         skipped += 1
                     }
                 }
-                return (written, skipped, nil)
+
+                // Clips, as whole movies or as numbered frame sequences.
+                for clip in clipInfo {
+                    if Task.isCancelled { break }
+                    if mode == .movie {
+                        let result = await Self.writeMovie(db: db, clip: clip,
+                                                           baseName: baseName, to: folder)
+                        skipped += result.skipped
+                        if result.ok {
+                            movies += 1
+                            if result.silent { silent += 1 }
+                        }
+                        // One clip failing does not abandon the rest of the project.
+                    } else {
+                        let entries = db.fetchEntries(rowids: clip.rowids)
+                        for (index, rowid) in clip.rowids.enumerated() {
+                            if Task.isCancelled { break }
+                            guard let frame = entries[rowid],
+                                  let data = db.fetchThumbnailJPEGData(previewId: frame.previewId) else {
+                                skipped += 1
+                                continue
+                            }
+                            let filename = String(format: "%@_%lld_%04d.jpg",
+                                                  baseName, clip.representativeRowid, index)
+                            do {
+                                try data.write(to: folder.appendingPathComponent(filename))
+                                images += 1
+                            } catch {
+                                skipped += 1
+                            }
+                        }
+                    }
+                }
+                return (images, movies, silent, skipped, nil)
             }.value
 
             self.isExporting = false
-            if let error = result.error {
-                self.exportSummary = error
-            } else if Task.isCancelled {
-                self.exportSummary = "Export cancelled — \(result.written) image(s) written."
-            } else {
-                self.exportSummary = result.skipped == 0
-                    ? "Exported \(result.written) image(s)."
-                    : "Exported \(result.written) image(s); \(result.skipped) skipped (no stored preview)."
-            }
+            self.exportSummary = Self.summarise(result, cancelled: Task.isCancelled)
         }
+    }
+
+    /// One sentence describing what actually landed on disk.
+    ///
+    /// Counts movies and images separately, and says when a movie came out silent —
+    /// Draw Things generates a soundtrack per clip, so silence means we could not read
+    /// one, which is worth saying rather than letting it be discovered in a player.
+    nonisolated static func summarise(_ r: (images: Int, movies: Int, silent: Int, skipped: Int, error: String?),
+                                      cancelled: Bool) -> String {
+        if let error = r.error { return error }
+
+        var parts: [String] = []
+        if r.movies > 0 {
+            var movies = "\(r.movies) movie\(r.movies == 1 ? "" : "s")"
+            if r.silent == 0 {
+                movies += " with sound"
+            } else if r.silent == r.movies {
+                movies += " — no soundtrack found, so \(r.movies == 1 ? "it is" : "they are") silent"
+            } else {
+                movies += " (\(r.silent) silent — no soundtrack found)"
+            }
+            parts.append(movies)
+        }
+        if r.images > 0 { parts.append("\(r.images) image\(r.images == 1 ? "" : "s")") }
+
+        let what = parts.isEmpty ? "nothing" : parts.joined(separator: " and ")
+        let prefix = cancelled ? "Export cancelled — wrote" : "Exported"
+        let skipped = r.skipped > 0 ? "; \(r.skipped) skipped (no stored preview)" : ""
+        return "\(prefix) \(what)\(skipped)."
     }
 
     func cancelExport() {
@@ -521,28 +673,27 @@ final class DTProjectBrowserViewModel {
         isExporting = true
         exportSummary = nil
 
+        let clip = ClipExportInfo(clipId: 0,
+                                  representativeRowid: coverRowid,
+                                  rowids: rowids,
+                                  fps: fps,
+                                  audioId: audioId)
+
         exportTask = Task {
-            let result = await Task.detached(priority: .userInitiated) { () -> (written: Int, skipped: Int, error: String?, silent: Bool) in
+            let result = await Task.detached(priority: .userInitiated) { () -> (images: Int, movies: Int, silent: Int, skipped: Int, error: String?) in
                 guard let db = DTProjectDatabase(fileURL: url) else {
-                    return (0, 0, "Could not open database. The drive may have been ejected or the file may be corrupted.", false)
+                    return (0, 0, 0, 0, "Could not open database. The drive may have been ejected or the file may be corrupted.")
                 }
+
+                // Movies go through the same writer Export All uses, so audio, naming
+                // and failure handling cannot drift between the two paths.
+                if mode == .movie {
+                    let r = await Self.writeMovie(db: db, clip: clip, baseName: baseName, to: folder)
+                    return (0, r.ok ? 1 : 0, r.silent ? 1 : 0, r.skipped, r.error)
+                }
+
                 let entries = db.fetchEntries(rowids: rowids)
-
-                // A movie's frames are scratch: written to a temp directory,
-                // handed to the assembler, then removed. Only the .mp4 lands in
-                // the folder the user chose.
-                let isMovie = (mode == .movie)
-                let frameDir = isMovie
-                    ? FileManager.default.temporaryDirectory
-                        .appendingPathComponent("tanque-clip-\(UUID().uuidString)", isDirectory: true)
-                    : folder
-                if isMovie {
-                    try? FileManager.default.createDirectory(at: frameDir, withIntermediateDirectories: true)
-                }
-                defer { if isMovie { try? FileManager.default.removeItem(at: frameDir) } }
-
                 var written = 0, skipped = 0
-                var frameURLs: [URL] = []
                 for (index, rowid) in rowids.enumerated() {
                     if Task.isCancelled { break }
                     guard let frame = entries[rowid],
@@ -550,69 +701,23 @@ final class DTProjectBrowserViewModel {
                         skipped += 1
                         continue
                     }
-                    // Single frame keeps the seed-bearing name the grid export
-                    // uses; a series is numbered so the order survives sorting.
+                    // A single frame keeps the seed-bearing name the grid export uses;
+                    // a series is numbered so the order survives sorting.
                     let filename = mode == .coverFrame
                         ? "\(baseName)_\(frame.id)_seed\(frame.seed).jpg"
                         : String(format: "%@_%lld_%04d.jpg", baseName, coverRowid, index)
                     do {
-                        try data.write(to: frameDir.appendingPathComponent(filename))
+                        try data.write(to: folder.appendingPathComponent(filename))
                         written += 1
-                        frameURLs.append(frameDir.appendingPathComponent(filename))
                     } catch {
                         skipped += 1
                     }
                 }
-
-                guard isMovie else { return (written, skipped, nil, false) }
-                if Task.isCancelled { return (0, skipped, nil, false) }
-                guard !frameURLs.isEmpty else {
-                    return (0, skipped, "No frames could be read for this render.", false)
-                }
-                let output = folder.appendingPathComponent("\(baseName)_\(coverRowid).mp4")
-
-                // Draw Things generates a soundtrack per clip and every clip measured
-                // here carries one. Silence is a fallback, not the intent — but a clip
-                // whose audio will not decode still exports as a silent movie rather
-                // than failing the whole export.
-                var audio: VideoAssembler.Audio?
-                if let audioId, audioId > 0, let track = db.fetchAudio(audioId: audioId) {
-                    let rate = DTClipAudio.sampleRate(
-                        framesPerChannel: track.framesPerChannel,
-                        clipDuration: Double(frameURLs.count) / fps)
-                    if let wav = DTClipAudio.wav(from: track, sampleRate: rate) {
-                        audio = .init(wav: wav, channels: track.channels, sampleRate: rate)
-                    }
-                }
-
-                do {
-                    try await VideoAssembler.assemble(frameURLs: frameURLs,
-                                                      fps: Int32(fps.rounded()),
-                                                      audio: audio,
-                                                      to: output)
-                } catch {
-                    return (0, skipped, "Could not assemble the movie: \(error.localizedDescription)", false)
-                }
-                return (1, skipped, nil, audio == nil)
+                return (written, 0, 0, skipped, nil)
             }.value
 
             self.isExporting = false
-            if let error = result.error {
-                self.exportSummary = error
-            } else if Task.isCancelled {
-                self.exportSummary = "Export cancelled — \(result.written) file(s) written."
-            } else if mode == .movie {
-                // Say when a movie came out silent. Draw Things generates a soundtrack
-                // per clip, so silence means we could not read it — worth telling the
-                // user rather than letting them discover it in a player.
-                self.exportSummary = result.silent
-                    ? "Exported 1 movie — no soundtrack found, so it is silent."
-                    : "Exported 1 movie with sound."
-            } else {
-                self.exportSummary = result.skipped == 0
-                    ? "Exported \(result.written) image(s)."
-                    : "Exported \(result.written) image(s); \(result.skipped) skipped (no stored preview)."
-            }
+            self.exportSummary = Self.summarise(result, cancelled: Task.isCancelled)
         }
     }
 

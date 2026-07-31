@@ -26,6 +26,7 @@ struct DTProjectBrowserView: View {
     @State private var seriesToDelete: DTGenerationEntry?
     /// The representative of a clip awaiting an export-shape choice.
     @State private var seriesToExport: DTGenerationEntry?
+    @State private var bulkExportScope: BulkExportRequest?
 
     // Two loaders rather than one: hovering the grid must not evict the clip the
     // detail column is playing, and vice versa. Only one cell is hovered at a
@@ -91,6 +92,27 @@ struct DTProjectBrowserView: View {
                 }
             )
         }
+        .sheet(item: $bulkExportScope) { wrapper in
+            let scope = wrapper.scope
+            let plan = browser.exportPlan(scope, mode: .movie)
+            DTBulkExportSheet(
+                title: scope == .all ? "Export Project" : "Export Selected",
+                cellCount: plan.images.count + plan.clipCount,
+                clipCount: plan.clipCount,
+                detail: { browser.exportPlan(scope, mode: $0).summary(for: $0) },
+                onCancel: { bulkExportScope = nil },
+                onExport: { mode in
+                    bulkExportScope = nil
+                    chooseFolderAndExport(scope, mode: mode)
+                }
+            )
+        }
+    }
+
+    /// `sheet(item:)` needs an Identifiable, and the scope enum is a plain value.
+    struct BulkExportRequest: Identifiable {
+        let scope: DTProjectBrowserViewModel.ExportScope
+        var id: String { scope == .all ? "all" : "selected" }
     }
 
     // MARK: - Empty State
@@ -336,11 +358,11 @@ struct DTProjectBrowserView: View {
             } else {
                 if !browser.selectedEntryIDs.isEmpty {
                     toolbarAction("Deselect") { browser.clearEntrySelection() }
-                    toolbarAction("Export Selected…") { chooseFolderAndExport(.selected) }
+                    toolbarAction("Export Selected…") { beginBulkExport(.selected) }
                 }
-                toolbarAction("Export All…") { chooseFolderAndExport(.all) }
+                toolbarAction("Export All…") { beginBulkExport(.all) }
                     .disabled(browser.entryCount == 0)
-                    .help("Export every image in this project database (⌘-click thumbnails to export a subset)")
+                    .help("Export every cell in this project — clips as movies, stills as images (⌘-click thumbnails to export a subset)")
             }
         }
         .padding(.horizontal, 12)
@@ -636,18 +658,29 @@ struct DTProjectBrowserView: View {
         }
     }
 
-    private func chooseFolderAndExport(_ scope: DTProjectBrowserViewModel.ExportScope) {
+    /// Asks how to treat clips before picking a folder — but only when the export
+    /// actually contains one. For a project of stills the three modes are identical,
+    /// so the sheet would be a step with one real answer.
+    private func beginBulkExport(_ scope: DTProjectBrowserViewModel.ExportScope) {
+        if browser.exportTouchesClips(scope) {
+            bulkExportScope = BulkExportRequest(scope: scope)
+        } else {
+            chooseFolderAndExport(scope, mode: .coverFrame)
+        }
+    }
+
+    private func chooseFolderAndExport(_ scope: DTProjectBrowserViewModel.ExportScope,
+                                       mode: DTSeriesExportMode) {
+        let plan = browser.exportPlan(scope, mode: mode)
         let panel = NSOpenPanel()
         panel.canChooseDirectories = true
         panel.canChooseFiles = false
         panel.canCreateDirectories = true
         panel.prompt = "Export Here"
-        panel.message = scope == .selected
-            ? "Choose a folder for the \(browser.selectedEntryIDs.count) selected image(s)"
-            : "Choose a folder for all \(browser.entryCount) image(s) in this project"
+        panel.message = "Choose a folder — \(plan.summary(for: mode))"
         panel.begin { response in
             guard response == .OK, let url = panel.url else { return }
-            browser.startExport(scope, to: url)
+            browser.startExport(scope, mode: mode, to: url)
         }
     }
 
