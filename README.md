@@ -1,6 +1,6 @@
 # Tanque Studio
 
-A native macOS companion app for [Draw Things](https://drawthings.ai), providing a focused AI image generation workspace, Draw Things project browsing, and LLM-assisted prompt enhancement.
+A native macOS companion app for [Draw Things](https://drawthings.ai), providing a focused AI image generation workspace, Draw Things project browsing, StoryFlow/Story Studio authoring, batch render queues, and LLM-assisted prompt enhancement.
 
 ## Features
 
@@ -94,6 +94,36 @@ Browse Draw Things project databases directly from the app.
 
 ---
 
+### StoryFlow (Labs)
+
+A visual workflow editor for authoring Draw Things automation without hand-writing JSON.
+
+- Step types: accumulators (config, prompt, `concat`, `wildcard`, `sweep`), canvas ops (`size`, `adaptSize`, clear canvas), flow control (`Loop`/`EndLoop`), a human-in-the-loop `approve` step, and passthrough support for the rest of Draw Things' 34-entry instruction set
+- Most instructions run natively in-app — `sweep`, `wildcard`, `concat`, and inpaint tools execute without leaving Tanque Studio; the remainder export as Draw Things' own pipeline script format
+- Round-trips with Draw Things' own Editor: import an Editor-authored project, or export a Tanque Studio-authored one and paste it directly into a Draw Things StoryFlow script
+- Reusable config/prompt/image/LoRA/wildcard variables shared across steps
+
+### Story Studio (Labs)
+
+Chapter-and-scene project structure for multi-render stories with assembled prompts.
+
+- Projects hold characters, settings, chapters, and scenes; each scene's prompt assembles live from its character/setting fragments plus its own description
+- Compiles to a StoryFlow workflow per scene or per chapter, with variant approval on each render
+- Per-field LLM enhance, plus a one-shot narrative writer for scene text
+- Chapter contact-sheet export — image sequence, storyboard, or comic grid, as PNG or PDF
+- Base Config is a saved Draw Things config (or a sensible built-in default) that's easy to change: "Use a saved config…" in Project Info, and a Settings toggle for what new projects start from
+
+### Render Queue (Labs)
+
+Batch rendering across a matrix of prompts, models, LoRAs, and settings — the thing Draw Things can otherwise only do by hand-scripting.
+
+- Define axes (prompt, negative prompt, model, sampler, seed mode, LoRA sets, steps, seed, guidance scale, strength, shift) over a base prompt/config
+- Expand into a flat, editable list of concrete standalone jobs — prune, reorder, or leave any of them before running
+- Run, pause between jobs, and resume; a job that fails (unknown model, a server hiccup) never aborts the ones after it
+- Every job's config and prompt are captured as a full standalone snapshot, so a row stays reproducible even after the axes that produced it change
+
+---
+
 ### Settings
 
 - **Draw Things connection** — host, port, shared secret, history dropdown, test connection (gRPC)
@@ -161,7 +191,7 @@ DrawThingsStudio/
 │   ├── DashboardHomeView.swift        # Continue/System/Quick Start/Recent Generations/Projects+Labs cards
 │   ├── FocusRoomView.swift            # Full-bleed canvas + filmstrip; Paint/Crop/Color-Draw edit modes, scrubber
 │   ├── DashboardFocusPanels.swift     # Focus Room's accordion drawer (Prompt/Assist/Model/Parameters/LoRAs/img2img/Actions)
-│   ├── DashboardLabsPage.swift        # Labs pill-tabs (StoryFlow / Story Studio / Workflow Builder)
+│   ├── DashboardLabsPage.swift        # Labs pill-tabs (StoryFlow / Story Studio / Render Queue)
 │   └── DashboardDS.swift              # Isolated light "paper" design tokens for this navigation
 │
 ├── Generate (business logic + classic four-panel view, reused by both navigations)
@@ -183,6 +213,19 @@ DrawThingsStudio/
 │   ├── StoryFlowStorage.swift         # JSON-per-file storage, output folders, canvas PNG I/O
 │   ├── StoryFlowProjectCodec.swift    # Lossless project export/import + DT pipeline export
 │   └── StoryFlowView/ViewModel/*Panel.swift
+│
+├── Story Studio (Labs)
+│   ├── StoryStudioModels.swift        # SwiftData schema v2: project/character/setting/chapter/scene
+│   ├── StoryStudioView.swift          # Library ↔ workspace shell, outline column
+│   ├── StoryStudioEditors.swift       # Project Info / chapter / character / setting editors
+│   ├── StorySceneEditor.swift         # Scene editor + LLM-assist bar
+│   └── StoryStudioRenderController.swift  # Compiles a scene/chapter to StoryFlow, runs it, routes results
+│
+├── Render Queue (Labs)
+│   ├── RenderQueueModels.swift        # SwiftData axis/job models + UserDefaults-backed base settings
+│   ├── RenderQueueExpander.swift      # Pure matrix → job-list expansion (axes × base config/prompt)
+│   ├── RenderQueueController.swift    # Runs pending jobs, one direct render call per job
+│   └── RenderQueueView.swift          # Base config, axis editor, job list (prune/reorder/pause/run)
 │
 ├── Settings
 │   └── SettingsView.swift
@@ -206,7 +249,7 @@ DrawThingsStudio/
     └── RequestLogger.swift             # Debug request log
 ```
 
-**SwiftData schema** (single model):
+**SwiftData schema** — the core gallery model plus one schema group per Labs feature (`TanqueStudioApp.swift`, additive-only version bumps, no destructive wipe since v1):
 
 ```swift
 @Model final class TSImage {
@@ -221,6 +264,8 @@ DrawThingsStudio/
     var thumbnailData: Data?
 }
 ```
+
+Story Studio adds `StoryProject` / `StoryCharacter` / `StorySetting` / `StoryChapter` / `StoryScene` / `SceneCharacterPresence`; the Render Queue adds `RenderQueueAxis` / `RenderQueueJob`.
 
 ---
 
@@ -264,7 +309,6 @@ DrawThingsStudio/
 - [x] Leaving paint mode cancels an in-flight inpaint (closes the last v0.9.20 known-minor)
 - [x] Story Studio — project/character/setting/chapter/scene management, live prompt assembly, compile-to-StoryFlow render pipeline with variant approval (Phases 1–3; Phase 4 extras still upcoming)
 - [x] Video generations — DT frame series captured as one grouped gallery item (previously all frames past the first were discarded), frame scrubber, export frames / assemble .mp4, frame count unclamped beyond DT client defaults
-- [x] DT Project Browser bulk export — ⌘-click multi-select, Export Selected / Export All, stored full-size JPEGs written byte-for-byte
 - [x] Learnability Phase 1 — first-run welcome flow, markdown-driven in-app Help (10 topics), empty-state coaching, tooltip audit
 - [x] Connection reliability — bounded timeout on gRPC asset fetches, a refresh button that always works, Test Connection that checks the real secret, an honest connected/disconnected signal instead of a cosmetic one
 - [x] Story Studio Phase 4 — Send to Generate from a rendered variant, chapter contact-sheet export (image sequence/storyboard/comic grid, PNG+PDF), per-field LLM enhance + one-shot narrative writer on scene text
@@ -294,16 +338,17 @@ DrawThingsStudio/
 - [x] Generate's metadata applier widened to the full field set — `applyMetadataToConfig` used to restore only 10 of the ~39 fields `DrawThingsGenerationConfig` and `PNGMetadata` both model (model/sampler/steps/guidanceScale/seed/seedMode/width/height/shift/strength); LoRAs, refiner, mask blur, hires fix, tiling, SDXL conditioning, TCD gamma, cfg-zero-star and resolution-dependent shift were parsed and silently discarded. Merging is additive — a field the source doesn't carry leaves the current config untouched rather than resetting it. Found and fixed two more interop gaps in the process: the gallery's own config round trip (`encodeConfig`/`decodeConfigJSON`) was missing hires-fix, tiling and refiner on the read side even though the write side already carried them, and a genuine Draw Things PNG's seed-mode spelling had no inverse mapping back to Tanque Studio's own picker strings
 - [x] Story Studio configs, steps 1–3 — "Use a saved config…" in Project Info picks from the app's saved `#config` workflow variables and copies the JSON in (snapshot, not a live reference, per the reproducibility call below); a Settings → Story Studio picker names which saved config new projects start from, retiring the rebuild-to-tune literal; and a shared "Use as Story Studio Base…" menu reaches the same mechanism from the DT Project Browser, Generate, and a StoryFlow config variable's own editor. Step 4 (seed a new Story Studio project from a rendered image) stays open — deliberately separate, since it needs an image and not just a config
 - [x] Render queue — matrix in, job list out, replacing the Labs "Workflow Builder / Coming soon" stub. Define axes (prompt, negative prompt, model, sampler, seed mode, LoRA sets, steps, seed, guidance scale, strength, shift) over a base prompt/config, Expand into a flat list of concrete standalone jobs, then prune, reorder, pause, run. Each job's config is captured with `JSONEncoder` directly on the full config struct — every field, not a hand-maintained subset — so a row stays reproducible after the axes that produced it change, and LoRA sets get a `file@weight, file@weight` line syntax, the one axis sweep/scripting genuinely cannot express. Runs one direct render call per job rather than compiling to a StoryFlow workflow, since an already-expanded job has no loops or variables left to resolve — failure isolation (one bad job can't abort the rest) falls out of a plain per-iteration try/catch with no engine changes needed. Verified against a live remote Draw Things server: a real two-model queue ran end to end, both jobs resolved genuine (never `-1`) seeds and landed correctly in the gallery
+- [x] README polish (text/structure) — StoryFlow, Story Studio, and Render Queue had no `## Features` entries at all despite being three of the app's six major surfaces; added one section each. Removed an exact duplicate bullet in Completed, corrected the Architecture tree (still named the retired "Workflow Builder" tab, and had no file listing for Story Studio or the Render Queue), and fixed the SwiftData schema description, stale since Story Studio's schema v2 landed. Screenshots and a demo GIF are still open — see Backlog
 
 ### Upcoming
 
 In priority order:
 
 1. [ ] **Video handling — the general pass** — clip playback, audio, and frame-accurate Send to Generate / Export This Frame all ship (see Completed). Still open: a wider look at how series are handled outside the DT Project Browser, and whether "expandable in place" (spec §7) is still wanted now that playback and the detail scrubber exist
-2. [ ] **README polish** — screenshots, demo GIF
 
 ### Backlog
 
+- [ ] **README screenshots + demo GIF** — blocked on granting Screen Recording permission (System Settings → Privacy & Security → Screen Recording) to the terminal app hosting the coding session; `screencapture` fails outright without it. Once granted: Dashboard, a Focus Room, DT Project Browser, and at least one Labs screen (Render Queue is the newest) as stills, plus a short GIF of one real workflow end to end
 - [ ] **Story Studio configs, step 4** — "Send to new Story Studio project" from a render: start a story from an image you liked. The only genuinely new UI of the four-step configs item, and the only one marked optional; steps 1–3 are done (see Completed)
 - [ ] StoryFlow 260723 Phase 4 — LLM-backed `enhance` / `interrogate` executed natively, routed through Tanque Studio's own LLM stack rather than Draw Things' answer model (`interrogate` additionally needs a multimodal model and image attachment). Deferred until the rest is farther along
 - [ ] StoryFlow 260723 Phase 5 — Vision-framework canvas ops (`faceZoom`, `removeBkgd`, foreground/background/body masks, depth extraction, pose extraction). No gRPC path exists for any of these; reimplementing them on Apple's Vision framework is its own project
