@@ -450,10 +450,19 @@ private struct VariableRow: View {
                         .onChange(of: variable.configJSON) { _, _ in onSave(variable) }
                         if let json = variable.configJSON, !json.isEmpty {
                             let isValid = isValidConfigJSON(json)
-                            Label(isValid ? "Valid config" : "Invalid JSON",
-                                  systemImage: isValid ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
-                                .font(TanqueDS.Font.mono(10.5))
-                                .foregroundStyle(isValid ? DashboardDS.green : DashboardDS.orange)
+                            HStack {
+                                Label(isValid ? "Valid config" : "Invalid JSON",
+                                      systemImage: isValid ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
+                                    .font(TanqueDS.Font.mono(10.5))
+                                    .foregroundStyle(isValid ? DashboardDS.green : DashboardDS.orange)
+                                if isValid {
+                                    Spacer()
+                                    UseAsStoryStudioBaseMenu(configJSON: json)
+                                        .menuStyle(.borderlessButton)
+                                        .font(TanqueDS.Font.mono(10.5))
+                                        .fixedSize()
+                                }
+                            }
                         }
                     }
                 }

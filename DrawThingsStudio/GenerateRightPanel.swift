@@ -188,6 +188,11 @@ struct GenerateRightPanel: View {
                 copyConfigToDT()
             }
 
+            if let json = DTConfigExporter.encodeDTClipboard(config: vm.config) {
+                UseAsStoryStudioBaseMenu(configJSON: json)
+                    .menuStyle(.borderlessButton)
+            }
+
             ActionButton(icon: "clipboard", title: "Paste Config from DT", enabled: true,
                          help: "Apply a config JSON from the clipboard. Values pass through uncapped — e.g. numFrames 450.") {
                 pasteConfigFromDT()

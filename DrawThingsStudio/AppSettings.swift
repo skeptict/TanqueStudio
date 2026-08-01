@@ -95,6 +95,18 @@ final class AppSettings {
         didSet { UserDefaults.standard.set(llmAPIKey, forKey: "tanqueStudio.llmAPIKey") }
     }
 
+    // MARK: - Story Studio
+
+    /// Name of the saved `#config` workflow variable new Story Studio projects
+    /// start from. Empty means "use the built-in Krea 2 Turbo default"
+    /// (`StoryProject.builtInDefaultConfigJSON`) — the same convention as
+    /// `llmOperationsFolder` above. Retires the rebuild-to-tune problem: this
+    /// used to be a Swift string literal, so trying a different starting config
+    /// meant a code change.
+    var storyStudioDefaultConfigName: String {
+        didSet { UserDefaults.standard.set(storyStudioDefaultConfigName, forKey: "tanqueStudio.storyStudioDefaultConfigName") }
+    }
+
     // MARK: - Collection
 
     var selectedCollection: String? {
@@ -148,6 +160,7 @@ final class AppSettings {
         llmOperationsFolderBookmark = d.data(forKey: "tanqueStudio.llmOperationsFolderBookmark")
         dtHostHistory  = d.stringArray(forKey: "tanqueStudio.dtHostHistory")  ?? []
         llmHostHistory = d.stringArray(forKey: "tanqueStudio.llmHostHistory") ?? []
+        storyStudioDefaultConfigName = d.string(forKey: "tanqueStudio.storyStudioDefaultConfigName") ?? ""
     }
 }
 

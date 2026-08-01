@@ -750,6 +750,15 @@ struct DTProjectBrowserView: View {
                         .buttonStyle(DashboardGhostButtonStyle())
                     }
 
+                    // Own row, not squeezed into the HStack above — three items
+                    // there wrapped "Copy Prompt"/"Copy Config" into a vertical
+                    // stack of single letters at this panel's width.
+                    HStack {
+                        UseAsStoryStudioBaseMenu(configJSON: configJSON(for: entry))
+                            .menuStyle(.borderlessButton)
+                        Spacer()
+                    }
+
                     // Scrubbing to the one good frame in a 257-frame clip and then
                     // being offered only "cover frame / every frame / .mp4" is the
                     // gap this closes. Only shown for clips — for a still, Export

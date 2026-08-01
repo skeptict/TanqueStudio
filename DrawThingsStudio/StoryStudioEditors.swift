@@ -147,7 +147,12 @@ struct StoryProjectInfoEditor: View {
 
             Rectangle().fill(TanqueDS.Color.surfaceBorder).frame(height: 1)
 
-            StoryLabeledTextEditor("Base Config (JSON)", text: $project.baseConfigJSON, minHeight: 100, maxHeight: 200)
+            StoryLabeledTextEditor("Base Config (JSON)", text: $project.baseConfigJSON, minHeight: 100, maxHeight: 200) {
+                StoryUseSavedConfigMenu { json in
+                    project.baseConfigJSON = json
+                    project.modifiedAt = Date()
+                }
+            }
             if !baseConfigIsValidJSON {
                 Text("Not valid JSON — renders will fall back to defaults.")
                     .font(TanqueDS.Font.bodySmall)
@@ -163,6 +168,75 @@ struct StoryProjectInfoEditor: View {
     private var baseConfigIsValidJSON: Bool {
         guard let data = project.baseConfigJSON.data(using: .utf8) else { return false }
         return (try? JSONSerialization.jsonObject(with: data)) is [String: Any]
+    }
+}
+
+/// "Use as Story Studio base" — lists existing Story Studio projects and copies
+/// a config's JSON into the chosen project's Base Config. The reusable half of
+/// roadmap item "Story Studio configs" step 3: wherever a config already exists
+/// (DT Project Browser's Copy Config row, Generate's Copy Config action, a
+/// StoryFlow `#config` variable), this is the same one mechanism `[[StoryUseSavedConfigMenu]]`
+/// already established for Project Info — copy JSON in, snapshot not reference.
+///
+/// Deliberately does NOT offer "New Project…" — item 4 ("Send to new Story
+/// Studio project from a render") is a distinct, larger feature that seeds a
+/// new project from an image, not just a config string; conflating the two
+/// here would preempt that design.
+struct UseAsStoryStudioBaseMenu: View {
+    let configJSON: String
+
+    @Query(sort: \StoryProject.name) private var projects: [StoryProject]
+
+    var body: some View {
+        Menu {
+            if projects.isEmpty {
+                Text("No Story Studio projects yet")
+            } else {
+                ForEach(projects) { project in
+                    Button(project.name) {
+                        project.baseConfigJSON = configJSON
+                        project.modifiedAt = Date()
+                    }
+                }
+            }
+        } label: {
+            Label("Use as Story Studio Base…", systemImage: "book.closed")
+        }
+    }
+}
+
+/// Lists the app's saved `#config` workflow variables (Generate → StoryFlow
+/// config presets, 16 exist today: `ZIT1.0`, `flux-default`, `cyberrealpony`…)
+/// and copies the chosen one's JSON into Base Config.
+///
+/// **Snapshot, not a live reference — decided.** Copying the JSON in means a
+/// project keeps rendering what its config said even if that saved preset is
+/// edited or deleted later, which matters here specifically: a stored config
+/// describing what actually happened is the premise the /64 floor and the PNG
+/// metadata work both rely on. A live-link mode could be added later; unwinding
+/// one that silently changed old projects underneath the user could not.
+struct StoryUseSavedConfigMenu: View {
+    let apply: (String) -> Void
+
+    var body: some View {
+        Menu {
+            let configs = StoryFlowStorage.shared.loadVariables()
+                .filter { $0.type == .config && $0.configJSON != nil }
+                .sorted { $0.name < $1.name }
+            if configs.isEmpty {
+                Text("No saved configs yet")
+            } else {
+                ForEach(configs) { variable in
+                    Button(variable.name) { apply(variable.configJSON!) }
+                }
+            }
+        } label: {
+            Text("Use a saved config…")
+                .font(TanqueDS.Font.bodySmall)
+                .foregroundStyle(TanqueDS.Color.brass)
+        }
+        .menuStyle(.borderlessButton)
+        .fixedSize()
     }
 }
 

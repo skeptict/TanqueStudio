@@ -415,6 +415,47 @@ struct SettingsView: View {
                         .strokeBorder(DashboardDS.border, lineWidth: 1))
                 }
 
+                // MARK: Story Studio
+                VStack(alignment: .leading, spacing: TanqueDS.Spacing.sm) {
+                    Text("STORY STUDIO").settingsSectionLabel()
+                    VStack(spacing: 0) {
+                        HStack {
+                            Text("New project default config")
+                                .font(TanqueDS.Font.body)
+                                .foregroundStyle(DashboardDS.muted2)
+                            Spacer()
+                            let savedConfigNames = StoryFlowStorage.shared.loadVariables()
+                                .filter { $0.type == .config }
+                                .map(\.name)
+                                .sorted()
+                            Picker("", selection: $settings.storyStudioDefaultConfigName) {
+                                Text("Built-in (Krea 2 Turbo)").tag("")
+                                ForEach(savedConfigNames, id: \.self) { name in
+                                    Text(name).tag(name)
+                                }
+                            }
+                            .labelsHidden()
+                            .pickerStyle(.menu)
+                        }
+                        .padding(.horizontal, TanqueDS.Spacing.md)
+                        .padding(.vertical, TanqueDS.Spacing.sm)
+                        .background(DashboardDS.surf1)
+
+                        Rectangle().fill(DashboardDS.border).frame(height: 1)
+
+                        Text("The config every new Story Studio project's Base Config starts from. Copied in once — editing this later never changes existing projects.")
+                            .font(TanqueDS.Font.bodySmall)
+                            .foregroundStyle(DashboardDS.muted)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, TanqueDS.Spacing.md)
+                            .padding(.vertical, TanqueDS.Spacing.sm)
+                            .background(DashboardDS.surf1)
+                    }
+                    .clipShape(RoundedRectangle(cornerRadius: TanqueDS.Layout.panelCornerRadius))
+                    .overlay(RoundedRectangle(cornerRadius: TanqueDS.Layout.panelCornerRadius)
+                        .strokeBorder(DashboardDS.border, lineWidth: 1))
+                }
+
                 // MARK: Diagnostics
                 // RequestLogger has always written this file and has always had an
                 // openLog() — it just had no caller anywhere, so the log was

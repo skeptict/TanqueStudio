@@ -56,6 +56,22 @@ final class StoryProject {
 
     /// Base config a new project starts with.
     ///
+    /// Reads `AppSettings.shared.storyStudioDefaultConfigName`: if it names a saved
+    /// `#config` workflow variable that still exists, that config's JSON is the
+    /// default; otherwise falls back to `builtInDefaultConfigJSON` below. This is
+    /// the setting, not the config text itself — see that setting's doc comment
+    /// for why (retires the rebuild-to-tune problem the roadmap called out).
+    static var defaultConfigJSON: String {
+        let name = AppSettings.shared.storyStudioDefaultConfigName
+        if !name.isEmpty,
+           let saved = StoryFlowStorage.shared.loadVariables()
+               .first(where: { $0.type == .config && $0.name == name }),
+           let json = saved.configJSON {
+            return json
+        }
+        return builtInDefaultConfigJSON
+    }
+
     /// **This used to be `JSONEncoder().encode(DrawThingsGenerationConfig())`, whose
     /// `model` is the empty string** — so a brand-new project rendered with nothing
     /// loaded and Draw Things returned raw noise, which was then saved as a variant
@@ -81,7 +97,7 @@ final class StoryProject {
     /// `seedMode` are Draw Things' **integer** enums here, and the `Decodable`
     /// conformance would throw on them (`try c.decode(String.self, forKey: .sampler)`).
     /// `applyConfigVar` uses `JSONSerialization` + `mergeDict`, which maps Int→String.
-    static var defaultConfigJSON: String {
+    static var builtInDefaultConfigJSON: String {
         """
         {
         "aestheticScore": 6,
