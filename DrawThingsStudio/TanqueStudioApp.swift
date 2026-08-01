@@ -75,7 +75,7 @@ struct TanqueStudioApp: App {
         // Schema versioning:
         // currentSchemaVersion — bump on every schema change
         // lastDestructiveVersion — bump only when a store wipe is required
-        let currentSchemaVersion = 2
+        let currentSchemaVersion = 3
         let lastDestructiveVersion = 1
         let schemaVersionKey = "tanqueStudio.schemaVersion"
 
@@ -87,6 +87,8 @@ struct TanqueStudioApp: App {
             StoryChapter.self,
             StoryScene.self,
             SceneCharacterPresence.self,
+            RenderQueueAxis.self,
+            RenderQueueJob.self,
         ])
         let modelConfiguration = ModelConfiguration(
             "TanqueStudio", schema: schema, isStoredInMemoryOnly: false)

@@ -11,7 +11,7 @@ struct DashboardLabsPage: View {
     private enum LabsTab: String, CaseIterable {
         case storyFlow = "StoryFlow"
         case storyStudio = "Story Studio"
-        case workflowBuilder = "Workflow Builder"
+        case renderQueue = "Render Queue"
     }
 
     var body: some View {
@@ -43,13 +43,8 @@ struct DashboardLabsPage: View {
                     // this fork gives it a throwaway session rather than reaching
                     // back into DashboardRootView's navigation for a spike tab.
                     StoryStudioView(generateVM: GenerateViewModel(), onNavigateToGenerate: {})
-                case .workflowBuilder:
-                    VStack(spacing: 12) {
-                        Image(systemName: "flowchart").font(.system(size: 44)).foregroundStyle(DashboardDS.muted)
-                        Text("Workflow Builder").font(.system(size: 18)).foregroundStyle(DashboardDS.text)
-                        Text("Coming soon").foregroundStyle(DashboardDS.muted)
-                    }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                case .renderQueue:
+                    RenderQueueView()
                 }
             }
         }
