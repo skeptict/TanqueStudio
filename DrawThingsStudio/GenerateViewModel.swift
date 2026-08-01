@@ -1042,7 +1042,14 @@ final class GenerateViewModel {
     }
 
     /// Applies all non-nil fields from a PNGMetadata snapshot to the current config.
-    /// Used by the Assist tab "Send Config" action.
+    /// Used by the Assist tab "Send Config" action and Generate's own drag-import.
+    ///
+    /// Covers every field `DrawThingsGenerationConfig` and `PNGMetadata` both model —
+    /// widened from the original 10 (model/sampler/steps/guidanceScale/seed/seedMode/
+    /// width/height/shift/strength) per the "Generate drops most of an imported
+    /// image's settings" roadmap item. Each group only touches `config` when the
+    /// source actually carried it, so a file with no hires-fix data leaves whatever
+    /// the user already had in place untouched — this merges in, it doesn't reset.
     func applyMetadataToConfig(_ meta: PNGMetadata) {
         if let model   = meta.model,    !model.isEmpty   { config.model   = model }
         if let sampler = meta.sampler,  !sampler.isEmpty { config.sampler = sampler }
@@ -1052,11 +1059,53 @@ final class GenerateViewModel {
             if seed < 0 { randomizeSeed = true; config.seed = Int(UInt32.random(in: 0...UInt32.max)) }
             else { config.seed = seed }
         }
-        if let mode    = meta.seedMode, !mode.isEmpty    { config.seedMode = mode }
+        if let mode    = meta.seedMode, !mode.isEmpty {
+            config.seedMode = ImageStorageManager.tsSeedModeName(mode)
+        }
         if let w       = meta.width                      { config.width   = w }
         if let h       = meta.height                     { config.height  = h }
         if let shift   = meta.shift                      { config.shift   = shift }
         if let str     = meta.strength                   { config.strength = str }
+        if let neg     = meta.negativePrompt             { config.negativePrompt = neg }
+        if let nf       = meta.numFrames                  { config.numFrames = nf }
+        if let fps      = meta.fps                        { config.fps = fps }
+        if !meta.loras.isEmpty {
+            config.loras = meta.loras.map {
+                .init(file: $0.file, weight: $0.weight, mode: $0.mode)
+            }
+        }
+        if let rm = meta.refinerModel, !rm.isEmpty { config.refinerModel = rm }
+        if let rs = meta.refinerStart               { config.refinerStart = rs }
+        if let mb  = meta.maskBlur                  { config.maskBlur = mb }
+        if let mbo = meta.maskBlurOutset            { config.maskBlurOutset = mbo }
+        if let po  = meta.preserveOriginalAfterInpaint { config.preserveOriginalAfterInpaint = po }
+        if let hf = meta.hiresFix {
+            config.hiresFix = hf
+            if let w = meta.hiresFixWidth  { config.hiresFixWidth  = w }
+            if let h = meta.hiresFixHeight { config.hiresFixHeight = h }
+            if let s = meta.hiresFixStrength { config.hiresFixStrength = s }
+        }
+        if let td = meta.tiledDecoding {
+            config.tiledDecoding = td
+            if let w = meta.decodingTileWidth   { config.decodingTileWidth   = w }
+            if let h = meta.decodingTileHeight  { config.decodingTileHeight  = h }
+            if let o = meta.decodingTileOverlap { config.decodingTileOverlap = o }
+        }
+        if let td = meta.tiledDiffusion {
+            config.tiledDiffusion = td
+            if let w = meta.diffusionTileWidth   { config.diffusionTileWidth   = w }
+            if let h = meta.diffusionTileHeight  { config.diffusionTileHeight  = h }
+            if let o = meta.diffusionTileOverlap { config.diffusionTileOverlap = o }
+        }
+        if let w = meta.originalImageWidth  { config.originalImageWidth  = w }
+        if let h = meta.originalImageHeight { config.originalImageHeight = h }
+        if let w = meta.targetImageWidth    { config.targetImageWidth    = w }
+        if let h = meta.targetImageHeight   { config.targetImageHeight   = h }
+        if let w = meta.negativeOriginalImageWidth  { config.negativeOriginalImageWidth  = w }
+        if let h = meta.negativeOriginalImageHeight { config.negativeOriginalImageHeight = h }
+        if let g = meta.stochasticSamplingGamma { config.stochasticSamplingGamma = g }
+        if let cz = meta.cfgZeroStar             { config.cfgZeroStar = cz }
+        if let rds = meta.resolutionDependentShift { config.resolutionDependentShift = rds }
         // Warn (non-blocking) if the loaded model isn't in the local inventory —
         // common when the image was generated via DT+ bridge (cloud model).
         if let model = meta.model { warnIfModelUnknown(model) }
@@ -1219,6 +1268,38 @@ extension DrawThingsGenerationConfig {
         m.numFrames        = numFrames > 0 ? numFrames : nil
         m.fps              = fps > 0 ? fps : nil
         m.loras            = loras.map { PNGMetadataLoRA(file: $0.file, weight: $0.weight, mode: $0.mode) }
+        m.refinerModel     = refinerModel.isEmpty ? nil : refinerModel
+        m.refinerStart     = refinerModel.isEmpty ? nil : refinerStart
+        m.maskBlur         = maskBlur
+        m.maskBlurOutset   = maskBlurOutset
+        m.preserveOriginalAfterInpaint = preserveOriginalAfterInpaint
+        if hiresFix {
+            m.hiresFix         = true
+            m.hiresFixWidth    = hiresFixWidth
+            m.hiresFixHeight   = hiresFixHeight
+            m.hiresFixStrength = hiresFixStrength
+        }
+        if tiledDecoding {
+            m.tiledDecoding       = true
+            m.decodingTileWidth   = decodingTileWidth
+            m.decodingTileHeight  = decodingTileHeight
+            m.decodingTileOverlap = decodingTileOverlap
+        }
+        if tiledDiffusion {
+            m.tiledDiffusion       = true
+            m.diffusionTileWidth   = diffusionTileWidth
+            m.diffusionTileHeight  = diffusionTileHeight
+            m.diffusionTileOverlap = diffusionTileOverlap
+        }
+        m.originalImageWidth  = originalImageWidth > 0  ? originalImageWidth  : nil
+        m.originalImageHeight = originalImageHeight > 0 ? originalImageHeight : nil
+        m.targetImageWidth    = targetImageWidth > 0    ? targetImageWidth    : nil
+        m.targetImageHeight   = targetImageHeight > 0   ? targetImageHeight   : nil
+        m.negativeOriginalImageWidth  = negativeOriginalImageWidth > 0  ? negativeOriginalImageWidth  : nil
+        m.negativeOriginalImageHeight = negativeOriginalImageHeight > 0 ? negativeOriginalImageHeight : nil
+        m.stochasticSamplingGamma = stochasticSamplingGamma
+        m.cfgZeroStar             = cfgZeroStar
+        m.resolutionDependentShift = resolutionDependentShift
         m.format           = .drawThings
         return m
     }

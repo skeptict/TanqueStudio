@@ -394,8 +394,20 @@ enum ImageStorageManager {
     /// (SeedMode.init(from:)) is an exact string match that silently falls back
     /// to Scale Alike, and DT spells it "NVIDIA GPU Compatible" — TS's internal
     /// "Nvidia GPU Compatible" would lose the setting on re-import.
-    private static func dtSeedModeName(_ seedMode: String) -> String {
+    ///
+    /// Not `private`: `tsSeedModeName` below is this mapping's inverse and both
+    /// need to live beside each other so the round trip is obviously symmetric —
+    /// GenerateViewModel's applier calls the inverse when reading a file back in.
+    static func dtSeedModeName(_ seedMode: String) -> String {
         seedMode == "Nvidia GPU Compatible" ? "NVIDIA GPU Compatible" : seedMode
+    }
+
+    /// Inverse of `dtSeedModeName`. Every real Draw Things PNG spells this mode
+    /// "NVIDIA GPU Compatible" — without this, applying a genuine DT file's
+    /// metadata would set `config.seedMode` to a string TS's own seed-mode
+    /// picker (`GenerateLeftPanel.seedModes`) doesn't list as an option.
+    static func tsSeedModeName(_ seedMode: String) -> String {
+        seedMode == "NVIDIA GPU Compatible" ? "Nvidia GPU Compatible" : seedMode
     }
 
     // MARK: — Config JSON decode
@@ -422,13 +434,43 @@ enum ImageStorageManager {
         m.strength       = (dict["strength"]      as? NSNumber)?.doubleValue
         m.numFrames      = (dict["numFrames"]     as? NSNumber)?.intValue
         m.fps            = (dict["fps"]           as? NSNumber)?.intValue
+        m.refinerModel   = dict["refinerModel"]   as? String
+        m.refinerStart   = (dict["refinerStart"]  as? NSNumber)?.doubleValue
         if let loras = dict["loras"] as? [[String: Any]] {
             m.loras = loras.compactMap { d in
                 guard let file   = d["file"]   as? String,
                       let weight = (d["weight"] as? NSNumber)?.doubleValue else { return nil }
-                return PNGMetadataLoRA(file: file, weight: weight)
+                let mode = d["mode"] as? String ?? "all"
+                return PNGMetadataLoRA(file: file, weight: weight, mode: mode)
             }
         }
+        m.maskBlur       = (dict["maskBlur"]       as? NSNumber)?.doubleValue
+        m.maskBlurOutset = (dict["maskBlurOutset"] as? NSNumber)?.intValue
+        m.preserveOriginalAfterInpaint = dict["preserveOriginalAfterInpaint"] as? Bool
+        if let hf = dict["hiresFix"] as? Bool, hf {
+            m.hiresFix         = true
+            m.hiresFixWidth    = (dict["hiresFixWidth"]    as? NSNumber)?.intValue
+            m.hiresFixHeight   = (dict["hiresFixHeight"]   as? NSNumber)?.intValue
+            m.hiresFixStrength = (dict["hiresFixStrength"] as? NSNumber)?.doubleValue
+        }
+        if let td = dict["tiledDecoding"] as? Bool, td {
+            m.tiledDecoding       = true
+            m.decodingTileWidth   = (dict["decodingTileWidth"]   as? NSNumber)?.intValue
+            m.decodingTileHeight  = (dict["decodingTileHeight"]  as? NSNumber)?.intValue
+            m.decodingTileOverlap = (dict["decodingTileOverlap"] as? NSNumber)?.intValue
+        }
+        if let td = dict["tiledDiffusion"] as? Bool, td {
+            m.tiledDiffusion       = true
+            m.diffusionTileWidth   = (dict["diffusionTileWidth"]   as? NSNumber)?.intValue
+            m.diffusionTileHeight  = (dict["diffusionTileHeight"]  as? NSNumber)?.intValue
+            m.diffusionTileOverlap = (dict["diffusionTileOverlap"] as? NSNumber)?.intValue
+        }
+        m.originalImageWidth          = (dict["originalImageWidth"]          as? NSNumber)?.intValue
+        m.originalImageHeight         = (dict["originalImageHeight"]         as? NSNumber)?.intValue
+        m.targetImageWidth            = (dict["targetImageWidth"]            as? NSNumber)?.intValue
+        m.targetImageHeight           = (dict["targetImageHeight"]           as? NSNumber)?.intValue
+        m.negativeOriginalImageWidth  = (dict["negativeOriginalImageWidth"]  as? NSNumber)?.intValue
+        m.negativeOriginalImageHeight = (dict["negativeOriginalImageHeight"] as? NSNumber)?.intValue
         m.format = .drawThings
         // The stored config string is itself the raw record — keep it, so the
         // drawer's metadata viewer works for gallery renders, not only file drops.
@@ -460,6 +502,10 @@ enum ImageStorageManager {
         dict["negativePrompt"] = config.negativePrompt
         if config.numFrames > 0 { dict["numFrames"] = config.numFrames }
         if config.fps > 0       { dict["fps"]       = config.fps }
+        if !config.refinerModel.isEmpty {
+            dict["refinerModel"] = config.refinerModel
+            dict["refinerStart"] = config.refinerStart
+        }
         // Inpainting group — always emitted, matching DT's own configs (which
         // carry maskBlur/maskBlurOutset unconditionally).
         dict["maskBlur"]       = config.maskBlur
@@ -499,7 +545,7 @@ enum ImageStorageManager {
             dict["negativeOriginalImageHeight"] = config.negativeOriginalImageHeight
         }
         if !config.loras.isEmpty {
-            dict["loras"] = config.loras.map { ["file": $0.file, "weight": $0.weight] }
+            dict["loras"] = config.loras.map { ["file": $0.file, "weight": $0.weight, "mode": $0.mode] }
         }
         guard let data = try? JSONSerialization.data(withJSONObject: dict, options: [.sortedKeys]),
               let str = String(data: data, encoding: .utf8) else { return nil }

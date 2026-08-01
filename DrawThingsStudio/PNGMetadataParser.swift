@@ -48,6 +48,41 @@ struct PNGMetadata {
     var loras: [PNGMetadataLoRA] = []
     var refinerModel: String?
     var refinerStart: Double?
+
+    // Inpainting group.
+    var maskBlur: Double?
+    var maskBlurOutset: Int?
+    var preserveOriginalAfterInpaint: Bool?
+
+    // Hires Fix group. Width/height in raw pixels (matches DrawThingsGenerationConfig).
+    var hiresFix: Bool?
+    var hiresFixWidth: Int?
+    var hiresFixHeight: Int?
+    var hiresFixStrength: Double?
+
+    // Tiling groups. Raw pixels.
+    var tiledDecoding: Bool?
+    var decodingTileWidth: Int?
+    var decodingTileHeight: Int?
+    var decodingTileOverlap: Int?
+    var tiledDiffusion: Bool?
+    var diffusionTileWidth: Int?
+    var diffusionTileHeight: Int?
+    var diffusionTileOverlap: Int?
+
+    // SDXL size-conditioning group. Raw pixels.
+    var originalImageWidth: Int?
+    var originalImageHeight: Int?
+    var targetImageWidth: Int?
+    var targetImageHeight: Int?
+    var negativeOriginalImageWidth: Int?
+    var negativeOriginalImageHeight: Int?
+
+    // TCD-only sampler parameter, and the cfgZeroStar toggle — both TS extensions
+    // riding in the "tanque" object when the source is a TS-written PNG.
+    var stochasticSamplingGamma: Double?
+    var cfgZeroStar: Bool?
+
     var format: PNGMetadataFormat = .unknown
 
     /// Raw v2 config dictionary from Draw Things JSON (camelCase keys)
@@ -478,10 +513,57 @@ struct PNGMetadataParser {
         if let rs = json["refiner_start"] as? Double { meta.refinerStart = rs }
         else if let rs = json["refiner_start"] as? Float { meta.refinerStart = Double(rs) }
 
+        // Inpainting group.
+        if let mb = json["mask_blur"] as? Double { meta.maskBlur = mb }
+        else if let mb = json["mask_blur"] as? Int { meta.maskBlur = Double(mb) }
+        if let mbo = json["mask_blur_outset"] as? Int { meta.maskBlurOutset = mbo }
+
+        // Hires Fix — DT's "first_stage_size" is a "WxH" string, matching "size" above.
+        if let hf = json["hires_fix"] as? Bool { meta.hiresFix = hf }
+        if let sizeStr = json["first_stage_size"] as? String {
+            let parts = sizeStr.split(separator: "x")
+            if parts.count == 2, let w = Int(parts[0]), let h = Int(parts[1]) {
+                meta.hiresFixWidth = w
+                meta.hiresFixHeight = h
+            }
+        }
+        if let ss = json["second_stage_strength"] as? Double { meta.hiresFixStrength = ss }
+        else if let ss = json["second_stage_strength"] as? Float { meta.hiresFixStrength = Double(ss) }
+
+        // Tiling groups — DT stores tile dims in pixels here (already ×64'd back up).
+        if let td = json["tiled_decoding"] as? Bool { meta.tiledDecoding = td }
+        if let w = json["decoding_tile_width"] as? Int   { meta.decodingTileWidth = w }
+        if let h = json["decoding_tile_height"] as? Int  { meta.decodingTileHeight = h }
+        if let o = json["decoding_tile_overlap"] as? Int { meta.decodingTileOverlap = o }
+        if let td = json["tiled_diffusion"] as? Bool { meta.tiledDiffusion = td }
+        if let w = json["diffusion_tile_width"] as? Int   { meta.diffusionTileWidth = w }
+        if let h = json["diffusion_tile_height"] as? Int  { meta.diffusionTileHeight = h }
+        if let o = json["diffusion_tile_overlap"] as? Int { meta.diffusionTileOverlap = o }
+
+        // SDXL size conditioning — "WxH" strings, matching "size" above.
+        func parseWxH(_ key: String) -> (Int, Int)? {
+            guard let str = json[key] as? String else { return nil }
+            let parts = str.split(separator: "x")
+            guard parts.count == 2, let w = Int(parts[0]), let h = Int(parts[1]) else { return nil }
+            return (w, h)
+        }
+        if let (w, h) = parseWxH("target_size") { meta.targetImageWidth = w; meta.targetImageHeight = h }
+        if let (w, h) = parseWxH("original_size") { meta.originalImageWidth = w; meta.originalImageHeight = h }
+        if let (w, h) = parseWxH("negative_original_size") {
+            meta.negativeOriginalImageWidth = w; meta.negativeOriginalImageHeight = h
+        }
+
+        // TCD-only sampling parameter.
+        if let g = json["stochastic_sampling_gamma"] as? Double { meta.stochasticSamplingGamma = g }
+
         // "tanque" — TS's namespaced extension object for fields DT has no key for.
         if let tanque = json["tanque"] as? [String: Any] {
             if let rds = tanque["resolution_dependent_shift"] as? Bool {
                 meta.resolutionDependentShift = rds
+            }
+            if let cz = tanque["cfg_zero_star"] as? Bool { meta.cfgZeroStar = cz }
+            if let po = tanque["preserve_original_after_inpaint"] as? Bool {
+                meta.preserveOriginalAfterInpaint = po
             }
         }
 
@@ -521,6 +603,44 @@ struct PNGMetadataParser {
                     }
                 }
             }
+
+            // Fallback/enrichment for PNGs written by TS before this session's
+            // schema change, when the short-key layer didn't carry these groups
+            // at all and everything lived in v2's camelCase keys only.
+            if meta.maskBlur == nil { meta.maskBlur = v2["maskBlur"] as? Double }
+            if meta.maskBlurOutset == nil { meta.maskBlurOutset = v2["maskBlurOutset"] as? Int }
+            if meta.preserveOriginalAfterInpaint == nil {
+                meta.preserveOriginalAfterInpaint = v2["preserveOriginalAfterInpaint"] as? Bool
+            }
+            if meta.hiresFix == nil, let hf = v2["hiresFix"] as? Bool, hf {
+                meta.hiresFix = true
+                meta.hiresFixWidth = v2["hiresFixWidth"] as? Int
+                meta.hiresFixHeight = v2["hiresFixHeight"] as? Int
+                meta.hiresFixStrength = v2["hiresFixStrength"] as? Double
+            }
+            if meta.tiledDecoding == nil, let td = v2["tiledDecoding"] as? Bool, td {
+                meta.tiledDecoding = true
+                meta.decodingTileWidth = v2["decodingTileWidth"] as? Int
+                meta.decodingTileHeight = v2["decodingTileHeight"] as? Int
+                meta.decodingTileOverlap = v2["decodingTileOverlap"] as? Int
+            }
+            if meta.tiledDiffusion == nil, let td = v2["tiledDiffusion"] as? Bool, td {
+                meta.tiledDiffusion = true
+                meta.diffusionTileWidth = v2["diffusionTileWidth"] as? Int
+                meta.diffusionTileHeight = v2["diffusionTileHeight"] as? Int
+                meta.diffusionTileOverlap = v2["diffusionTileOverlap"] as? Int
+            }
+            if meta.originalImageWidth == nil { meta.originalImageWidth = v2["originalImageWidth"] as? Int }
+            if meta.originalImageHeight == nil { meta.originalImageHeight = v2["originalImageHeight"] as? Int }
+            if meta.targetImageWidth == nil { meta.targetImageWidth = v2["targetImageWidth"] as? Int }
+            if meta.targetImageHeight == nil { meta.targetImageHeight = v2["targetImageHeight"] as? Int }
+            if meta.negativeOriginalImageWidth == nil {
+                meta.negativeOriginalImageWidth = v2["negativeOriginalImageWidth"] as? Int
+            }
+            if meta.negativeOriginalImageHeight == nil {
+                meta.negativeOriginalImageHeight = v2["negativeOriginalImageHeight"] as? Int
+            }
+            if meta.negativePrompt == nil { meta.negativePrompt = v2["negativePrompt"] as? String }
         }
 
         if meta.hasPrompt || meta.hasConfig {
