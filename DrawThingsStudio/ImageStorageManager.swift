@@ -214,23 +214,42 @@ enum ImageStorageManager {
 
         if let cfg = config,
            let jsonStr = buildDTMetadataJSON(config: cfg, prompt: prompt) {
-            // Mirror Draw Things: prompt followed by a human-readable parameter
-            // summary, so Finder's Get Info "Description" shows the same details.
+            // One description text in Draw Things' exact shape — prompt line,
+            // "-negative" line when present, then the parameter summary — used
+            // for BOTH the IPTC caption and the PNG Description. They cannot
+            // differ: ImageIO folds both into one XMP description on write, and
+            // the IPTC value wins on read-back (probe-verified), so distinct
+            // strings would silently lose one of them.
             let summary = buildParamSummary(config: cfg)
-            let basePrompt = prompt ?? ""
-            let promptText = basePrompt.isEmpty ? summary : basePrompt + "\n" + summary
+            var description = (prompt ?? "").trimmingCharacters(in: .whitespacesAndNewlines) + "\n"
+            let negative = cfg.negativePrompt.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !negative.isEmpty { description += "-\(negative)\n" }
+            description += summary
 
-            // EXIF UserComment — Draw Things' primary metadata location,
-            // readable by PNGMetadataParser and external tools (exiftool, etc.)
+            // EXIF UserComment — the location Draw Things' reader consumes
+            // (ImageConverter.configuration(from:)), so DT can re-import TS PNGs.
+            // On-disk this is exactly what DT's own files carry: DT writes PNG
+            // Comment, but ImageIO bridges that to Exif UserComment (eXIf + XMP,
+            // no tEXt chunks — probe-verified), so writing UserComment directly
+            // produces the identical artifact.
             // IPTC Caption-Abstract — indexed by Spotlight as kMDItemDescription,
             // displayed by Finder's Get Info as "Description".
             props[kCGImagePropertyExifDictionary as String] = [
                 kCGImagePropertyExifUserComment as String: jsonStr
             ]
             props[kCGImagePropertyIPTCDictionary as String] = [
-                kCGImagePropertyIPTCCaptionAbstract as String: promptText,
+                kCGImagePropertyIPTCCaptionAbstract as String: description,
                 kCGImagePropertyIPTCOriginatingProgram as String: "TanqueStudio"
             ]
+            // PNG dictionary — Software is the one key ImageIO round-trips from
+            // here (Comment gets bridged/dropped in favor of the explicit
+            // UserComment above; Description is superseded by the IPTC caption).
+            if (utType as String) == "public.png" {
+                props[kCGImagePropertyPNGDictionary as String] = [
+                    kCGImagePropertyPNGDescription as String: description,
+                    kCGImagePropertyPNGSoftware as String: "TanqueStudio"
+                ]
+            }
         }
 
         CGImageDestinationAddImage(dest, cgImage, props.isEmpty ? nil : props as CFDictionary)
@@ -242,116 +261,141 @@ enum ImageStorageManager {
 
     /// Human-readable parameter summary matching Draw Things' Description format and
     /// field order: Steps, Sampler, Guidance Scale, Seed, Size, Model, Strength,
-    /// Seed Mode, Shift.
+    /// Seed Mode, then the same conditional appends DT makes (Shift only when ≠ 1,
+    /// Hires Fix, Refiner, LoRAs).
     private static func buildParamSummary(config c: DrawThingsGenerationConfig) -> String {
         let samplerName = DrawThingsSampler.builtIn.first { $0.name == c.sampler }?.displayName ?? c.sampler
-        return "Steps: \(c.steps), Sampler: \(samplerName), Guidance Scale: \(c.guidanceScale), "
+        var s = "Steps: \(c.steps), Sampler: \(samplerName), Guidance Scale: \(c.guidanceScale), "
             + "Seed: \(c.seed), Size: \(c.width)x\(c.height), Model: \(c.model), "
-            + "Strength: \(c.strength), Seed Mode: \(c.seedMode), Shift: \(c.shift)"
+            + "Strength: \(c.strength), Seed Mode: \(dtSeedModeName(c.seedMode))"
+        if c.shift != 1 { s += ", Shift: \(c.shift)" }
+        if c.hiresFix, c.hiresFixWidth > 0, c.hiresFixHeight > 0 {
+            s += ", Hires Fix: true, First Stage Size: \(c.hiresFixWidth)x\(c.hiresFixHeight), "
+                + "Second Stage Strength: \(c.hiresFixStrength)"
+        }
+        if !c.refinerModel.isEmpty {
+            s += ", Refiner: \(c.refinerModel), Refiner Start: \(c.refinerStart)"
+        }
+        if let first = c.loras.first, c.loras.count == 1 {
+            s += ", LoRA Model: \(first.file), LoRA Weight: \(first.weight)"
+        } else if c.loras.count > 1 {
+            s += ", " + c.loras.enumerated()
+                .map { "LoRA \($0 + 1) Model: \($1.file), LoRA \($0 + 1) Weight: \($1.weight)" }
+                .joined(separator: ", ")
+        }
+        return s
     }
 
     // MARK: — Private: metadata JSON
 
-    /// Builds a Draw Things-compatible metadata JSON string.
-    /// Uses DT's short-key top-level format ("c", "uc", "scale", etc.)
-    /// plus a "v2" sub-object with camelCase full config.
-    /// PNGMetadataParser already reads both layers from Draw Things images.
+    /// Builds a Draw Things-compatible metadata JSON string using DT's short-key
+    /// top-level format, verified field-by-field against DT's own writer
+    /// (draw-things-community ImageConverter.imageData(from:), line 1671).
+    ///
+    /// Core keys are always written; conditional keys follow DT's own gating so a
+    /// TS PNG is indistinguishable in shape from a DT one. DT's "v2" blob is
+    /// deliberately NOT written — DT's reader never consumes it. TS-only fields
+    /// ride in a namespaced "tanque" object DT ignores.
     private static func buildDTMetadataJSON(config: DrawThingsGenerationConfig,
                                             prompt: String?) -> String? {
-        let p = prompt ?? ""
-        var top: [String: Any] = [:]
+        var json: [String: Any] = [:]
 
-        // Short-key top-level (Draw Things native format)
-        if !p.isEmpty                       { top["c"]        = p }
-        if !config.negativePrompt.isEmpty   { top["uc"]       = config.negativePrompt }
-        top["model"]     = config.model
-        top["sampler"]   = config.sampler
-        top["size"]      = "\(config.width)x\(config.height)"
-        top["steps"]     = config.steps
-        top["scale"]     = config.guidanceScale   // DT uses "scale" for CFG
-        if config.seed >= 0 { top["seed"] = config.seed }
-        top["seed_mode"] = config.seedMode
-        top["strength"]  = config.strength
-        top["shift"]     = config.shift
-        if !config.loras.isEmpty {
-            top["lora"] = config.loras.map { ["file": $0.file, "weight": $0.weight] }
-        }
+        // Core keys — DT writes all of these unconditionally, including empty prompts.
+        json["c"]  = (prompt ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        json["uc"] = config.negativePrompt.trimmingCharacters(in: .whitespacesAndNewlines)
+        json["steps"]   = config.steps
+        json["sampler"] = config.sampler
+        json["scale"]   = config.guidanceScale   // DT uses "scale" for CFG
+        // DT's reader does UInt32(seed) — a negative here would trap it, so a
+        // stray unresolved seed is omitted rather than written. Unreachable in
+        // practice: every render path resolves the seed before export.
+        if config.seed >= 0 { json["seed"] = config.seed }
+        json["size"]      = "\(config.width)x\(config.height)"
+        json["model"]     = config.model
+        json["strength"]  = config.strength
+        json["seed_mode"] = dtSeedModeName(config.seedMode)
 
-        // v2 sub-object — camelCase keys, full config.
-        // v2.sampler and v2.seedMode are INTEGER ordinals matching DT's SamplerType and SeedMode
-        // enums — DT reads these as integers when loading clipboard configs.
-        // Top-level "sampler" and "seed_mode" remain strings (DT's own short-key format).
-        var v2: [String: Any] = [
-            "model":         config.model,
-            "steps":         config.steps,
-            "guidanceScale": config.guidanceScale,
-            "width":         config.width,
-            "height":        config.height,
-            "shift":         config.shift,
-            "strength":      config.strength,
-        ]
-        // sampler — integer ordinal from DrawThingsSampler.builtIn (order invariant in DrawThingsProvider)
-        if let idx = DrawThingsSampler.builtIn.firstIndex(where: { $0.name == config.sampler }) {
-            v2["sampler"] = idx
-        }
-        // seedMode — integer ordinal matching DT SeedMode enum 0–3
-        if let idx = Self.seedModeOrdinals.firstIndex(of: config.seedMode) {
-            v2["seedMode"] = idx
-        }
-        if config.seed >= 0 { v2["seed"] = config.seed }
-        if config.numFrames > 0 { v2["numFrames"] = config.numFrames }
-        if config.fps > 0       { v2["fps"]       = config.fps }
-        // Same key names and units DT uses in its own config JSON — hiresFix
-        // dims in raw pixels (verified against community_models_configs.json,
-        // e.g. 640x384 first pass for a 1280x768 render), NOT the flatbuffer
-        // schema's ÷64 hiresFixStartWidth/Height.
-        v2["maskBlur"]       = config.maskBlur
-        v2["maskBlurOutset"] = config.maskBlurOutset
-        v2["preserveOriginalAfterInpaint"] = config.preserveOriginalAfterInpaint
+        // Conditional keys — DT's own gating, same thresholds.
+        if config.shift != 1        { json["shift"] = config.shift }
+        if config.maskBlur > 0      { json["mask_blur"] = config.maskBlur }
+        if config.maskBlurOutset != 0 { json["mask_blur_outset"] = config.maskBlurOutset }
         if config.hiresFix {
-            v2["hiresFix"]         = true
-            v2["hiresFixWidth"]    = config.hiresFixWidth
-            v2["hiresFixHeight"]   = config.hiresFixHeight
-            v2["hiresFixStrength"] = config.hiresFixStrength
+            json["hires_fix"] = true
+            if config.hiresFixWidth > 0, config.hiresFixHeight > 0 {
+                json["first_stage_size"] = "\(config.hiresFixWidth)x\(config.hiresFixHeight)"
+            }
+            json["second_stage_strength"] = config.hiresFixStrength
         }
-        // Tiling — same only-when-on rule, and in pixels, matching DT's own
-        // metadata (ImageConverter.swift multiplies the ÷64 wire value back up).
-        if config.tiledDecoding {
-            v2["tiledDecoding"]       = true
-            v2["decodingTileWidth"]   = config.decodingTileWidth
-            v2["decodingTileHeight"]  = config.decodingTileHeight
-            v2["decodingTileOverlap"] = config.decodingTileOverlap
-        }
-        if config.tiledDiffusion {
-            v2["tiledDiffusion"]       = true
-            v2["diffusionTileWidth"]   = config.diffusionTileWidth
-            v2["diffusionTileHeight"]  = config.diffusionTileHeight
-            v2["diffusionTileOverlap"] = config.diffusionTileOverlap
-        }
-        // SDXL size conditioning — written only when actually set, following the
-        // only-when-on rule above. Zero means the client substituted width/height,
-        // which the record already states, so writing zeros would add no information.
-        if config.originalImageWidth > 0  { v2["originalImageWidth"]  = config.originalImageWidth }
-        if config.originalImageHeight > 0 { v2["originalImageHeight"] = config.originalImageHeight }
-        if config.targetImageWidth > 0    { v2["targetImageWidth"]    = config.targetImageWidth }
-        if config.targetImageHeight > 0   { v2["targetImageHeight"]   = config.targetImageHeight }
-        if config.negativeOriginalImageWidth > 0 {
-            v2["negativeOriginalImageWidth"] = config.negativeOriginalImageWidth
-        }
-        if config.negativeOriginalImageHeight > 0 {
-            v2["negativeOriginalImageHeight"] = config.negativeOriginalImageHeight
-        }
-        if !config.negativePrompt.isEmpty {
-            v2["negativePrompt"] = config.negativePrompt
+        if !config.refinerModel.isEmpty {
+            json["refiner"]       = config.refinerModel
+            json["refiner_start"] = config.refinerStart
         }
         if !config.loras.isEmpty {
-            v2["loras"] = config.loras.map { ["file": $0.file, "weight": $0.weight] }
+            // DT's key for a LoRA's filename is "model", not "file". "mode" is a
+            // TS extension riding in the same entry — DT reads only model/weight
+            // and ignores the rest, and PNGMetadataParser reads it back.
+            json["lora"] = config.loras.map { l -> [String: Any] in
+                var entry: [String: Any] = ["model": l.file, "weight": l.weight]
+                if l.mode != "all" { entry["mode"] = l.mode }
+                return entry
+            }
         }
-        top["v2"] = v2
+        // Tiling — DT writes these only when enabled AND the canvas exceeds the
+        // tile in some dimension (it doesn't tile otherwise). Both sides in pixels.
+        if config.tiledDecoding,
+           config.width > config.decodingTileWidth || config.height > config.decodingTileHeight {
+            json["tiled_decoding"]        = true
+            json["decoding_tile_width"]   = config.decodingTileWidth
+            json["decoding_tile_height"]  = config.decodingTileHeight
+            json["decoding_tile_overlap"] = config.decodingTileOverlap
+        }
+        if config.tiledDiffusion,
+           config.width > config.diffusionTileWidth || config.height > config.diffusionTileHeight {
+            json["tiled_diffusion"]        = true
+            json["diffusion_tile_width"]   = config.diffusionTileWidth
+            json["diffusion_tile_height"]  = config.diffusionTileHeight
+            json["diffusion_tile_overlap"] = config.diffusionTileOverlap
+        }
+        // DT gates this on the TCD samplers — the only ones that use gamma.
+        if config.sampler == "TCD" || config.sampler == "TCD Trailing" {
+            json["stochastic_sampling_gamma"] = config.stochasticSamplingGamma
+        }
+        // DT gates these on video model versions; value-present is TS's proxy.
+        if config.numFrames > 0 { json["num_frames"] = config.numFrames }
+        if config.fps > 0       { json["fps"]        = config.fps }
+        // SDXL size conditioning — "WxH" strings like DT, written only when set.
+        // Zero means the client substituted width/height, which the record
+        // already states, so writing zeros would add no information.
+        if config.targetImageWidth > 0, config.targetImageHeight > 0 {
+            json["target_size"] = "\(config.targetImageWidth)x\(config.targetImageHeight)"
+        }
+        if config.originalImageWidth > 0, config.originalImageHeight > 0 {
+            json["original_size"] = "\(config.originalImageWidth)x\(config.originalImageHeight)"
+        }
+        if config.negativeOriginalImageWidth > 0, config.negativeOriginalImageHeight > 0 {
+            json["negative_original_size"] =
+                "\(config.negativeOriginalImageWidth)x\(config.negativeOriginalImageHeight)"
+        }
 
-        guard let data = try? JSONSerialization.data(withJSONObject: top, options: [.sortedKeys]),
+        // TS-only provenance with no DT key, namespaced so it can never collide
+        // with a future DT field. Written only when it differs from the default.
+        var tanque: [String: Any] = [:]
+        if !config.preserveOriginalAfterInpaint { tanque["preserve_original_after_inpaint"] = false }
+        if let v = config.cfgZeroStar             { tanque["cfg_zero_star"] = v }
+        if let v = config.resolutionDependentShift { tanque["resolution_dependent_shift"] = v }
+        if !tanque.isEmpty { json["tanque"] = tanque }
+
+        guard let data = try? JSONSerialization.data(withJSONObject: json, options: [.sortedKeys]),
               let str = String(data: data, encoding: .utf8) else { return nil }
         return str
+    }
+
+    /// Maps TS's seed-mode strings to DT's exact spelling. DT's reader
+    /// (SeedMode.init(from:)) is an exact string match that silently falls back
+    /// to Scale Alike, and DT spells it "NVIDIA GPU Compatible" — TS's internal
+    /// "Nvidia GPU Compatible" would lose the setting on re-import.
+    private static func dtSeedModeName(_ seedMode: String) -> String {
+        seedMode == "Nvidia GPU Compatible" ? "NVIDIA GPU Compatible" : seedMode
     }
 
     // MARK: — Config JSON decode
@@ -461,17 +505,6 @@ enum ImageStorageManager {
               let str = String(data: data, encoding: .utf8) else { return nil }
         return str
     }
-
-    // MARK: — Constants
-
-    // Same ordering as GenerateLeftPanel.seedModes and DTConfigImporter.seedModes;
-    // mirrors DT's SeedMode enum (0=legacy, 1=torchCPUCompatible, 2=scaleAlike, 3=nvidiaGPUCompatible).
-    private static let seedModeOrdinals = [
-        "Legacy",
-        "Torch CPU Compatible",
-        "Scale Alike",
-        "Nvidia GPU Compatible",
-    ]
 
     // MARK: — Errors
 

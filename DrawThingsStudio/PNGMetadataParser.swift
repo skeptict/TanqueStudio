@@ -471,10 +471,19 @@ struct PNGMetadataParser {
             }
         }
 
-        // Refiner model/start (HTTP short keys and long-form)
-        if let rm = json["refiner_model"] as? String, !rm.isEmpty { meta.refinerModel = rm }
+        // Refiner: "refiner" is what DT's own writer emits (ImageConverter line
+        // 1822); "refiner_model" is the HTTP-API spelling kept as a fallback.
+        if let rm = (json["refiner"] as? String) ?? (json["refiner_model"] as? String),
+           !rm.isEmpty { meta.refinerModel = rm }
         if let rs = json["refiner_start"] as? Double { meta.refinerStart = rs }
         else if let rs = json["refiner_start"] as? Float { meta.refinerStart = Double(rs) }
+
+        // "tanque" — TS's namespaced extension object for fields DT has no key for.
+        if let tanque = json["tanque"] as? [String: Any] {
+            if let rds = tanque["resolution_dependent_shift"] as? Bool {
+                meta.resolutionDependentShift = rds
+            }
+        }
 
         // Store raw top-level for config export (mask_blur, profile.duration, etc.)
         meta.rawTopLevel = json

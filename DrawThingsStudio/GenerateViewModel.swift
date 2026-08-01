@@ -21,6 +21,12 @@ final class GenerateViewModel {
     var generatedImage: NSImage?
     var currentMetadata: PNGMetadata?
     var currentImageSource: ImageSource = .generated
+    /// The exact config the most recent render was made with, paired with the
+    /// image it produced — per-image derived seed included, which the live
+    /// `config` doesn't carry after a batch. The manual Save button uses this so
+    /// the PNG's metadata matches the image; the identity pairing keeps it from
+    /// ever attaching to a canvas image loaded from the gallery or an import.
+    private var lastResolvedRender: (image: NSImage, config: DrawThingsGenerationConfig)?
     var showImmersive: Bool = false
 
     // MARK: — Generation state
@@ -476,6 +482,7 @@ final class GenerateViewModel {
                         } else {
                             self.generatedImage = image     // canvas shows frame 0
                             self.currentMetadata = iterCfg.asPNGMetadata(prompt: capturedPrompt)
+                            self.lastResolvedRender = (image, iterCfg)
                             self.currentImageSource = .generated
                             self.selectedRightTab = .metadata
                             self.seriesFrames = frames
@@ -498,6 +505,7 @@ final class GenerateViewModel {
                     self.clearSeriesSelection()
                     self.generatedImage = image
                     self.currentMetadata = iterCfg.asPNGMetadata(prompt: capturedPrompt)
+                    self.lastResolvedRender = (image, iterCfg)
                     self.currentImageSource = .generated
                     self.selectedRightTab = .metadata
                     if AppSettings.shared.autoSaveGenerated {
@@ -862,6 +870,7 @@ final class GenerateViewModel {
                 self.clearSeriesSelection()
                 self.generatedImage = image
                 self.currentMetadata = resolved.asPNGMetadata(prompt: capturedPrompt)
+                self.lastResolvedRender = (image, resolved)
                 self.currentImageSource = .generated
                 self.selectedRightTab = .metadata
                 if AppSettings.shared.autoSaveGenerated {
@@ -948,7 +957,12 @@ final class GenerateViewModel {
 
     func saveCurrentImage(in context: ModelContext, source: ImageSource = .generated, resolvedConfig: DrawThingsGenerationConfig? = nil) {
         guard let image = generatedImage else { return }
-        let cfgToSave = resolvedConfig ?? config
+        // For a displayed render, prefer the config that actually produced it —
+        // after a batch, the live `config` holds the base seed, not the derived
+        // per-image seed of the image on the canvas. Identity check: only when
+        // the canvas still shows the exact image that render produced.
+        let resolvedForCanvas = lastResolvedRender.flatMap { $0.image === image ? $0.config : nil }
+        let cfgToSave = resolvedConfig ?? resolvedForCanvas ?? config
         do {
             try ImageStorageManager.createAndInsert(
                 image: image,
