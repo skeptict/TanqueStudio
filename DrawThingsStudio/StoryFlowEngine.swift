@@ -653,6 +653,13 @@ final class StoryFlowEngine {
     /// inside every `"…"` span of the accumulator, divide by words-per-second,
     /// multiply by 25 fps, round **up** to a multiple of 8, then add one. Only
     /// quoted spans count — unquoted stage direction is not spoken.
+    ///
+    /// Capped at 257 — Draw Things' own generation UI does not accept more frames
+    /// than that. Unlike Generate's free-form numFrames field and its JSON-paste
+    /// path (both deliberately uncapped, so a power user can hand-author past DT's
+    /// UI limit), nothing about a word count derived from spoken dialogue implies a
+    /// render that large is ever wanted — a long monologue in a StoryFlow prompt
+    /// would otherwise silently request an enormous, unbounded render.
     static func spokenFrameCount(in text: String, wordsPerSecond: Double) -> Int {
         guard wordsPerSecond > 0,
               let regex = try? NSRegularExpression(pattern: "\"([^\"]+)\"") else { return 1 }
@@ -667,7 +674,8 @@ final class StoryFlowEngine {
             wordCount += span.isEmpty ? 1 : span.split(whereSeparator: \.isWhitespace).count
         }
         let rawFrames = (Double(wordCount) / wordsPerSecond) * 25.0
-        return Int((rawFrames / 8).rounded(.up)) * 8 + 1
+        let frames = Int((rawFrames / 8).rounded(.up)) * 8 + 1
+        return min(frames, 257)
     }
 
     /// Suspends the run until the approval sheet hands back an edited prompt.

@@ -683,12 +683,16 @@ final class GenerateViewModel {
 
     /// Assemble the series into an H.264 .mp4 via a save panel. fps comes from the
     /// series config; when unset, per-family defaults apply (LTX 24, Wan 16, else 16).
-    func exportSeriesVideo(_ frames: [TSImage]) {
+    func exportSeriesMovie(_ frames: [TSImage]) {
         guard !isExportingSeries, frames.count > 1 else { return }
         let sorted = frames.sorted { ($0.batchIndex ?? 0) < ($1.batchIndex ?? 0) }
         let slug = Self.seriesSlug(for: sorted)
         let fps = Self.seriesFPS(for: sorted)
         let urls = sorted.map { URL(fileURLWithPath: $0.filePath) }
+        // The first frame's own configJSON is already DT-compatible metadata JSON
+        // (ImageStorageManager.buildDTMetadataJSON) — carry it straight into the movie
+        // rather than re-deriving it, the same way a still's config travels with it.
+        let comment = sorted.first?.configJSON
 
         let panel = NSSavePanel()
         panel.allowedContentTypes = [.mpeg4Movie]
@@ -697,16 +701,17 @@ final class GenerateViewModel {
         panel.begin { [weak self] response in
             guard response == .OK, let output = panel.url else { return }
             Task { @MainActor [weak self] in
-                self?.runVideoExport(frameURLs: urls, fps: fps, to: output)
+                self?.runVideoExport(frameURLs: urls, fps: fps, comment: comment, to: output)
             }
         }
     }
 
-    private func runVideoExport(frameURLs: [URL], fps: Int32, to output: URL) {
+    private func runVideoExport(frameURLs: [URL], fps: Int32, comment: String?, to output: URL) {
         isExportingSeries = true
         seriesExportTask = Task {
             do {
-                try await VideoAssembler.assemble(frameURLs: frameURLs, fps: fps, to: output)
+                try await VideoAssembler.assemble(frameURLs: frameURLs, fps: fps,
+                                                  metadataComment: comment, to: output)
                 self.transientWarning = "Video exported — \(frameURLs.count) frames at \(fps) fps."
             } catch is CancellationError {
                 self.transientWarning = "Video export cancelled."

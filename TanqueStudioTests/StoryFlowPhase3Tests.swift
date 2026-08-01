@@ -90,6 +90,16 @@ final class StoryFlowPhase3Tests: XCTestCase {
         XCTAssertEqual(StoryFlowEngine.spokenFrameCount(in: "\"a b c\"", wordsPerSecond: 0), 1)
     }
 
+    /// A long monologue implies an enormous word count with nothing else stopping
+    /// it — unlike Generate's free-form numFrames field, nothing here signals an
+    /// unbounded result was ever wanted. 257 is where Draw Things' own UI stops.
+    func testALongMonologueIsCappedAtDrawThingsOwnFrameLimit() {
+        let manyWords = Array(repeating: "word", count: 100).joined(separator: " ")
+        let uncapped = Int((((100.0 / 2.4) * 25.0) / 8).rounded(.up)) * 8 + 1
+        XCTAssertGreaterThan(uncapped, 257, "test fixture must exceed the cap to prove it bites")
+        XCTAssertEqual(StoryFlowEngine.spokenFrameCount(in: "\"\(manyWords)\"", wordsPerSecond: 2.4), 257)
+    }
+
     // MARK: - Dimension snapping
 
     /// **Floor, never round.** This is the whole point: 700 is nearer to 704 than to

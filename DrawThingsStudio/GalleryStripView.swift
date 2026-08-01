@@ -129,7 +129,7 @@ struct GalleryStripView: View {
             }
             .contextMenu {
                 Button("Export Frames…") { vm.exportSeriesFrames(frames) }
-                Button("Export Video…")  { vm.exportSeriesVideo(frames) }
+                Button("Export Movie…")  { vm.exportSeriesMovie(frames) }
                 Divider()
                 Button("Reveal in Finder") {
                     NSWorkspace.shared.selectFile(
@@ -138,7 +138,7 @@ struct GalleryStripView: View {
                     )
                 }
                 Divider()
-                Button("Delete Series", role: .destructive) {
+                Button("Delete Series (\(frames.count) frames)", role: .destructive) {
                     seriesToDelete = frames
                 }
             }

@@ -226,10 +226,10 @@ struct GenerateRightPanel: View {
                              help: "Write every frame as numbered JPEGs into a folder.") {
                     vm.exportSeriesFrames(vm.seriesFrames)
                 }
-                ActionButton(icon: "film", title: "Export Video…",
+                ActionButton(icon: "film", title: "Export Movie…",
                              enabled: !vm.isExportingSeries,
                              help: "Assemble the frames into an H.264 .mp4 at the config's FPS.") {
-                    vm.exportSeriesVideo(vm.seriesFrames)
+                    vm.exportSeriesMovie(vm.seriesFrames)
                 }
                 if vm.isExportingSeries {
                     ActionButton(icon: "xmark.circle", title: "Cancel Export", enabled: true) {

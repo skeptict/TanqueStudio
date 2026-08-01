@@ -22,7 +22,7 @@ Click **Generate** to render; the same button cancels a run in progress.
 
 - **Metadata** — generation parameters of the selected image: prompt, model, LoRAs, dimensions, seed, and more. Works for Tanque-generated images and for imported PNGs with embedded metadata (Draw Things, A1111, ComfyUI).
 - **Assist** — LLM operations (enhance a prompt, make it photorealistic, etc.). Operations are markdown files; add your own to the LLM Operations folder (Settings). Requires Ollama, LM Studio, or Jan.
-- **Actions** — round-trips: **Send All** / **Send Prompt** / **Send Config** apply the selected image's settings to the left panel; **Send to img2img** uses the visible crop when zoomed; **Add to Moodboard**; **Copy Config for DT** / **Paste Config from DT** exchange JSON configs with Draw Things; video series get **Export Frames…** / **Export Video…**.
+- **Actions** — round-trips: **Send All** / **Send Prompt** / **Send Config** apply the selected image's settings to the left panel; **Send to img2img** uses the visible crop when zoomed; **Add to Moodboard**; **Copy Config for DT** / **Paste Config from DT** exchange JSON configs with Draw Things; video series get **Export Frames…** / **Export Movie…**.
 
 ## Gallery strip
 

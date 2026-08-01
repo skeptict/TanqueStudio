@@ -24,7 +24,7 @@ A series appears as one cell with a **▶ N** badge (N = frame count). Selecting
 Right-click the series cell (or use the Actions tab with the series selected):
 
 - **Export Frames…** — writes every frame as numbered JPEGs (`…_f0001.jpg`) into a folder you pick.
-- **Export Video…** — assembles an H.264 `.mp4`. Frame rate comes from the config's FPS; when unset, a per-family default is used (LTX 24 fps, Wan 16 fps, otherwise 16).
+- **Export Movie…** — assembles an H.264 `.mp4`. Frame rate comes from the config's FPS; when unset, a per-family default is used (LTX 24 fps, Wan 16 fps, otherwise 16).
 - **Delete Series** — removes all frames after one confirmation.
 
 ## Memory note

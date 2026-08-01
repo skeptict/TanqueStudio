@@ -268,7 +268,7 @@ private struct GenerateCenterPanel: View {
 
             // Frame scrubber — a video series is selected (view mode only)
             if vm.canvasMode == .view && vm.isSeriesActive && !vm.isGenerating {
-                seriesScrubber
+                SeriesScrubberView(vm: vm, style: .classic)
             }
 
             // Canvas mode toolbar — always visible so color draw is accessible from blank canvas
@@ -321,47 +321,6 @@ private struct GenerateCenterPanel: View {
                     .onChange(of: geo.size) { _, newSize in canvasSize = newSize }
             }
         )
-    }
-
-    // Bottom overlay: frame slider + counter + step buttons for a selected video series.
-    // Scrubbing loads ordinary gallery frames by batchIndex, so zoom/pan/paint on an
-    // individual frame work unchanged.
-    private var seriesScrubber: some View {
-        VStack {
-            Spacer()
-            HStack(spacing: 10) {
-                Button { vm.stepSeriesFrame(-1) } label: {
-                    Image(systemName: "backward.frame.fill").font(.caption)
-                }
-                .buttonStyle(.plain)
-                .disabled(vm.seriesIndex <= 0)
-                .help("Previous frame")
-
-                Slider(
-                    value: Binding(
-                        get: { Double(vm.seriesIndex) },
-                        set: { vm.loadSeriesFrame(at: Int($0.rounded())) }
-                    ),
-                    in: 0...Double(max(1, vm.seriesFrames.count - 1)),
-                    step: 1
-                )
-                .frame(width: 220)
-
-                Button { vm.stepSeriesFrame(1) } label: {
-                    Image(systemName: "forward.frame.fill").font(.caption)
-                }
-                .buttonStyle(.plain)
-                .disabled(vm.seriesIndex >= vm.seriesFrames.count - 1)
-                .help("Next frame")
-
-                Text("\(vm.seriesIndex + 1) / \(vm.seriesFrames.count)")
-                    .font(.caption.monospacedDigit())
-                    .foregroundStyle(TanqueDS.Color.textSecondary)
-            }
-            .padding(10)
-            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 10))
-            .padding(.bottom, 16)
-        }
     }
 
     // Top-right toggle between View, Paint, Crop, and Color Draw modes.

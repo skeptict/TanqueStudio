@@ -498,16 +498,47 @@ final class DTProjectBrowserViewModel {
             }
         }
 
+        let comment = entries[clip.representativeRowid].map(movieMetadataComment(for:))
+
         let output = folder.appendingPathComponent("\(baseName)_\(clip.representativeRowid).mp4")
         do {
             try await VideoAssembler.assemble(frameURLs: frameURLs,
                                               fps: Int32(clip.fps.rounded()),
                                               audio: audio,
+                                              metadataComment: comment,
                                               to: output)
         } catch {
             return (false, false, skipped, "Could not assemble the movie: \(error.localizedDescription)")
         }
         return (true, audio == nil, skipped, nil)
+    }
+
+    /// DT-compatible metadata JSON for a clip's representative frame, embedded as the
+    /// exported movie's metadata comment — the same idea as a still PNG's embedded
+    /// config (ImageStorageManager.buildDTMetadataJSON), so a movie's generation
+    /// settings travel with the file too. Mirrors DTProjectBrowserView.configJSON(for:),
+    /// the "Copy Config" helper — kept separate because that one is a View method and
+    /// this needs to be reachable from writeMovie's `nonisolated static` context.
+    private nonisolated static func movieMetadataComment(for entry: DTGenerationEntry) -> String {
+        var dict: [String: Any] = [
+            "prompt": entry.prompt,
+            "negativePrompt": entry.negativePrompt,
+            "model": entry.model,
+            "width": entry.width,
+            "height": entry.height,
+            "steps": entry.steps,
+            "guidanceScale": entry.guidanceScale,
+            "seed": entry.seed,
+            "sampler": entry.sampler,
+            "seedMode": entry.seedMode
+        ]
+        if entry.strength > 0 { dict["strength"] = entry.strength }
+        if abs(entry.shift - 1.0) > 0.001 { dict["shift"] = entry.shift }
+        if !entry.loras.isEmpty {
+            dict["loras"] = entry.loras.map { ["file": $0.file, "weight": $0.weight] }
+        }
+        let data = try? JSONSerialization.data(withJSONObject: dict, options: .prettyPrinted)
+        return data.flatMap { String(data: $0, encoding: .utf8) } ?? "{}"
     }
 
     /// Every slot this export covers, in grid order.

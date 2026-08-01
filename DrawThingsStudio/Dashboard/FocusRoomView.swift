@@ -89,7 +89,7 @@ struct FocusRoomView: View {
 
             // Frame scrubber — a video series is selected (view mode only).
             if vm.canvasMode == .view && vm.isSeriesActive && !vm.isGenerating {
-                seriesScrubber
+                SeriesScrubberView(vm: vm, style: .dashboard)
             }
 
             // Mode switcher + per-mode control bars sit above everything else.
@@ -253,50 +253,6 @@ struct FocusRoomView: View {
         .disabled(unavailable)
         .opacity(unavailable ? 0.35 : 1)
         .help(help)
-    }
-
-    // Bottom overlay: frame slider + counter + step buttons for a selected
-    // video series. Mirrors GenerateView's seriesScrubber — this fork never
-    // had a scrubber at all, so a selected series just showed frame 0 forever.
-    private var seriesScrubber: some View {
-        VStack {
-            Spacer()
-            HStack(spacing: 10) {
-                Button { vm.stepSeriesFrame(-1) } label: {
-                    Image(systemName: "backward.frame.fill").font(.caption)
-                }
-                .buttonStyle(.plain)
-                .disabled(vm.seriesIndex <= 0)
-                .help("Previous frame")
-
-                Slider(
-                    value: Binding(
-                        get: { Double(vm.seriesIndex) },
-                        set: { vm.loadSeriesFrame(at: Int($0.rounded())) }
-                    ),
-                    in: 0...Double(max(1, vm.seriesFrames.count - 1)),
-                    step: 1
-                )
-                .frame(width: 220)
-                .tint(DashboardDS.brass)
-
-                Button { vm.stepSeriesFrame(1) } label: {
-                    Image(systemName: "forward.frame.fill").font(.caption)
-                }
-                .buttonStyle(.plain)
-                .disabled(vm.seriesIndex >= vm.seriesFrames.count - 1)
-                .help("Next frame")
-
-                Text("\(vm.seriesIndex + 1) / \(vm.seriesFrames.count)")
-                    .font(TanqueDS.Font.mono(11).monospacedDigit())
-                    .foregroundStyle(DashboardDS.muted2)
-            }
-            .foregroundStyle(DashboardDS.muted2)
-            .padding(.horizontal, 14)
-            .padding(.vertical, 10)
-            .dashboardSurface(cornerRadius: 10)
-            .padding(.bottom, 16)
-        }
     }
 
     private var paintControls: some View {
@@ -665,13 +621,13 @@ struct FocusRoomView: View {
             .help("Video series \u{2014} \(frames.count) frames. Click to open the scrubber; right-click to export or delete.")
             .contextMenu {
                 Button("Export Frames\u{2026}") { vm.exportSeriesFrames(frames) }
-                Button("Export Video\u{2026}") { vm.exportSeriesVideo(frames) }
+                Button("Export Movie\u{2026}") { vm.exportSeriesMovie(frames) }
                 Divider()
                 Button("Reveal in Finder") {
                     NSWorkspace.shared.selectFile(frames[0].filePath, inFileViewerRootedAtPath: "")
                 }
                 Divider()
-                Button("Delete Series", role: .destructive) { seriesToDelete = frames }
+                Button("Delete Series (\(frames.count) frames)", role: .destructive) { seriesToDelete = frames }
             }
         }
     }

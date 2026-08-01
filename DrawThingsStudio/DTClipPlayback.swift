@@ -310,7 +310,7 @@ struct DTSeriesExportSheet: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             VStack(alignment: .leading, spacing: 4) {
-                Text("Export Video Series")
+                Text("Export Movie Series")
                     .font(.headline)
                     .foregroundStyle(DashboardDS.text)
                 Text("\(frameCount) frames at \(Int(fps)) fps")

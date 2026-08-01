@@ -1342,8 +1342,8 @@ struct ActionsSection: View {
                 actionButton("Export Frames\u{2026}", enabled: !vm.isExportingSeries) {
                     vm.exportSeriesFrames(vm.seriesFrames)
                 }
-                actionButton("Export Video\u{2026}", enabled: !vm.isExportingSeries) {
-                    vm.exportSeriesVideo(vm.seriesFrames)
+                actionButton("Export Movie\u{2026}", enabled: !vm.isExportingSeries) {
+                    vm.exportSeriesMovie(vm.seriesFrames)
                 }
                 if vm.isExportingSeries {
                     actionButton("Cancel Export", enabled: true, action: vm.cancelSeriesExport)
