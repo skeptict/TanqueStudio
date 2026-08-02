@@ -2,6 +2,16 @@
 
 A native macOS companion app for [Draw Things](https://drawthings.ai), providing a focused AI image generation workspace, Draw Things project browsing, StoryFlow/Story Studio authoring, batch render queues, and LLM-assisted prompt enhancement.
 
+## Screenshots
+
+| Dashboard | Focus Room |
+|---|---|
+| ![Dashboard](Docs/screenshots/dashboard.png) | ![Focus Room with a video series loaded](Docs/screenshots/focus-room.png) |
+
+| DT Project Browser | Render Queue |
+|---|---|
+| ![DT Project Browser, grouped video clips](Docs/screenshots/dt-project-browser.png) | ![Render Queue, a matrix expanded to jobs](Docs/screenshots/render-queue.png) |
+
 ## Features
 
 ### Dashboard + Focus Rooms
@@ -273,6 +283,7 @@ Story Studio adds `StoryProject` / `StoryCharacter` / `StorySetting` / `StoryCha
 
 ### Completed
 
+- [x] **README screenshots** — Dashboard, Focus Room, DT Project Browser, and Render Queue, captured against a real project and a real video series so the shots show grouped clips and a populated job list rather than empty states. Unblocked by granting Screen Recording permission to Claude, the app hosting this project's coding sessions — the demo GIF is the one piece still open, see Backlog
 - [x] **StoryFlow 260723 Phase 3 — native execution** — `concat`, `wildcard` and `sweep` (stateful loop/once/shuffle/random trackers), `size`, `frames`, `negPrompt`, `adaptSize`, `moodboardWeights`, `moodboardRemove`, `inpaintTools`, `framesDialog`, and a human-in-the-loop `approve` sheet all run in-app with no DT script. Adopts the `concat` accumulator semantics, which retires the export re-emit hack
 - [x] **StoryFlow 260723 Phase 2** — the 34-entry instruction schema table, a generic step card that renders any entry, and the exit criterion: a Tanque Studio-authored project run in Draw Things' own pipeline
 - [x] **DT Project Browser — video clips** — frames collapse into one cell per clip, hover to play, scrub and hear audio in the detail panel, export cover frame / all frames / `.mp4` **with the clip's soundtrack muxed in as AAC**, Delete Series
@@ -347,7 +358,7 @@ Nothing currently scoped. See Backlog for open items awaiting a decision or a de
 
 ### Backlog
 
-- [ ] **README screenshots + demo GIF** — blocked on granting Screen Recording permission (System Settings → Privacy & Security → Screen Recording) to the terminal app hosting the coding session; `screencapture` fails outright without it. Once granted: Dashboard, a Focus Room, DT Project Browser, and at least one Labs screen (Render Queue is the newest) as stills, plus a short GIF of one real workflow end to end
+- [ ] **README demo GIF** — a short GIF of one real workflow end to end. The four stills (Dashboard, Focus Room, DT Project Browser, Render Queue) are done — Screen Recording permission was granted to Claude 2026-08-01, `screencapture` works fine now
 - [ ] **Story Studio configs, step 4** — "Send to new Story Studio project" from a render: start a story from an image you liked. The only genuinely new UI of the four-step configs item, and the only one marked optional; steps 1–3 are done (see Completed)
 - [ ] StoryFlow 260723 Phase 4 — LLM-backed `enhance` / `interrogate` executed natively, routed through Tanque Studio's own LLM stack rather than Draw Things' answer model (`interrogate` additionally needs a multimodal model and image attachment). Deferred until the rest is farther along
 - [ ] StoryFlow 260723 Phase 5 — Vision-framework canvas ops (`faceZoom`, `removeBkgd`, foreground/background/body masks, depth extraction, pose extraction). No gRPC path exists for any of these; reimplementing them on Apple's Vision framework is its own project
