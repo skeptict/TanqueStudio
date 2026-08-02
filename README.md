@@ -354,14 +354,19 @@ Story Studio adds `StoryProject` / `StoryCharacter` / `StorySetting` / `StoryCha
 
 ### Upcoming
 
-Nothing currently scoped. See Backlog for open items awaiting a decision or a dependency.
+In priority order — all three scoped 2026-08-01, ready to build without further research:
+
+1. [ ] **StoryFlow: native `enhance` execution** — the Phase 3 maturity gate that deferred all of Phase 4 is now satisfied. `enhance` reuses the exact `LLMService` call `StorySceneLLMAssist.enhance(field:text:operation:apply:)` already makes for Story Studio scene fields: one engine case assigning the LLM's answer to `currentPrompt`, plus adding `"enhance"` to `StoryFlowRunPreflight.nativelyExecuted` so preflight stops warning about it. `interrogate` stays deferred — it needs a multimodal call `LLMService` doesn't have (the image itself is already sitting in `currentCanvasImage`, just no API path to send it)
+2. [ ] **StoryFlow: Vision-framework `removeBkgd` / `maskFG`** — via `VNGenerateForegroundInstanceMaskRequest` on `currentCanvasImage`, following the engine's existing `.crop` case pattern exactly (`StoryFlowEngine.swift:359-371`). The rest of Phase 5 stays deferred: `maskBody` has no single Vision API, depth ops carry real fidelity risk against DT's own model, `poseExtract` needs a joint-naming mapping DT doesn't document, and `askZoom`/`maskAsk` turned out to be Phase-4-shaped LLM work mislabeled as Vision work
+3. [ ] **StoryFlow polish: image-variable drag-drop import** — turns out there's currently no way to attach an image to a `.image`-type StoryFlow variable from the UI at all, not just "no drag-drop." Ports the exact drag-drop + file-picker pattern already shipped for Story Studio characters (`StoryStudioEditors.swift:405-479`) into `StoryFlowVariablesPanel.swift`'s `.image` case — `imageData`/`imageFileName` are already the fields the engine reads, only the editor UI is missing
+
+**Dropped, not deferred**: promptInstruction's "replace mode" toggle. StoryFlow already has a standalone **Clear Prompt** instruction (`WorkflowStepType.clearPrompt`), and Story Studio's own compiler already uses exactly this composition — a Clear Prompt step immediately before a scene's prompt — to reset rather than append. A toggle would just be a second way to do what two existing instructions already do. One real caveat carried forward: Clear Prompt runs correctly in TanqueStudio's own engine but is silently dropped on export to DT's actual pipeline format (`StoryFlowProjectCodec.swift:350` — DT only clears its accumulator as a side effect of an empty-prompt render), so a TS-authored "replace" sequence won't round-trip its clearing behavior back into DT's own scripting tool. Pre-existing limitation, unaffected by this decision either way.
 
 ### Backlog
 
 - [ ] **README demo GIF** — a short GIF of one real workflow end to end. The four stills (Dashboard, Focus Room, DT Project Browser, Render Queue) are done — Screen Recording permission was granted to Claude 2026-08-01, `screencapture` works fine now
-- [ ] StoryFlow 260723 Phase 4 — LLM-backed `enhance` / `interrogate` executed natively, routed through Tanque Studio's own LLM stack rather than Draw Things' answer model (`interrogate` additionally needs a multimodal model and image attachment). Deferred until the rest is farther along
-- [ ] StoryFlow 260723 Phase 5 — Vision-framework canvas ops (`faceZoom`, `removeBkgd`, foreground/background/body masks, depth extraction, pose extraction). No gRPC path exists for any of these; reimplementing them on Apple's Vision framework is its own project
-- [ ] StoryFlow polish — promptInstruction replace-mode toggle, image-variable drag-drop import, end-to-end UX testing
+- [ ] StoryFlow: native `interrogate` execution — needs `LLMService` extended with a multimodal call (Ollama's `images` field or an OpenAI-compatible `image_url` content part) plus making `interrogate` authorable (currently deliberately excluded from the instruction schema). Separable second piece after `enhance` ships
+- [ ] StoryFlow: remaining Vision-framework ops — `maskBody` (no single Vision API covers per-body-part segmentation), `depthExtract`/`depthCanvas`/`depthToCanvas` (fidelity risk vs. DT's own depth model), `poseExtract` (Vision's joint names need mapping to DT's undocumented pose JSON shape), `askZoom`/`maskAsk` (actually gated on the same multimodal-LLM gap as `interrogate`, not Vision-framework work)
 - [ ] Patterns Studio integration — WKWebView panel or PNG export feeding img2img
 - [ ] Gallery collections / organization
 - [ ] Soft-edged inpaint brush (mask transport is binary today)
