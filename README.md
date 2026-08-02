@@ -355,7 +355,6 @@ Nothing currently scoped. See Backlog for open items awaiting a decision or a de
 - [ ] Patterns Studio integration — WKWebView panel or PNG export feeding img2img
 - [ ] Gallery collections / organization
 - [ ] Soft-edged inpaint brush (mask transport is binary today)
-- [ ] Intel Mac launch failure (root cause unknown, low priority)
 
 ---
 
