@@ -754,7 +754,7 @@ struct DTProjectBrowserView: View {
                     // there wrapped "Copy Prompt"/"Copy Config" into a vertical
                     // stack of single letters at this panel's width.
                     HStack {
-                        UseAsStoryStudioBaseMenu(configJSON: configJSON(for: entry))
+                        UseAsStoryStudioBaseMenu(configJSON: configJSON(for: entry), coverImage: entry.thumbnail)
                             .menuStyle(.borderlessButton)
                         Spacer()
                     }

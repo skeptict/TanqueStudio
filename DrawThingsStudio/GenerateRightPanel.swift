@@ -189,7 +189,7 @@ struct GenerateRightPanel: View {
             }
 
             if let json = DTConfigExporter.encodeDTClipboard(config: vm.config) {
-                UseAsStoryStudioBaseMenu(configJSON: json)
+                UseAsStoryStudioBaseMenu(configJSON: json, coverImage: vm.generatedImage)
                     .menuStyle(.borderlessButton)
             }
 

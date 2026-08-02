@@ -1307,7 +1307,7 @@ struct ActionsSection: View {
             actionButton("Copy Image", enabled: vm.generatedImage != nil, action: copyImage)
             actionButton("Copy Config for DT", enabled: true, action: copyConfigToDT)
             if let json = DTConfigExporter.encodeDTClipboard(config: vm.config) {
-                UseAsStoryStudioBaseMenu(configJSON: json)
+                UseAsStoryStudioBaseMenu(configJSON: json, coverImage: vm.generatedImage)
                     .menuStyle(.borderlessButton)
             }
             actionButton("Paste Config from DT", enabled: true, action: pasteConfigFromDT)

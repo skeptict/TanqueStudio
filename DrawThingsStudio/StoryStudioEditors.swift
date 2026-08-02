@@ -178,30 +178,59 @@ struct StoryProjectInfoEditor: View {
 /// StoryFlow `#config` variable), this is the same one mechanism `[[StoryUseSavedConfigMenu]]`
 /// already established for Project Info — copy JSON in, snapshot not reference.
 ///
-/// Deliberately does NOT offer "New Project…" — item 4 ("Send to new Story
-/// Studio project from a render") is a distinct, larger feature that seeds a
-/// new project from an image, not just a config string; conflating the two
-/// here would preempt that design.
+/// Step 4 ("send to new Story Studio project from a render") lives here too,
+/// as an optional `coverImage` param: when the caller has an actual rendered
+/// image behind the config (not just a config string), "New Project…" seeds a
+/// brand-new project's cover image from it in addition to its base config —
+/// the thing steps 1-3 never touch, since `StoryProject.coverImageData` had no
+/// writer anywhere until now. `coverImage` is nil at the one call site with no
+/// image behind it (StoryFlow's `#config` variable editor), which keeps that
+/// site exactly as it was.
 struct UseAsStoryStudioBaseMenu: View {
     let configJSON: String
+    var coverImage: NSImage? = nil
 
+    @Environment(\.modelContext) private var modelContext
     @Query(sort: \StoryProject.name) private var projects: [StoryProject]
+    @State private var showingNewProjectSheet = false
 
     var body: some View {
         Menu {
-            if projects.isEmpty {
-                Text("No Story Studio projects yet")
-            } else {
+            if let coverImage {
+                Button {
+                    showingNewProjectSheet = true
+                } label: {
+                    Label("New Project…", systemImage: "plus.circle")
+                }
+            }
+            if !projects.isEmpty {
+                if coverImage != nil { Divider() }
                 ForEach(projects) { project in
                     Button(project.name) {
                         project.baseConfigJSON = configJSON
                         project.modifiedAt = Date()
                     }
                 }
+            } else if coverImage == nil {
+                Text("No Story Studio projects yet")
             }
         } label: {
             Label("Use as Story Studio Base…", systemImage: "book.closed")
         }
+        .sheet(isPresented: $showingNewProjectSheet) {
+            ProjectNameSheet(title: "New Story Studio Project", initialName: "") { name in
+                createProject(named: name)
+            }
+        }
+    }
+
+    private func createProject(named name: String) {
+        let project = StoryProject(
+            name: name,
+            baseConfigJSON: configJSON,
+            coverImageData: coverImage.flatMap(pngData(from:))
+        )
+        modelContext.insert(project)
     }
 }
 

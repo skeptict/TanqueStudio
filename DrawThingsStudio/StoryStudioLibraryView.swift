@@ -296,7 +296,10 @@ struct StoryStudioLibraryView: View {
 
 // MARK: - Project Name Sheet
 
-private struct ProjectNameSheet: View {
+/// Also reused by `UseAsStoryStudioBaseMenu`'s "New Project…" (Story Studio
+/// configs step 4) — a name is the one thing step 4 needs that steps 1-3
+/// didn't, since it's creating a project rather than picking an existing one.
+struct ProjectNameSheet: View {
     let title: String
     let onSave: (String) -> Void
 
