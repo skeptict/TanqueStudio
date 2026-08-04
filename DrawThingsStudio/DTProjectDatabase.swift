@@ -35,6 +35,28 @@ struct DTLoRAEntry: Hashable {
     let weight: Float
 }
 
+/// One edit applied to a legacy prompt's edit-history chain. See
+/// `DTTextHistoryEntry` and `DTProjectDatabase.resolveLegacyPrompt`.
+struct DTTextModification: Hashable {
+    enum TextType: Hashable { case positive, negative }
+    let type: TextType
+    /// Character offset and length within the running positive/negative text.
+    let location: Int
+    let length: Int
+    let text: String
+}
+
+/// A row of Draw Things' older prompt edit-history subsystem (`texthistorynode`),
+/// which pre-`text_prompt` databases rely on exclusively. A lineage can have
+/// several of these, each recording a starting point plus the edits since it.
+struct DTTextHistoryEntry: Hashable {
+    let lineage: Int64
+    let startEdits: Int64
+    let startPositiveText: String
+    let startNegativeText: String
+    let modifications: [DTTextModification]
+}
+
 struct DTGenerationEntry: Identifiable, Hashable {
     let id: Int64           // rowid
     let lineage: Int64      // __pk0
@@ -153,6 +175,23 @@ private struct FBReader {
     // wants is the grouping Draw Things already performs internally.
     static let VT_CLIP_ID: Int = 204
     static let VT_INDEX_IN_A_CLIP: Int = 206
+    // `text_prompt`/`negative_text_prompt` above are a late addition to the schema;
+    // pre-2026 databases predate them entirely and carry the real prompt only via
+    // this older edit-history indirection (see DTTextHistoryEntry).
+    static let VT_TEXT_EDITS: Int = 28
+    static let VT_TEXT_LINEAGE: Int = 30
+
+    // vtable slots over `table TextHistoryNode` in text_history.fbs. `lineage` and
+    // `logical_time` are the table's primary keys (already available as __pk0/__pk1
+    // via SQL) but still occupy slots 4/6, so the first field we read starts at 8.
+    static let VT_TH_START_EDITS: Int = 8
+    static let VT_TH_START_POSITIVE_TEXT: Int = 10
+    static let VT_TH_START_NEGATIVE_TEXT: Int = 12
+    static let VT_TH_MODIFICATIONS: Int = 14
+
+    // vtable slot over `table TextLineageNode` in text_lineage.fbs. `lineage` is the
+    // primary key (slot 4, read via SQL __pk0); `point_to` is the only other field.
+    static let VT_TL_POINT_TO: Int = 6
 
     func rootTable() -> (tablePos: Int, vtablePos: Int, vtableSize: Int)? {
         guard data.count >= 8 else { return nil }
@@ -258,6 +297,59 @@ private struct FBReader {
             if !file.isEmpty { loras.append(DTLoRAEntry(file: file, weight: weight)) }
         }
         return loras
+    }
+
+    /// `table TextModification { type: TextType; range: TextRange; text: string; }`
+    /// `range` is a `struct` (`TextRange { location: int; length: int; }`), which
+    /// FlatBuffers inlines directly into the table rather than through an offset
+    /// indirection — unlike LoRA's `file` string, it's read straight off `elemPos`.
+    func readModificationsVector(tablePos: Int, fieldRelOffset: Int) -> [DTTextModification] {
+        let refPos = tablePos + fieldRelOffset
+        guard refPos + 4 <= data.count else { return [] }
+        let relOffset = Int(readUInt32(at: refPos))
+        guard relOffset > 0 else { return [] }
+        let vectorPos = refPos + relOffset
+        guard vectorPos + 4 <= data.count else { return [] }
+        let count = Int(readUInt32(at: vectorPos))
+        guard count > 0, count < 10_000 else { return [] }
+
+        var mods: [DTTextModification] = []
+        for i in 0..<count {
+            let elemRefPos = vectorPos + 4 + (i * 4)
+            guard elemRefPos + 4 <= data.count else { break }
+            let elemOffset = Int(readUInt32(at: elemRefPos))
+            guard elemOffset > 0 else { continue }
+            let elemPos = elemRefPos + elemOffset
+            guard elemPos + 4 <= data.count else { break }
+
+            let vtRelOff = readInt32(at: elemPos)
+            let vtPos = elemPos - Int(vtRelOff)
+            guard vtPos >= 0, vtPos + 4 <= data.count else { break }
+            let vtSize = Int(readUInt16(at: vtPos))
+
+            var typeByte: UInt8 = 0
+            if 6 <= vtSize {
+                let foff = Int(readUInt16(at: vtPos + 4))
+                if foff > 0 { typeByte = readUInt8(at: elemPos + foff) }
+            }
+            var location = 0
+            var length = 0
+            if 8 <= vtSize {
+                let foff = Int(readUInt16(at: vtPos + 6))
+                if foff > 0 {
+                    location = Int(readInt32(at: elemPos + foff))
+                    length = Int(readInt32(at: elemPos + foff + 4))
+                }
+            }
+            var text = ""
+            if 10 <= vtSize {
+                let foff = Int(readUInt16(at: vtPos + 8))
+                if foff > 0, let str = readString(tablePos: elemPos, fieldRelOffset: foff) { text = str }
+            }
+            let type: DTTextModification.TextType = typeByte == 1 ? .negative : .positive
+            mods.append(DTTextModification(type: type, location: location, length: length, text: text))
+        }
+        return mods
     }
 }
 
@@ -379,6 +471,120 @@ final class DTProjectDatabase: @unchecked Sendable {
                                    audioId: rawAudio > 0 ? rawAudio : nil)
         }
         return clips
+    }
+
+    // MARK: - Legacy prompt fallback
+
+    /// Databases written before Draw Things added `TensorHistoryNode.text_prompt`
+    /// carry no such rows; querying a missing table is an error, not an empty
+    /// result, so probe first — same pattern as `hasClipTable()`.
+    private func hasTable(named name: String) -> Bool {
+        guard let db = db else { return false }
+        var stmt: OpaquePointer?
+        defer { sqlite3_finalize(stmt) }
+        let sql = "SELECT 1 FROM sqlite_master WHERE type='table' AND name=? LIMIT 1"
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return false }
+        sqlite3_bind_text(stmt, 1, name, -1, unsafeBitCast(-1, to: sqlite3_destructor_type.self))
+        return sqlite3_step(stmt) == SQLITE_ROW
+    }
+
+    /// Every text-history node, keyed by lineage. Loaded once per database and
+    /// only consulted when a row's inline `text_prompt`/`negative_text_prompt`
+    /// are both empty — see `resolveLegacyPrompt`.
+    private func fetchTextHistory() -> [Int64: [DTTextHistoryEntry]] {
+        guard let db = db, hasTable(named: "texthistorynode") else { return [:] }
+        var stmt: OpaquePointer?
+        defer { sqlite3_finalize(stmt) }
+        guard sqlite3_prepare_v2(db, "SELECT __pk0, p FROM texthistorynode", -1, &stmt, nil) == SQLITE_OK else { return [:] }
+
+        var byLineage: [Int64: [DTTextHistoryEntry]] = [:]
+        while sqlite3_step(stmt) == SQLITE_ROW {
+            let lineage = sqlite3_column_int64(stmt, 0)
+            guard let blobPtr = sqlite3_column_blob(stmt, 1) else { continue }
+            let blobSize = Int(sqlite3_column_bytes(stmt, 1))
+            guard blobSize > 0 else { continue }
+            let fb = FBReader(data: Data(bytes: blobPtr, count: blobSize))
+            guard let (tablePos, vtablePos, vtableSize) = fb.rootTable() else { continue }
+            func foff(_ slot: Int) -> Int? {
+                fb.fieldOffset(vtablePos: vtablePos, vtableSize: vtableSize, slot: slot)
+            }
+            let startEdits = foff(FBReader.VT_TH_START_EDITS).map { fb.readInt64(at: tablePos + $0) } ?? 0
+            let startPositive = foff(FBReader.VT_TH_START_POSITIVE_TEXT)
+                .flatMap { fb.readString(tablePos: tablePos, fieldRelOffset: $0) } ?? ""
+            let startNegative = foff(FBReader.VT_TH_START_NEGATIVE_TEXT)
+                .flatMap { fb.readString(tablePos: tablePos, fieldRelOffset: $0) } ?? ""
+            let modifications = foff(FBReader.VT_TH_MODIFICATIONS)
+                .map { fb.readModificationsVector(tablePos: tablePos, fieldRelOffset: $0) } ?? []
+            byLineage[lineage, default: []].append(DTTextHistoryEntry(
+                lineage: lineage, startEdits: startEdits,
+                startPositiveText: startPositive, startNegativeText: startNegative,
+                modifications: modifications))
+        }
+        return byLineage
+    }
+
+    /// Lineage → the lineage it forks from. Handles prompt-history branches (e.g.
+    /// after an undo-then-diverge), where a lineage's edit chain actually lives
+    /// under a different lineage id.
+    private func fetchTextLineagePointers() -> [Int64: Int64] {
+        guard let db = db, hasTable(named: "textlineagenode") else { return [:] }
+        var stmt: OpaquePointer?
+        defer { sqlite3_finalize(stmt) }
+        guard sqlite3_prepare_v2(db, "SELECT __pk0, p FROM textlineagenode", -1, &stmt, nil) == SQLITE_OK else { return [:] }
+
+        var pointers: [Int64: Int64] = [:]
+        while sqlite3_step(stmt) == SQLITE_ROW {
+            let lineage = sqlite3_column_int64(stmt, 0)
+            guard let blobPtr = sqlite3_column_blob(stmt, 1) else { continue }
+            let blobSize = Int(sqlite3_column_bytes(stmt, 1))
+            guard blobSize > 0 else { continue }
+            let fb = FBReader(data: Data(bytes: blobPtr, count: blobSize))
+            guard let (tablePos, vtablePos, vtableSize) = fb.rootTable() else { continue }
+            guard let foff = fb.fieldOffset(vtablePos: vtablePos, vtableSize: vtableSize, slot: FBReader.VT_TL_POINT_TO)
+            else { continue }
+            pointers[lineage] = fb.readInt64(at: tablePos + foff)
+        }
+        return pointers
+    }
+
+    /// Loaded lazily so modern databases (the common case) never pay for it: both
+    /// tables are absent there and `hasTable` short-circuits to an empty dictionary
+    /// on first touch.
+    private lazy var legacyTextHistory: [Int64: [DTTextHistoryEntry]] = fetchTextHistory()
+    private lazy var legacyTextLineagePointers: [Int64: Int64] = fetchTextLineagePointers()
+
+    /// Ported from dtm's `TextHistory::get_edit` (`text_history.rs`): resolve the
+    /// prompt text at a given `(lineage, edits)` point by finding the closest
+    /// recorded starting point at or before it, then replaying modifications up
+    /// to that edit count.
+    private static func resolveLegacyPrompt(
+        lineage: Int64, edits: Int64,
+        history: [Int64: [DTTextHistoryEntry]], pointers: [Int64: Int64]
+    ) -> (positive: String, negative: String) {
+        let resolvedLineage = pointers[lineage] ?? lineage
+        guard let candidates = history[resolvedLineage],
+              let node = candidates.filter({ $0.startEdits <= edits }).max(by: { $0.startEdits < $1.startEdits })
+        else { return ("", "") }
+
+        var positive = Array(node.startPositiveText)
+        var negative = Array(node.startNegativeText)
+        let replayCount = min(Int(edits - node.startEdits), node.modifications.count)
+        guard replayCount > 0 else { return (String(positive), String(negative)) }
+
+        for mod in node.modifications.prefix(replayCount) {
+            let chars = Array(mod.text)
+            switch mod.type {
+            case .positive:
+                let loc = min(max(mod.location, 0), positive.count)
+                let len = min(max(mod.length, 0), positive.count - loc)
+                positive.replaceSubrange(loc..<(loc + len), with: chars)
+            case .negative:
+                let loc = min(max(mod.location, 0), negative.count)
+                let len = min(max(mod.length, 0), negative.count - loc)
+                negative.replaceSubrange(loc..<(loc + len), with: chars)
+            }
+        }
+        return (String(positive), String(negative))
     }
 
     // MARK: - Grouping
@@ -538,9 +744,26 @@ final class DTProjectDatabase: @unchecked Sendable {
         let clipId: Int64? = rawClipId >= 0 ? rawClipId : nil
         let indexInClip = foff(FBReader.VT_INDEX_IN_A_CLIP).map { Int(fb.readInt32(at: tablePos + $0)) } ?? 0
         let model      = foff(FBReader.VT_MODEL).flatMap          { fb.readString(tablePos: tablePos, fieldRelOffset: $0) } ?? ""
-        let textPrompt = foff(FBReader.VT_TEXT_PROMPT).flatMap    { fb.readString(tablePos: tablePos, fieldRelOffset: $0) } ?? ""
-        let negPrompt  = foff(FBReader.VT_NEG_TEXT_PROMPT).flatMap { fb.readString(tablePos: tablePos, fieldRelOffset: $0) } ?? ""
+        var textPrompt = foff(FBReader.VT_TEXT_PROMPT).flatMap    { fb.readString(tablePos: tablePos, fieldRelOffset: $0) } ?? ""
+        var negPrompt  = foff(FBReader.VT_NEG_TEXT_PROMPT).flatMap { fb.readString(tablePos: tablePos, fieldRelOffset: $0) } ?? ""
         let loras      = foff(FBReader.VT_LORAS).map { fb.readLoRAVector(tablePos: tablePos, fieldRelOffset: $0) } ?? []
+
+        // Pre-2026 databases predate `text_prompt` entirely (the slot doesn't exist
+        // in their vtable, not just an empty string) — fall back to replaying the
+        // older edit-history chain. Same guard dtm uses: only when both are empty.
+        if textPrompt.isEmpty, negPrompt.isEmpty,
+           let editsOffset = foff(FBReader.VT_TEXT_EDITS),
+           let lineageOffset = foff(FBReader.VT_TEXT_LINEAGE) {
+            let edits = fb.readInt64(at: tablePos + editsOffset)
+            let legacyLineage = fb.readInt64(at: tablePos + lineageOffset)
+            if edits >= 0, legacyLineage >= 0 {
+                let resolved = Self.resolveLegacyPrompt(lineage: legacyLineage, edits: edits,
+                                                         history: legacyTextHistory,
+                                                         pointers: legacyTextLineagePointers)
+                textPrompt = resolved.positive
+                negPrompt = resolved.negative
+            }
+        }
 
         let wallClock = Self.date(fromWallClock: wallClockInt)
 
