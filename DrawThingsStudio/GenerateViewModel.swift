@@ -996,7 +996,21 @@ final class GenerateViewModel {
 
     /// Applies a DTCustomConfig to the current generation config.
     /// width/height are intentionally excluded — set those via aspect ratio controls.
+    ///
+    /// Loading a config is a REFRESH, not a merge: the working config resets to
+    /// defaults first, so fields the loaded config doesn't carry return to their
+    /// defaults instead of silently inheriting the previous config's values. A
+    /// leftover Krea 2 LoRA riding a FLUX.2 klein request made Draw Things return
+    /// zero images (2026-08-04). StoryFlow's config pipeline merges deliberately
+    /// and does not go through here. Canvas size and (absent a replacement) the
+    /// model survive — a refresh shouldn't leave the user unable to render.
     func applyDTConfig(_ dtConfig: DTCustomConfig) {
+        config = DrawThingsGenerationConfig(
+            width: config.width, height: config.height, model: config.model)
+        if dtConfig.seed == nil {
+            randomizeSeed = true
+            config.seed = Int(UInt32.random(in: 0...UInt32.max))
+        }
         if let v = dtConfig.model,                  !v.isEmpty  { config.model                   = v }
         if let v = dtConfig.steps                               { config.steps                   = v }
         if let v = dtConfig.guidanceScale                       { config.guidanceScale           = v }
@@ -1046,16 +1060,28 @@ final class GenerateViewModel {
         }
     }
 
-    /// Applies all non-nil fields from a PNGMetadata snapshot to the current config.
+    /// Applies a PNGMetadata snapshot to the current config as a REFRESH.
     /// Used by the Assist tab "Send Config" action and Generate's own drag-import.
     ///
     /// Covers every field `DrawThingsGenerationConfig` and `PNGMetadata` both model —
     /// widened from the original 10 (model/sampler/steps/guidanceScale/seed/seedMode/
     /// width/height/shift/strength) per the "Generate drops most of an imported
-    /// image's settings" roadmap item. Each group only touches `config` when the
-    /// source actually carried it, so a file with no hires-fix data leaves whatever
-    /// the user already had in place untouched — this merges in, it doesn't reset.
+    /// image's settings" roadmap item.
+    ///
+    /// This used to merge — each group only touched `config` when the source
+    /// carried it. That let a Krea 2 LoRA from a previously loaded config ride
+    /// along on a FLUX.2 klein render, which Draw Things fails with zero images
+    /// (2026-08-04). Now the config resets to defaults first, so the applied
+    /// result is the image's config and nothing else. Canvas size and (absent a
+    /// replacement) the model survive, mirroring `applyDTConfig`. StoryFlow's
+    /// deliberate merge pipeline does not go through here.
     func applyMetadataToConfig(_ meta: PNGMetadata) {
+        config = DrawThingsGenerationConfig(
+            width: config.width, height: config.height, model: config.model)
+        if meta.seed == nil {
+            randomizeSeed = true
+            config.seed = Int(UInt32.random(in: 0...UInt32.max))
+        }
         if let model   = meta.model,    !model.isEmpty   { config.model   = model }
         if let sampler = meta.sampler,  !sampler.isEmpty { config.sampler = sampler }
         if let steps   = meta.steps                      { config.steps   = steps }

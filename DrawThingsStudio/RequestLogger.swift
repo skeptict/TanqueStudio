@@ -54,8 +54,12 @@ final class RequestLogger {
 
     // MARK: - gRPC
 
-    func logGRPCRequest(config: DrawThingsConfiguration, prompt: String, negativePrompt: String) {
+    func logGRPCRequest(host: String, port: Int, config: DrawThingsConfiguration, prompt: String, negativePrompt: String) {
         var entry = "\n── [\(timestamp())] gRPC → generateImage ──\n"
+        // Which server this went to. Two identical requests can succeed on one
+        // host and fail on another (models installed differ per machine) — without
+        // this line the log can't distinguish them.
+        entry += "server:                   \(host):\(port)\n"
         entry += "prompt:                   \(prompt.prefix(200))\n"
         if !negativePrompt.isEmpty {
             entry += "negativePrompt:           \(negativePrompt.prefix(200))\n"

@@ -233,7 +233,7 @@ final class DrawThingsGRPCClient: DrawThingsProvider {
 
         // Convert our config to DrawThingsConfiguration
         let grpcConfig = convertConfig(config)
-        RequestLogger.shared.logGRPCRequest(config: grpcConfig, prompt: prompt, negativePrompt: config.negativePrompt)
+        RequestLogger.shared.logGRPCRequest(host: host, port: port, config: grpcConfig, prompt: prompt, negativePrompt: config.negativePrompt)
 
         let timeout = Self.resolveGenerateTimeout(
             for: config,
@@ -704,7 +704,11 @@ final class DrawThingsGRPCClient: DrawThingsProvider {
             hiresFixHeight: Int32(config.hiresFixHeight),
             hiresFixStrength: Float(config.hiresFixStrength),
             fps: config.fps > 0 ? Int32(config.fps) : 5,
-            numFrames: config.numFrames > 0 ? Int32(config.numFrames) : 14,
+            // Same rule as the timeout calculation above: 14 is the *video* default,
+            // so a still-image model must get 1. This previously sent 14 for every
+            // model, asking Draw Things for a 14-frame video whenever Frames was
+            // left at 0 — which is what the UI shows by default.
+            numFrames: config.numFrames > 0 ? Int32(config.numFrames) : (config.isVideoModel ? 14 : 1),
             refinerModel: config.refinerModel.isEmpty ? nil : config.refinerModel,
             refinerStart: Float(config.refinerStart),
             seedMode: mapSeedMode(config.seedMode)
