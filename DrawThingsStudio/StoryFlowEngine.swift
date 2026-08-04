@@ -1,5 +1,7 @@
 import Foundation
 import AppKit
+import Vision
+import CoreImage
 
 // MARK: - StoryFlowEngine
 
@@ -383,6 +385,24 @@ final class StoryFlowEngine {
             currentPrompt += resolved
             log("  ✓ concat → \(currentPrompt.prefix(80))\(currentPrompt.count > 80 ? "…" : "")")
 
+        case .passthrough where step.parameters["itemType"] == "enhance":
+            // Mirrors the reference JS: `concat = answer` — the system prompt is
+            // the step's authored string, the accumulated prompt is the user
+            // message, and the answer replaces the accumulator outright (not
+            // appended, unlike concat). Same LLMService call StorySceneLLMAssist
+            // already makes for Story Studio field enhance.
+            let systemPrompt = resolveTokens(Self.passthroughString(step.parameters["rawValueJSON"] ?? ""), variables: variables)
+            let raw = try await LLMService.runOperation(
+                systemPrompt: systemPrompt,
+                input: currentPrompt,
+                model: AppSettings.shared.llmModelName,
+                baseURL: AppSettings.shared.llmEffectiveBaseURL,
+                provider: AppSettings.shared.llmProvider,
+                apiKey: AppSettings.shared.llmAPIKey
+            )
+            currentPrompt = StorySceneLLMAssistant.stripThink(raw).trimmingCharacters(in: .whitespacesAndNewlines)
+            log("  ✓ enhance → \(currentPrompt.prefix(80))\(currentPrompt.count > 80 ? "…" : "")")
+
         case .passthrough where step.parameters["itemType"] == "wildcard":
             executeWildcard(step: step, at: currentIndex)
 
@@ -404,6 +424,17 @@ final class StoryFlowEngine {
             }
             log("  ✓ size → \(currentConfig.width)×\(currentConfig.height)")
             reframeCanvasToConfig("size")
+
+        case .passthrough where step.parameters["itemType"] == "hrf":
+            // `Object.assign(configuration, value)` — a plain config merge, no
+            // canvas update (260802's dedicated Hires Fix node behaves exactly
+            // like `config`/`configInline`, just with its own four-field form).
+            guard let obj = Self.passthroughObject(step.parameters["rawValueJSON"] ?? "") else {
+                log("  ⚠ hrf: missing or invalid parameters — skipped")
+                return
+            }
+            Self.mergeDict(obj, into: &currentConfig)
+            log("  ✓ hrf → enabled \(currentConfig.hiresFix), \(currentConfig.hiresFixWidth)×\(currentConfig.hiresFixHeight) @ \(currentConfig.hiresFixStrength)")
 
         case .passthrough where step.parameters["itemType"] == "frames":
             guard let n = Self.passthroughNumber(step.parameters["rawValueJSON"] ?? "") else {
@@ -458,6 +489,23 @@ final class StoryFlowEngine {
             Self.mergeDict(obj, into: &currentConfig)
             log("  ✓ inpaintTools → strength \(currentConfig.strength), blur \(currentConfig.maskBlur), "
               + "outset \(currentConfig.maskBlurOutset), preserve \(currentConfig.preserveOriginalAfterInpaint)")
+
+        case .passthrough where step.parameters["itemType"] == "removeBkgd":
+            executeForegroundMask(makeTransparent: true, label: "removeBkgd")
+
+        case .passthrough where step.parameters["itemType"] == "sizex2":
+            executeSizeX2()
+
+        case .passthrough where step.parameters["itemType"] == "matte":
+            guard let obj = Self.passthroughObject(step.parameters["rawValueJSON"] ?? ""),
+                  let color = obj["color"] as? String else {
+                log("  ⚠ matte: missing or invalid color — skipped")
+                return
+            }
+            executeMatte(color: color)
+
+        case .passthrough where step.parameters["itemType"] == "maskFG":
+            executeForegroundMask(makeTransparent: false, label: "maskFG")
 
         case .passthrough where step.parameters["itemType"] == "xlMagic":
             // `xlMagic(value.original, value.target, value.negative)` — three slider
@@ -1098,6 +1146,147 @@ final class StoryFlowEngine {
 
         guard let cropped = cgImage.cropping(to: cropRect) else { return nil }
         return NSImage(cgImage: cropped, size: NSSize(width: cropW, height: cropH))
+    }
+
+    // MARK: — Vision foreground mask (removeBkgd / maskFG)
+
+    /// Runs `currentCanvasImage` through Vision's subject-lifting request and
+    /// assigns the result back to `currentCanvasImage`, mirroring the `.crop`
+    /// case's shape: guard the image exists, run the transform, assign back, log.
+    ///
+    /// `makeTransparent: true` (removeBkgd) composites the original image with
+    /// the background dropped to alpha 0. `false` (maskFG) writes the raw
+    /// grayscale foreground mask itself — the engine has no separate selection-
+    /// mask layer, so "masking the foreground" means putting the mask on canvas.
+    private func executeForegroundMask(makeTransparent: Bool, label: String) {
+        guard let image = currentCanvasImage else {
+            log("  ⚠ \(label): no current canvas image")
+            return
+        }
+        guard let result = Self.foregroundMaskedImage(image, makeTransparent: makeTransparent) else {
+            log("  ⚠ \(label): no foreground subject detected")
+            return
+        }
+        currentCanvasImage = result
+        log("  ✓ \(label) → \(Int(result.size.width))×\(Int(result.size.height))")
+    }
+
+    private static func foregroundMaskedImage(_ image: NSImage, makeTransparent: Bool) -> NSImage? {
+        var proposedRect = NSRect(origin: .zero, size: image.size)
+        guard let cgImage = image.cgImage(forProposedRect: &proposedRect, context: nil, hints: nil) else { return nil }
+
+        let request = VNGenerateForegroundInstanceMaskRequest()
+        let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
+        do {
+            try handler.perform([request])
+            guard let result = request.results?.first, !result.allInstances.isEmpty else { return nil }
+
+            let pixelBuffer: CVPixelBuffer
+            if makeTransparent {
+                pixelBuffer = try result.generateMaskedImage(
+                    ofInstances: result.allInstances, from: handler, croppedToInstancesExtent: false)
+            } else {
+                pixelBuffer = try result.generateScaledMaskForImage(
+                    forInstances: result.allInstances, from: handler)
+            }
+            return nsImage(from: pixelBuffer)
+        } catch {
+            return nil
+        }
+    }
+
+    private static func nsImage(from pixelBuffer: CVPixelBuffer) -> NSImage? {
+        let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
+        guard let cgImage = CIContext().createCGImage(ciImage, from: ciImage.extent) else { return nil }
+        return NSImage(cgImage: cgImage, size: NSSize(width: cgImage.width, height: cgImage.height))
+    }
+
+    // MARK: — 260802: sizex2 / matte
+
+    /// `sizex2()` — save the visible canvas, double the config's width/height,
+    /// then reload the saved image centered on the now-larger canvas. Matches
+    /// the reference's own centered-reframe convention (see `trimToCanvas`)
+    /// rather than resampling: the small image sits at its native resolution
+    /// with room around it, which is the point — tiling or hires-fix upscaling
+    /// needs the original pixels untouched, not stretched.
+    private func executeSizeX2() {
+        guard let image = currentCanvasImage else {
+            log("  ⚠ sizex2: no current canvas image")
+            return
+        }
+        currentConfig.width *= 2
+        currentConfig.height *= 2
+        let target = CGSize(width: currentConfig.width, height: currentConfig.height)
+        guard let padded = Self.centeredOnLargerCanvas(image, size: target) else {
+            log("  ⚠ sizex2: could not build the larger canvas")
+            return
+        }
+        currentCanvasImage = padded
+        log("  ✓ sizex2 → \(Int(target.width))×\(Int(target.height))")
+    }
+
+    private static func centeredOnLargerCanvas(_ image: NSImage, size: CGSize) -> NSImage? {
+        guard size.width > 0, size.height > 0 else { return nil }
+        return pixelExactCanvas(size: size) {
+            let origin = NSPoint(x: (size.width - image.size.width) / 2,
+                                  y: (size.height - image.size.height) / 2)
+            image.draw(at: origin, from: .zero, operation: .copy, fraction: 1)
+        }
+    }
+
+    /// `NSImage(size:).lockFocus()` captures at the screen's Retina backing scale
+    /// (2x on this hardware) while the image's reported `size` stays logical —
+    /// doubling a 1024pt canvas via `sizex2` produced a 4096px PNG, not 2048px.
+    /// Building an explicit-pixel `NSBitmapImageRep` sidesteps backing scale
+    /// entirely: the rep's pixel dimensions are exactly `size`, regardless of
+    /// which display is driving the compositor.
+    private static func pixelExactCanvas(size: CGSize, draw: () -> Void) -> NSImage? {
+        guard size.width > 0, size.height > 0,
+              let bitmap = NSBitmapImageRep(bitmapDataPlanes: nil,
+                                             pixelsWide: Int(size.width),
+                                             pixelsHigh: Int(size.height),
+                                             bitsPerSample: 8,
+                                             samplesPerPixel: 4,
+                                             hasAlpha: true,
+                                             isPlanar: false,
+                                             colorSpaceName: .deviceRGB,
+                                             bytesPerRow: 0,
+                                             bitsPerPixel: 0),
+              let context = NSGraphicsContext(bitmapImageRep: bitmap) else { return nil }
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = context
+        draw()
+        NSGraphicsContext.restoreGraphicsState()
+        let image = NSImage(size: NSSize(width: size.width, height: size.height))
+        image.addRepresentation(bitmap)
+        return image
+    }
+
+    /// `colorfill()` — a flat-color foundation layer sized to the current canvas,
+    /// used as a backdrop before positioning layers with Move Scale.
+    private func executeMatte(color: String) {
+        let size = CGSize(width: currentConfig.width, height: currentConfig.height)
+        guard let filled = Self.solidColorImage(named: color, size: size) else {
+            log("  ⚠ matte: unknown color '\(color)' — skipped")
+            return
+        }
+        currentCanvasImage = filled
+        log("  ✓ matte → \(color), \(Int(size.width))×\(Int(size.height))")
+    }
+
+    /// `colorfill()`'s `solidColors` table (`StoryflowPipeline.js:761-770`, 260802).
+    private static let matteColors: [String: (r: CGFloat, g: CGFloat, b: CGFloat)] = [
+        "black": (0, 0, 0), "white": (1, 1, 1), "grey": (0.5, 0.5, 0.5),
+        "green": (0, 1, 0), "magenta": (1, 0, 1), "blue": (0, 0, 1),
+        "yellow": (1, 1, 0), "cyan": (0, 1, 1), "red": (1, 0, 0),
+    ]
+
+    private static func solidColorImage(named name: String, size: CGSize) -> NSImage? {
+        guard let rgb = matteColors[name.lowercased()], size.width > 0, size.height > 0 else { return nil }
+        return pixelExactCanvas(size: size) {
+            NSColor(red: rgb.r, green: rgb.g, blue: rgb.b, alpha: 1).setFill()
+            NSRect(origin: .zero, size: NSSize(width: size.width, height: size.height)).fill()
+        }
     }
 
     // MARK: — Sampler / SeedMode integer → string tables

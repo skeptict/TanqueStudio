@@ -219,29 +219,32 @@ struct StoryFlowStepListPanel: View {
                 let depths = loopDepths(for: steps)
 
                 List {
-                    ForEach(Binding(
-                        get: { vm.selectedWorkflow?.steps ?? [] },
-                        set: { vm.selectedWorkflow?.steps = $0 }
-                    )) { $step in
+                    // Bound by step ID, not by the built-in ForEach(Binding<[T]>) sugar's
+                    // captured array index — that index goes stale the instant a delete
+                    // shrinks the array, and a text field's blur can still fire its commit
+                    // afterward (AppKit's controlTextDidEndEditing runs on its own timing),
+                    // subscripting the shrunk array out of bounds and crashing.
+                    ForEach(steps, id: \.id) { step in
+                        let stepBinding = stepBinding(for: step.id, fallback: step)
                         // A passthrough step whose instruction is in the Phase 2 table
                         // gets a real form; anything else keeps the read-only card.
                         // Both use the same chrome, so they read as one list.
                         if step.type == .passthrough,
                            let schema = StoryFlowItemSchema.schema(for: step.parameters["itemType"] ?? "") {
                             StoryFlowSchemaCard(schema: schema,
-                                                step: $step,
+                                                step: stepBinding,
                                                 allVariables: vm.variables,
                                                 onDelete: { vm.deleteStep(id: step.id) },
-                                                onChange: { vm.updateStep(step) })
+                                                onChange: { vm.updateStep(stepBinding.wrappedValue) })
                                 .padding(.leading, CGFloat(depths[step.id] ?? 0) * 16)
                                 .listRowInsets(EdgeInsets(top: 3, leading: 8, bottom: 3, trailing: 8))
                                 .listRowBackground(Color.clear)
                                 .listRowSeparator(.hidden)
                         } else {
-                        StoryFlowStepCard(step: $step,
+                        StoryFlowStepCard(step: stepBinding,
                                           allVariables: vm.variables,
                                           onDelete: { vm.deleteStep(id: step.id) },
-                                          onChange: { vm.updateStep(step) })
+                                          onChange: { vm.updateStep(stepBinding.wrappedValue) })
                             .padding(.leading, CGFloat(depths[step.id] ?? 0) * 16)
                             .listRowInsets(EdgeInsets(top: 3, leading: 8, bottom: 3, trailing: 8))
                             .listRowBackground(Color.clear)
@@ -256,6 +259,20 @@ struct StoryFlowStepListPanel: View {
                 .overlay(alignment: .bottomTrailing) { addStepButton }
             }
         }
+    }
+
+    /// A `Binding<WorkflowStep>` that resolves by ID on every read and write, rather than
+    /// a fixed array index. `fallback` covers the read side for the single render pass
+    /// between a step's deletion and its row leaving the list — never used for writes,
+    /// since `set` is a no-op once the ID is gone.
+    private func stepBinding(for id: UUID, fallback: WorkflowStep) -> Binding<WorkflowStep> {
+        Binding<WorkflowStep>(
+            get: { vm.selectedWorkflow?.steps.first(where: { $0.id == id }) ?? fallback },
+            set: { newValue in
+                guard let idx = vm.selectedWorkflow?.steps.firstIndex(where: { $0.id == id }) else { return }
+                vm.selectedWorkflow?.steps[idx] = newValue
+            }
+        )
     }
 
     /// Compute the visual loop depth for each step without changing the ForEach structure.
@@ -368,8 +385,28 @@ struct StoryFlowVariableField: View {
     let allVariables: [WorkflowVariable]
     @Binding var text: String
     let onChange: () -> Void
+    /// Prompt-bearing fields (StoryFlow's `promptInstruction` step and the schema
+    /// table's multiline string shapes) get a drag-resizable multi-line editor
+    /// instead of a single-line field — variable-reference fields (config,
+    /// moodboard image var) stay single-line.
+    var multiline: Bool = false
+
+    init(placeholder: String,
+         variableTypes: [WorkflowVariableType],
+         allVariables: [WorkflowVariable],
+         text: Binding<String>,
+         onChange: @escaping () -> Void,
+         multiline: Bool = false) {
+        self.placeholder = placeholder
+        self.variableTypes = variableTypes
+        self.allVariables = allVariables
+        self._text = text
+        self.onChange = onChange
+        self.multiline = multiline
+    }
 
     @State private var showPicker = false
+    @State private var height: CGFloat = 60
 
     private var filtered: [WorkflowVariable] {
         let candidates = allVariables.filter { variableTypes.contains($0.type) }
@@ -378,10 +415,25 @@ struct StoryFlowVariableField: View {
     }
 
     var body: some View {
-        HStack(spacing: 4) {
-            TextField(placeholder, text: $text)
-                .storyFlowFieldChrome()
-                .onSubmit { onChange() }
+        HStack(alignment: multiline ? .top : .center, spacing: 4) {
+            if multiline {
+                TextEditor(text: $text)
+                    .font(TanqueDS.Font.mono(11.5))
+                    .foregroundStyle(DashboardDS.text)
+                    .scrollContentBackground(.hidden)
+                    .tanqueResizableHeight($height, min: 44, max: 320, tint: DashboardDS.muted)
+                    .background(DashboardDS.bg, in: RoundedRectangle(cornerRadius: 5))
+                    .overlay(RoundedRectangle(cornerRadius: 5)
+                        .strokeBorder(DashboardDS.border, lineWidth: 1))
+                    // No onSubmit for a multi-line editor (Return inserts a newline),
+                    // so commit continuously — same pattern as the Prompt/Config
+                    // variable editors in StoryFlowVariablesPanel.swift.
+                    .onChange(of: text) { _, _ in onChange() }
+            } else {
+                TextField(placeholder, text: $text)
+                    .storyFlowFieldChrome()
+                    .onSubmit { onChange() }
+            }
 
             if !filtered.isEmpty {
                 Button { showPicker.toggle() } label: {
@@ -505,7 +557,8 @@ private struct StoryFlowStepCard: View {
                     get: { step.parameters["text"] ?? "" },
                     set: { step.parameters["text"] = $0 }
                 ),
-                onChange: onChange
+                onChange: onChange,
+                multiline: true
             )
 
         case .generate:

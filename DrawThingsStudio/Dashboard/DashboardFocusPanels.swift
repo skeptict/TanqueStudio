@@ -132,6 +132,11 @@ struct FocusRoomDrawer: View {
 struct PromptSection: View {
     @Bindable var vm: GenerateViewModel
 
+    /// Drag-resizable heights for the boxes below. Session-only — not persisted,
+    /// matching every other per-view layout preference in this app.
+    @State private var promptHeight: CGFloat = 60
+    @State private var negativePromptHeight: CGFloat = 44
+
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
@@ -145,18 +150,18 @@ struct PromptSection: View {
                 .help("Expand or enhance this prompt with the configured LLM (see the Assist section below).")
             }
 
-            TextField("Describe your image\u{2026}", text: $vm.prompt, axis: .vertical)
-                .textFieldStyle(.plain)
-                .lineLimit(2...5)
+            TextEditor(text: $vm.prompt)
                 .font(.system(size: 12.5))
+                .scrollContentBackground(.hidden)
+                .tanqueResizableHeight($promptHeight, min: 60, max: 500, tint: DashboardDS.muted)
                 .padding(8)
                 .background(DashboardDS.surf2, in: RoundedRectangle(cornerRadius: 7))
                 .overlay(RoundedRectangle(cornerRadius: 7).strokeBorder(DashboardDS.border, lineWidth: 1))
 
-            TextField("Negative prompt\u{2026}", text: $vm.negativePrompt, axis: .vertical)
-                .textFieldStyle(.plain)
-                .lineLimit(1...3)
+            TextEditor(text: $vm.negativePrompt)
                 .font(.system(size: 12.5))
+                .scrollContentBackground(.hidden)
+                .tanqueResizableHeight($negativePromptHeight, min: 44, max: 400, tint: DashboardDS.muted)
                 .padding(8)
                 .background(DashboardDS.surf2, in: RoundedRectangle(cornerRadius: 7))
                 .overlay(RoundedRectangle(cornerRadius: 7).strokeBorder(DashboardDS.border, lineWidth: 1))

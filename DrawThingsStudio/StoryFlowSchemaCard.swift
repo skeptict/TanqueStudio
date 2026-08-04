@@ -137,7 +137,8 @@ struct StoryFlowSchemaCard: View {
                     variableTypes: [.prompt, .wildcard],
                     allVariables: allVariables,
                     text: textBinding,
-                    onChange: onChange
+                    onChange: onChange,
+                    multiline: true
                 )
             } else {
                 TextField(placeholder, text: textBinding)

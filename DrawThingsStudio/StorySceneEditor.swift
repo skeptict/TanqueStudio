@@ -33,19 +33,19 @@ struct StorySceneEditor: View {
                     project.modifiedAt = Date()
                 }
             }
-            StoryLabeledTextEditor("Action", text: storyOptionalText($scene.actionDescription), minHeight: 50, maxHeight: 90) {
+            StoryLabeledTextEditor("Action", text: storyOptionalText($scene.actionDescription), minHeight: 50) {
                 StoryEnhanceMenu(field: "Action", text: scene.actionDescription ?? "", assistant: assistant) {
                     scene.actionDescription = $0
                     project.modifiedAt = Date()
                 }
             }
-            StoryLabeledTextEditor("Dialogue", text: storyOptionalText($scene.dialogueText), minHeight: 50, maxHeight: 90) {
+            StoryLabeledTextEditor("Dialogue", text: storyOptionalText($scene.dialogueText), minHeight: 50) {
                 StoryEnhanceMenu(field: "Dialogue", text: scene.dialogueText ?? "", assistant: assistant) {
                     scene.dialogueText = $0
                     project.modifiedAt = Date()
                 }
             }
-            StoryLabeledTextEditor("Narrator", text: storyOptionalText($scene.narratorText), minHeight: 50, maxHeight: 90)
+            StoryLabeledTextEditor("Narrator", text: storyOptionalText($scene.narratorText), minHeight: 50)
 
             aiAssistBar
 
@@ -246,8 +246,7 @@ struct StorySceneEditor: View {
                         get: { scene.negativePromptOverride ?? "" },
                         set: { scene.negativePromptOverride = $0 }
                     ),
-                    minHeight: 40,
-                    maxHeight: 80
+                    minHeight: 40
                 )
             }
         }

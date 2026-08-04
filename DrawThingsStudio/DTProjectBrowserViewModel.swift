@@ -189,7 +189,12 @@ final class DTProjectBrowserViewModel {
         }
         let bookmarkURL = URL(fileURLWithPath: url.path, isDirectory: true)
         do {
-            let bookmarkData = try bookmarkURL.bookmarkData(options: [], includingResourceValuesForKeys: nil, relativeTo: nil)
+            // `.withSecurityScope` is required here — `restoreBookmarks()` resolves
+            // with `.withSecurityScope` (via `AppSettings.resolveBookmarkData`), and a
+            // bookmark created without it fails that resolution silently on next
+            // launch: `restoreBookmarks()` just drops the folder from `folders` with
+            // no error, which reads exactly like "adding a location doesn't save".
+            let bookmarkData = try bookmarkURL.bookmarkData(options: .withSecurityScope, includingResourceValuesForKeys: nil, relativeTo: nil)
             appendBookmark(bookmarkData)
             folders.append(DTBookmarkedFolder(id: UUID(), url: url, label: folderLabel(for: url), isAvailable: true, bookmarkData: bookmarkData))
         } catch {

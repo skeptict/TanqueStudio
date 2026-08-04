@@ -94,8 +94,9 @@ final class StoryFlowItemSchemaTests: XCTestCase {
     }
 
     /// Together with the 14 first-class types and the two deliberate exclusions, the
-    /// table should account for the entire 49-key universe. This is the number spec
-    /// §8 promises: authorable coverage from 14 of 49 to 47 of 49.
+    /// table should account for the entire instruction universe — 49 keys as of spec
+    /// §8 (authorable coverage 14 of 49 to 47 of 49), 52 as of the 260802 pipeline
+    /// update (`hrf`, `sizex2`, `matte` added).
     func testTablePlusFirstClassCoversTheWholeInstructionUniverse() {
         let firstClassKeys: Set<String> = [
             "note", "prompt", "config", "canvasClear", "canvasSave", "canvasLoad",
@@ -182,6 +183,10 @@ final class StoryFlowItemSchemaTests: XCTestCase {
             "wildcard":         ["wild": "shuffle", "cards": ["aardvark", "badger", "cat", "dog"]],
             "sweep":            ["paramName": "steps", "wild": "loop", "cards": ["6", "7", "8", "9"]],
             "framesDialog":     ["wps": 2.4, "padding": 49, "generate": false],
+            // 260802 additions, quoted from StoryflowEditor.html's ITEM_CONFIGS.
+            "hrf":              ["hiresFix": true, "hiresFixWidth": 1024,
+                                 "hiresFixHeight": 576, "hiresFixStrength": 0.4],
+            "matte":            ["color": "black"],
         ]
 
         for (itemType, editorDefault) in expected {
@@ -318,5 +323,7 @@ final class StoryFlowItemSchemaTests: XCTestCase {
         "loopEnd": "flag", "end": "flag", "concat": "string", "approve": "flag",
         "wildcard": "object", "sweep": "object", "interrogate": "string",
         "enhance": "string",
+        // 260802 additions
+        "hrf": "object", "sizex2": "flag", "matte": "object",
     ]
 }

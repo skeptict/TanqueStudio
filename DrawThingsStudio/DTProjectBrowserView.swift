@@ -27,6 +27,9 @@ struct DTProjectBrowserView: View {
     /// The representative of a clip awaiting an export-shape choice.
     @State private var seriesToExport: DTGenerationEntry?
     @State private var bulkExportScope: BulkExportRequest?
+    /// Folder rows the user has collapsed in the Projects sidebar. Session-only —
+    /// matches the same in-memory collapse pattern used by StoryFlowVariablesPanel.
+    @State private var collapsedFolders: Set<UUID> = []
 
     // Two loaders rather than one: hovering the grid must not evict the clip the
     // detail column is playing, and vice versa. Only one cell is hovered at a
@@ -221,8 +224,12 @@ struct DTProjectBrowserView: View {
     }
 
     private func folderSection(_ folder: DTBookmarkedFolder) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
+        let isCollapsed = collapsedFolders.contains(folder.id)
+        return VStack(alignment: .leading, spacing: 2) {
             HStack(spacing: 6) {
+                Image(systemName: isCollapsed ? "chevron.right" : "chevron.down")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(DashboardDS.muted)
                 Image(systemName: folder.isAvailable ? "folder.fill" : "externaldrive.badge.xmark")
                     .font(.caption)
                     .foregroundStyle(folder.isAvailable ? DashboardDS.brass : DashboardDS.orange)
@@ -241,24 +248,33 @@ struct DTProjectBrowserView: View {
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
-
-            if !folder.isAvailable {
-                Label("Volume not available", systemImage: "exclamationmark.triangle.fill")
-                    .font(.caption2)
-                    .foregroundStyle(DashboardDS.orange)
-                    .padding(.horizontal, 10)
-                    .padding(.bottom, 4)
+            .contentShape(Rectangle())
+            .onTapGesture {
+                withAnimation(.easeInOut(duration: 0.15)) {
+                    if isCollapsed { collapsedFolders.remove(folder.id) }
+                    else { collapsedFolders.insert(folder.id) }
+                }
             }
 
-            let folderProjects = browser.projectsByFolder[folder.label] ?? []
-            if folderProjects.isEmpty && folder.isAvailable {
-                Text("No databases found")
-                    .font(.caption2)
-                    .foregroundStyle(DashboardDS.muted)
-                    .padding(.horizontal, 10)
-                    .padding(.bottom, 4)
-            } else {
-                ForEach(folderProjects) { project in projectRow(project) }
+            if !isCollapsed {
+                if !folder.isAvailable {
+                    Label("Volume not available", systemImage: "exclamationmark.triangle.fill")
+                        .font(.caption2)
+                        .foregroundStyle(DashboardDS.orange)
+                        .padding(.horizontal, 10)
+                        .padding(.bottom, 4)
+                }
+
+                let folderProjects = browser.projectsByFolder[folder.label] ?? []
+                if folderProjects.isEmpty && folder.isAvailable {
+                    Text("No databases found")
+                        .font(.caption2)
+                        .foregroundStyle(DashboardDS.muted)
+                        .padding(.horizontal, 10)
+                        .padding(.bottom, 4)
+                } else {
+                    ForEach(folderProjects) { project in projectRow(project) }
+                }
             }
         }
     }

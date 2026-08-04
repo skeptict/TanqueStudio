@@ -76,10 +76,12 @@ struct StoryFlowRunPreflight {
     /// Kept beside the preflight so the banner and the engine cannot disagree
     /// about what actually executes.
     static let nativelyExecuted: Set<String> = [
-        "concat", "wildcard", "sweep",
+        "concat", "wildcard", "sweep", "enhance",
         "size", "frames", "negPrompt", "adaptSize", "moodboardWeights",
         "framesDialog", "approve", "moodboardRemove", "inpaintTools",
-        "xlMagic",
+        "xlMagic", "removeBkgd", "maskFG",
+        // 260802 additions
+        "hrf", "sizex2", "matte",
     ]
 
     /// True if this step is a `framesDialog` with its `generate` flag set.
@@ -175,8 +177,9 @@ struct StoryFlowRunPreflight {
             return .altersRender
 
         // Draw Things-local canvas, mask, depth and pose operations (spec §3.4).
-        case "faceZoom", "askZoom", "removeBkgd",
-             "maskClear", "maskLoad", "maskGet", "maskBkgd", "maskFG", "maskBody", "maskAsk",
+        // removeBkgd and maskFG moved to nativelyExecuted (Vision foreground mask).
+        case "faceZoom", "askZoom",
+             "maskClear", "maskLoad", "maskGet", "maskBkgd", "maskBody", "maskAsk",
              "depthExtract", "depthCanvas", "depthToCanvas",
              "poseExtract", "poseJSON",
              "loopLoad", "loopSave", "loopAddMB", "loopLoadMask":

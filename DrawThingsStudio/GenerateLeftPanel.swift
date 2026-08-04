@@ -65,6 +65,11 @@ struct GenerateLeftPanel: View {
     private let diceTip = DiceRandomizeTip()
     private let resolutionShiftTip = ResolutionShiftTip()
 
+    /// Drag-resizable heights for the prompt boxes below. Session-only — not
+    /// persisted, matching every other per-view layout preference in this app.
+    @State private var promptHeight: CGFloat = 80
+    @State private var negativePromptHeight: CGFloat = 60
+
     var body: some View {
         VStack(spacing: 0) {
             ScrollView {
@@ -114,8 +119,8 @@ struct GenerateLeftPanel: View {
             TextEditor(text: $vm.prompt)
                 .font(TanqueDS.Font.body)
                 .foregroundStyle(TanqueDS.Color.textPrimary)
-                .frame(minHeight: 80, maxHeight: 160)
                 .scrollContentBackground(.hidden)
+                .tanqueResizableHeight($promptHeight, min: 80, max: 500)
                 .background(TanqueDS.Color.surface2)
                 .clipShape(RoundedRectangle(cornerRadius: 6))
                 .overlay(
@@ -137,8 +142,8 @@ struct GenerateLeftPanel: View {
                 TextEditor(text: $vm.negativePrompt)
                     .font(TanqueDS.Font.body)
                     .foregroundStyle(TanqueDS.Color.textPrimary)
-                    .frame(minHeight: 60, maxHeight: 100)
                     .scrollContentBackground(.hidden)
+                    .tanqueResizableHeight($negativePromptHeight, min: 60, max: 400)
                     .background(TanqueDS.Color.surface2)
                     .clipShape(RoundedRectangle(cornerRadius: 6))
                     .overlay(

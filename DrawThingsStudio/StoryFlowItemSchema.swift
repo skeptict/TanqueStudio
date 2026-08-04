@@ -218,6 +218,25 @@ extension StoryFlowItemSchema {
               pipelineType: "object",
               summary: "Resizes the canvas immediately, rather than at the next render."),
 
+        // Same object-merge semantics as `config`/`configInline` (`Object.assign`,
+        // no canvas update) — the 260802 pipeline gives Hires Fix its own node
+        // rather than asking the author to hand-type the four keys into a raw
+        // config blob. Field keys and defaults match the reference editor exactly
+        // (`hiresFix`, `hiresFixWidth`, `hiresFixHeight`, `hiresFixStrength`) —
+        // already the exact keys `mergeDict` has understood since Batch F.
+        .init(itemType: "hrf", group: .config, icon: "wand.and.rays",
+              shape: .object([
+                  .init(key: "hiresFix", label: "Enable", kind: .toggle(default: true)),
+                  .init(key: "hiresFixWidth", label: "Width",
+                        kind: .number(default: 1024, range: 128...16384, step: 64, isInteger: true)),
+                  .init(key: "hiresFixHeight", label: "Height",
+                        kind: .number(default: 576, range: 128...16384, step: 64, isInteger: true)),
+                  .init(key: "hiresFixStrength", label: "Strength",
+                        kind: .number(default: 0.4, range: 0...1, step: 0.01, isInteger: false)),
+              ]),
+              pipelineType: "object",
+              summary: "Dedicated Hires Fix controls — same effect as setting these four keys via Config."),
+
         // MARK: Long-passthrough backlog
 
         .init(itemType: "negPrompt", group: .prompt, icon: "minus.square",
@@ -360,6 +379,27 @@ extension StoryFlowItemSchema {
               pipelineType: "flag",
               summary: "Makes the background transparent or flat grey."),
 
+        // 260802: `sizex2()` — save the visible canvas, double the config's
+        // width/height, then reload the saved image onto the now-larger canvas.
+        // No parameters; the reference implementation takes none.
+        .init(itemType: "sizex2", group: .canvas, icon: "arrow.up.left.and.arrow.down.right",
+              shape: .flag,
+              pipelineType: "flag",
+              summary: "Doubles the canvas width and height, keeping the current image centered — ready for tiling or upscaling."),
+
+        // 260802: `colorfill()` + `crop()` — a flat-color foundation layer sized
+        // to the current canvas, useful as a backdrop before positioning layers
+        // with Move Scale. `grey` is in the reference `solidColors` table but not
+        // the editor's own picklist; included here since the pipeline itself
+        // supports it.
+        .init(itemType: "matte", group: .canvas, icon: "square.fill",
+              shape: .object([
+                  .init(key: "color", label: "Color",
+                        kind: .picklist(default: "black", options: Self.matteColors)),
+              ]),
+              pipelineType: "object",
+              summary: "Fills the canvas with a flat color — a foundation layer for Move Scale layouts."),
+
         .init(itemType: "askZoom", group: .canvas, icon: "text.magnifyingglass",
               shape: .string(default: "", placeholder: "a hat",
                              prefix: "find object: ", multiline: false),
@@ -391,6 +431,9 @@ extension StoryFlowItemSchema {
     /// `WildcardTracker.getNextCard` (`StoryflowPipeline_260723.js:386-414`) accepts
     /// exactly these four. Phase 2 only needs the picklist; Phase 3 ports the tracker.
     static let wildModes = ["loop", "once", "shuffle", "random"]
+
+    /// `colorfill()`'s `solidColors` table (`StoryflowPipeline.js:761-770`, 260802).
+    static let matteColors = ["black", "white", "grey", "green", "magenta", "blue", "yellow", "cyan", "red"]
 
     static func schema(for itemType: String) -> StoryFlowItemSchema? {
         all.first { $0.itemType == itemType }

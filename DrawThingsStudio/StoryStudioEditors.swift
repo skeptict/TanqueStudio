@@ -49,18 +49,24 @@ struct StoryLabeledTextField: View {
 /// Labeled multi-line text editor, styled like the Generate prompt box.
 /// An optional trailing accessory sits on the label row (e.g. an LLM-assist
 /// menu). Call sites that omit it get `EmptyView` and are unchanged.
+///
+/// Height is drag-resizable (`minHeight` is also the starting height, `maxHeight`
+/// is the drag ceiling) rather than a static cap — session-only state, not
+/// persisted.
 struct StoryLabeledTextEditor<Accessory: View>: View {
     let label: String
     @Binding var text: String
     var minHeight: CGFloat = 60
-    var maxHeight: CGFloat = 120
+    var maxHeight: CGFloat = 300
     @ViewBuilder let accessory: () -> Accessory
+
+    @State private var height: CGFloat
 
     init(
         _ label: String,
         text: Binding<String>,
         minHeight: CGFloat = 60,
-        maxHeight: CGFloat = 120,
+        maxHeight: CGFloat = 300,
         @ViewBuilder accessory: @escaping () -> Accessory = { EmptyView() }
     ) {
         self.label = label
@@ -68,6 +74,7 @@ struct StoryLabeledTextEditor<Accessory: View>: View {
         self.minHeight = minHeight
         self.maxHeight = maxHeight
         self.accessory = accessory
+        self._height = State(initialValue: minHeight)
     }
 
     var body: some View {
@@ -82,8 +89,8 @@ struct StoryLabeledTextEditor<Accessory: View>: View {
             TextEditor(text: $text)
                 .font(TanqueDS.Font.body)
                 .foregroundStyle(TanqueDS.Color.textPrimary)
-                .frame(minHeight: minHeight, maxHeight: maxHeight)
                 .scrollContentBackground(.hidden)
+                .tanqueResizableHeight($height, min: minHeight, max: maxHeight)
                 .background(TanqueDS.Color.surface2)
                 .clipShape(RoundedRectangle(cornerRadius: 6))
                 .overlay(

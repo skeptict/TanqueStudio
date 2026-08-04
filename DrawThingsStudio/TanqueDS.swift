@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 // MARK: - Tanque Design System
 
@@ -117,5 +118,74 @@ struct TanqueSectionLabel: ViewModifier {
 extension View {
     func tanqueSectionLabel() -> some View {
         modifier(TanqueSectionLabel())
+    }
+}
+
+// MARK: - Resizable text box height
+
+/// Drag handle rendered below a text box to resize it vertically, matching
+/// `PanelDragHandle`'s cursor/gesture pattern (GenerateView.swift) but for height
+/// instead of width. Height lives in `@State` at the call site — session-only,
+/// nothing here is written to AppSettings.
+struct TanqueVerticalResizeHandle: View {
+    @Binding var height: CGFloat
+    let minHeight: CGFloat
+    let maxHeight: CGFloat
+    var tint: SwiftUI.Color = TanqueDS.Color.textMuted
+
+    @State private var isHovered = false
+    @State private var dragStart: CGFloat?
+
+    var body: some View {
+        ZStack {
+            Color.clear
+                .frame(maxWidth: .infinity)
+                .frame(height: 12)
+                .contentShape(Rectangle())
+                .onHover { hovering in
+                    isHovered = hovering
+                    if hovering { NSCursor.resizeUpDown.push() } else { NSCursor.pop() }
+                }
+                .gesture(
+                    DragGesture(minimumDistance: 0)
+                        .onChanged { value in
+                            if dragStart == nil { dragStart = height }
+                            let base = dragStart ?? height
+                            height = min(maxHeight, max(minHeight, base + value.translation.height))
+                        }
+                        .onEnded { _ in dragStart = nil }
+                )
+
+            Capsule()
+                .fill(tint.opacity(isHovered ? 0.6 : 0.3))
+                .frame(width: 28, height: 3)
+                .allowsHitTesting(false)
+        }
+    }
+}
+
+/// Wraps `content` (typically a `TextEditor`) with a fixed, draggable `height` in
+/// place of a static `.frame(minHeight:maxHeight:)` — for text boxes the user
+/// should be able to grow themselves rather than live inside a fixed cap.
+struct TanqueResizableHeight: ViewModifier {
+    @Binding var height: CGFloat
+    let minHeight: CGFloat
+    let maxHeight: CGFloat
+    var tint: SwiftUI.Color = TanqueDS.Color.textMuted
+
+    func body(content: Content) -> some View {
+        VStack(spacing: 0) {
+            content.frame(height: height)
+            TanqueVerticalResizeHandle(height: $height, minHeight: minHeight, maxHeight: maxHeight, tint: tint)
+        }
+    }
+}
+
+extension View {
+    func tanqueResizableHeight(_ height: Binding<CGFloat>,
+                               min minHeight: CGFloat,
+                               max maxHeight: CGFloat,
+                               tint: SwiftUI.Color = TanqueDS.Color.textMuted) -> some View {
+        modifier(TanqueResizableHeight(height: height, minHeight: minHeight, maxHeight: maxHeight, tint: tint))
     }
 }

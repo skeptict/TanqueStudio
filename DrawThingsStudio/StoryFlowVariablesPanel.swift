@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import UniformTypeIdentifiers
 
 // MARK: - Variables Panel
 
@@ -316,6 +317,7 @@ private struct VariableRow: View {
     /// Avoids cursor-jump issue that occurs when a two-way Binding re-renders
     /// the field on every keystroke via vm.variables → re-render.
     @State private var wildcardText: String = ""
+    @State private var isImageDropTargeted = false
     /// Called with the current variable value after any mutation so the
     /// binding's updated state is saved rather than a stale render-time capture.
     let onSave: (WorkflowVariable) -> Void
@@ -497,14 +499,32 @@ private struct VariableRow: View {
                 }
 
             case .image:
-                HStack {
-                    Text("File")
-                        .font(TanqueDS.Font.mono(10.5))
-                        .foregroundStyle(DashboardDS.muted)
-                        .frame(width: 60, alignment: .trailing)
-                    Text(variable.imageFileName ?? "None")
-                        .font(TanqueDS.Font.mono(11))
-                        .foregroundStyle(DashboardDS.muted)
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(alignment: .top) {
+                        Text("Image")
+                            .font(TanqueDS.Font.mono(10.5))
+                            .foregroundStyle(DashboardDS.muted)
+                            .frame(width: 60, alignment: .trailing)
+                            .padding(.top, 3)
+                        imageDropZone
+                    }
+                    HStack {
+                        Spacer().frame(width: 66)
+                        Button("Choose…") { chooseImage() }
+                            .buttonStyle(.borderless)
+                            .font(TanqueDS.Font.mono(10.5))
+                            .foregroundStyle(DashboardDS.brass)
+                        if variable.imageData != nil {
+                            Button("Remove") {
+                                variable.imageData = nil
+                                variable.imageFileName = nil
+                                onSave(variable)
+                            }
+                            .buttonStyle(.borderless)
+                            .font(TanqueDS.Font.mono(10.5))
+                            .foregroundStyle(DashboardDS.muted)
+                        }
+                    }
                 }
 
             case .wildcard:
@@ -544,6 +564,84 @@ private struct VariableRow: View {
             }
         }
         .padding(.top, 6)
+    }
+
+    // MARK: Image variable
+
+    private var imageDropZone: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 5).fill(DashboardDS.bg)
+            if let data = variable.imageData, let nsImage = NSImage(data: data) {
+                Image(nsImage: nsImage)
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .padding(4)
+            } else {
+                Text(variable.imageFileName ?? "Drop an image here")
+                    .font(TanqueDS.Font.mono(10))
+                    .foregroundStyle(DashboardDS.muted)
+            }
+        }
+        .frame(height: 80)
+        .frame(maxWidth: .infinity)
+        .overlay(
+            RoundedRectangle(cornerRadius: 5)
+                .strokeBorder(
+                    isImageDropTargeted ? DashboardDS.brass : DashboardDS.border,
+                    style: StrokeStyle(lineWidth: isImageDropTargeted ? 2 : 1, dash: variable.imageData == nil ? [4] : [])
+                )
+        )
+        .onDrop(of: [.fileURL, .image], isTargeted: $isImageDropTargeted) { providers in
+            loadDroppedImage(providers)
+        }
+        .accessibilityLabel("Image Variable Drop Zone")
+    }
+
+    private func loadDroppedImage(_ providers: [NSItemProvider]) -> Bool {
+        guard let provider = providers.first else { return false }
+
+        if provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) {
+            provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier, options: nil) { item, _ in
+                var url: URL?
+                if let itemURL = item as? URL {
+                    url = itemURL
+                } else if let data = item as? Data {
+                    url = URL(dataRepresentation: data, relativeTo: nil)
+                }
+                guard let url, let data = try? Data(contentsOf: url), NSImage(data: data) != nil else { return }
+                Task { @MainActor in
+                    variable.imageData = data
+                    variable.imageFileName = url.lastPathComponent
+                    onSave(variable)
+                }
+            }
+            return true
+        }
+
+        if provider.canLoadObject(ofClass: NSImage.self) {
+            _ = provider.loadObject(ofClass: NSImage.self) { object, _ in
+                guard let image = object as? NSImage, let data = StoryExportManager.pngData(image) else { return }
+                Task { @MainActor in
+                    variable.imageData = data
+                    onSave(variable)
+                }
+            }
+            return true
+        }
+        return false
+    }
+
+    private func chooseImage() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.image]
+        panel.allowsMultipleSelection = false
+        panel.message = "Choose an image for \(variable.name)"
+        panel.prompt = "Choose"
+        guard panel.runModal() == .OK, let url = panel.url,
+              let data = try? Data(contentsOf: url), NSImage(data: data) != nil else { return }
+        variable.imageData = data
+        variable.imageFileName = url.lastPathComponent
+        onSave(variable)
     }
 
     private func commitWildcard() {
