@@ -5,10 +5,12 @@ import SwiftData
 /// Coverage for the "Generate drops most of an imported image's settings" fix:
 /// `applyMetadataToConfig` originally restored only 10 of the ~39 fields
 /// `DrawThingsGenerationConfig` and `PNGMetadata` both model. This asserts the
-/// artifact of the merge — the resulting `config` — for every group that was
-/// added, plus the two properties the fix depends on: merge (not reset)
-/// semantics, and that `encodeConfig`/`decodeConfigJSON` (the gallery's own
-/// round trip) now carry the same groups the file-metadata path does.
+/// artifact — the resulting `config` — for every group that was added, plus
+/// that `encodeConfig`/`decodeConfigJSON` (the gallery's own round trip) carry
+/// the same groups the file-metadata path does.
+///
+/// Note the applier's semantics changed in `11f2b72`: applying metadata is a
+/// **refresh**, not a merge. Fields the source omits reset to their defaults.
 @MainActor
 final class MetadataApplierTests: XCTestCase {
 
@@ -85,7 +87,17 @@ final class MetadataApplierTests: XCTestCase {
 
     // MARK: — Merge semantics: absent fields don't reset existing config
 
-    func testFieldsAbsentFromMetadataLeaveExistingConfigUntouched() throws {
+    /// Loading metadata is a **refresh, not a merge**: a field the incoming
+    /// metadata does not carry returns to its default instead of inheriting
+    /// whatever the previous config happened to hold.
+    ///
+    /// This test asserted the opposite until 2026-08-05. `11f2b72` changed the
+    /// rule deliberately — `applyMetadataToConfig` now resets to a fresh
+    /// `DrawThingsGenerationConfig` before applying — after a Krea 2 LoRA left
+    /// over from an earlier config rode along on a FLUX.2 klein render. Canvas
+    /// size and (absent a replacement) the model are the deliberate exceptions
+    /// and still survive; StoryFlow's pipeline is the one that merges.
+    func testFieldsAbsentFromMetadataResetToDefaults() throws {
         let vm = makeViewModel()
         vm.config.hiresFix = true
         vm.config.hiresFixWidth = 512
@@ -96,10 +108,11 @@ final class MetadataApplierTests: XCTestCase {
         let meta = try XCTUnwrap(PNGMetadataParser.parseDrawThingsJSONPublic(json))
         vm.applyMetadataToConfig(meta)
 
-        XCTAssertTrue(vm.config.hiresFix, "a field the new metadata never mentioned must survive untouched")
-        XCTAssertEqual(vm.config.hiresFixWidth, 512)
-        XCTAssertEqual(vm.config.refinerModel, "existing_refiner.ckpt")
-        // But the fields the new metadata DID carry still apply.
+        XCTAssertFalse(vm.config.hiresFix,
+                       "a field the new metadata never mentioned must reset, not carry over")
+        XCTAssertEqual(vm.config.hiresFixWidth, 0)
+        XCTAssertEqual(vm.config.refinerModel, "")
+        // The fields the new metadata DID carry still apply.
         XCTAssertEqual(vm.config.model, "m.ckpt")
         XCTAssertEqual(vm.config.steps, 8)
     }
