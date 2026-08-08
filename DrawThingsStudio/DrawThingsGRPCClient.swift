@@ -254,15 +254,25 @@ final class DrawThingsGRPCClient: DrawThingsProvider {
         // that client and talks to the service directly, so it gets an explicit
         // progressHandler below instead.
         let totalSteps = config.steps
+        // Record the raw stage sequence before `mapStage` filters it. A render
+        // that returns no image is diagnosed by *where it stopped*, and the
+        // unmapped stages are the informative ones. See `logGRPCStages`.
+        let stageTrace = StageTrace()
         let progressPoller = Task { [weak self] in
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: 150_000_000)
-                guard let stage = self?.client?.currentProgress?.stage,
-                      let mapped = Self.mapStage(stage, totalSteps: totalSteps) else { continue }
+                guard let stage = self?.client?.currentProgress?.stage else { continue }
+                stageTrace.record(String(describing: stage))
+                guard let mapped = Self.mapStage(stage, totalSteps: totalSteps) else { continue }
                 onProgress?(mapped)
             }
         }
-        defer { progressPoller.cancel() }
+        // In `defer` so the trace is written on every exit path — success, an
+        // empty result, a timeout, or a thrown error.
+        defer {
+            progressPoller.cancel()
+            RequestLogger.shared.logGRPCStages(stageTrace.summary())
+        }
 
         let isImg2Img = sourceImage != nil
         logger.info("Starting \(isImg2Img ? "img2img" : "txt2img") generation")
@@ -297,6 +307,10 @@ final class DrawThingsGRPCClient: DrawThingsProvider {
                         hints: hints,
                         sharedSecret: secret,
                         progressHandler: { signpost in
+                            // Raw signposts, straight off the wire on this path.
+                            if let raw = signpost?.signpost {
+                                stageTrace.record(String(describing: raw))
+                            }
                             guard let mapped = Self.mapSignpost(signpost, totalSteps: totalSteps) else { return }
                             await MainActor.run { onProgress?(mapped) }
                         }
@@ -551,6 +565,44 @@ final class DrawThingsGRPCClient: DrawThingsProvider {
     // MARK: - Config Conversion
 
     // MARK: - Progress mapping
+
+    /// Ordered record of the stages Draw Things reported during one render,
+    /// collapsing consecutive repeats of the same stage into one entry with a
+    /// count and the elapsed time it first appeared.
+    ///
+    /// Deliberately takes a pre-rendered `String` rather than the stage type:
+    /// the polling path and the inpaint path report two different types for the
+    /// same underlying idea, and this only ever needs their description.
+    private final class StageTrace: @unchecked Sendable {
+        private let lock = NSLock()
+        private let start = Date()
+        private var entries: [(name: String, firstSeen: TimeInterval, count: Int)] = []
+
+        func record(_ description: String) {
+            // "sampling(step: 3)" → "sampling", so repeats collapse.
+            let name = String(description.prefix { $0 != "(" })
+            lock.lock()
+            defer { lock.unlock() }
+            if entries.last?.name == name {
+                entries[entries.count - 1].count += 1
+            } else {
+                entries.append((name, Date().timeIntervalSince(start), 1))
+            }
+        }
+
+        func summary() -> String {
+            lock.lock()
+            defer { lock.unlock() }
+            let elapsed = Int(Date().timeIntervalSince(start) * 1000)
+            guard !entries.isEmpty else {
+                return "stages:                   (none — Draw Things reported no progress at all in \(elapsed)ms)"
+            }
+            let path = entries
+                .map { "\($0.name)@\(Int($0.firstSeen * 1000))ms×\($0.count)" }
+                .joined(separator: " → ")
+            return "stages:                   \(path)  [total \(elapsed)ms]"
+        }
+    }
 
     /// Client stage → TanqueStudio progress. Returns nil for stages that carry
     /// no step count (encoding, face restore, upscale) so the bar holds its last

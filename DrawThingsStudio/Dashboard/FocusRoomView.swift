@@ -493,6 +493,14 @@ struct FocusRoomView: View {
     @Query(sort: \TSImage.createdAt, order: .reverse) private var savedImages: [TSImage]
     @State private var seriesToDelete: [TSImage]?
 
+    /// Scanned on demand when the user asks to prune, never during `body` — the
+    /// check stats every row's file, which is far too expensive to re-run on
+    /// each redraw. Holding the scanned rows also means the confirmation and the
+    /// deletion act on exactly the same set.
+    @State private var imagesMissingFiles: [TSImage] = []
+    @State private var showMaintenance = false
+    @State private var showClearAllConfirm = false
+
     /// One strip cell: a plain image, or a video frame series collapsed into
     /// one cell. Mirrors GalleryStripView's GalleryEntry/buildEntries exactly —
     /// this fork's filmstrip never grouped video frames at all before.
@@ -549,13 +557,17 @@ struct FocusRoomView: View {
                     filmstripCell(entry)
                 }
             }
-            .padding(.horizontal, 14)
+            .padding(.leading, 14)
+            // Room for the pinned maintenance button, so the last cell can
+            // scroll clear of it instead of sitting underneath.
+            .padding(.trailing, 46)
         }
         .frame(height: 100)
         .background(DashboardDS.surf1)
         .overlay(alignment: .top) {
             Rectangle().fill(DashboardDS.border).frame(height: 1)
         }
+        .overlay(alignment: .topTrailing) { filmstripMenu }
         // Mirrors GalleryStripView's delete confirmations.
         .confirmationDialog(
             "Delete Image",
@@ -589,6 +601,137 @@ struct FocusRoomView: View {
         } message: {
             Text("All frames of this video series will be removed from the gallery and deleted from disk.")
         }
+        // A `Menu` was tried here first and would not render at all inside this
+        // overlay; a plain Button does.
+        .confirmationDialog(
+            "Gallery Maintenance", isPresented: $showMaintenance, titleVisibility: .visible
+        ) {
+            if !imagesMissingFiles.isEmpty {
+                Button("Remove \(imagesMissingFiles.count) Missing \(imagesMissingFiles.count == 1 ? "Entry" : "Entries")",
+                       role: .destructive) { removeMissingFiles() }
+            }
+            if !savedImages.isEmpty {
+                // Deliberately NOT destructive here, and it only opens a second
+                // dialog. Emptying the whole gallery sat one mis-click away from
+                // Cancel in the first version of this menu, and that is exactly
+                // how it got triggered by accident.
+                Button("Delete All \(savedImages.count) \(savedImages.count == 1 ? "Image" : "Images")\u{2026}") {
+                    // Deferred: SwiftUI will not present a second dialog while
+                    // the first is still dismissing.
+                    DispatchQueue.main.async { showClearAllConfirm = true }
+                }
+            }
+            Button("Cancel", role: .cancel) { imagesMissingFiles = [] }
+        } message: {
+            Text(maintenanceMessage)
+        }
+        .confirmationDialog(
+            "Delete every image?", isPresented: $showClearAllConfirm, titleVisibility: .visible
+        ) {
+            Button("Delete \(savedImages.count) \(savedImages.count == 1 ? "Image" : "Images") and Their Files",
+                   role: .destructive) { clearAllImages() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This removes all \(savedImages.count) gallery entries and deletes the image files from disk. It cannot be undone. Story Studio projects and the Render Queue are not affected.")
+        }
+    }
+
+    private var maintenanceMessage: String {
+        if savedImages.isEmpty { return "The gallery is empty." }
+        let missing = imagesMissingFiles.count
+        let missingLine = missing == 0
+            ? "Every entry still has its file on disk."
+            : "\(missing) \(missing == 1 ? "entry points" : "entries point") at a file that is no longer on disk — deleting images outside the app leaves the entries behind, because the gallery stores its own thumbnails. Removing them touches nothing on disk."
+        return missingLine
+            + "\n\nDeleting all images also deletes their files. Story Studio projects and the Render Queue are not affected."
+    }
+
+    /// Strip-level maintenance. Deliberately not in the per-image context menu —
+    /// these act on the whole gallery, not the cell you right-clicked. The
+    /// missing-file scan runs here, on an explicit click, never in `body`: it
+    /// stats every row and would be far too expensive on each redraw.
+    private var filmstripMenu: some View {
+        Button {
+            imagesMissingFiles = savedImages.filter(fileIsDefinitelyMissing)
+            showMaintenance = true
+        } label: {
+            Text("\u{22EF}")
+                .font(TanqueDS.Font.monoSemiBold(15))
+                .foregroundStyle(DashboardDS.muted2)
+                .frame(width: 28, height: 22)
+                .background(DashboardDS.surf2, in: RoundedRectangle(cornerRadius: 6))
+                .overlay(RoundedRectangle(cornerRadius: 6)
+                    .strokeBorder(DashboardDS.border2, lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+        .padding(.top, 8)
+        .padding(.trailing, 10)
+        .help("Gallery maintenance")
+    }
+
+    /// Whether this entry's file is *verifiably* gone.
+    ///
+    /// A bare `FileManager.fileExists` is not enough: this app is sandboxed, and
+    /// the gallery folder is usually outside its container (`~/Desktop/…`), so
+    /// an unscoped check reports "missing" for files that are sitting right
+    /// there. Acting on that would delete rows for perfectly good images.
+    ///
+    /// So a row counts as missing only on a *definitive* negative — checked
+    /// under a live security-scoped grant, or inside the container where no
+    /// grant is needed. When neither applies the answer is unknowable, and the
+    /// row is left alone: never delete what could not be verified.
+    private func fileIsDefinitelyMissing(_ image: TSImage) -> Bool {
+        let path = image.filePath
+        let url = URL(fileURLWithPath: path)
+        if let existsUnderGrant = ImageFolderAccess.withScopedFolder(containing: url, body: {
+            FileManager.default.fileExists(atPath: path)
+        }) {
+            return !existsUnderGrant
+        }
+        if path.hasPrefix(NSHomeDirectory() + "/") {
+            return !FileManager.default.fileExists(atPath: path)
+        }
+        return false
+    }
+
+    /// Deletes a file, taking security-scoped access first when the path needs
+    /// it. Without this the delete silently no-ops for anything outside the
+    /// container — the row vanishes while the file stays on disk.
+    private func removeFile(at path: String) {
+        let url = URL(fileURLWithPath: path)
+        let removedUnderGrant = ImageFolderAccess.withScopedFolder(containing: url) { () -> Bool in
+            (try? FileManager.default.removeItem(at: url)) != nil
+        }
+        if removedUnderGrant == nil {
+            try? FileManager.default.removeItem(at: url)
+        }
+    }
+
+    /// Drops rows whose backing file is gone. The scan already happened when the
+    /// menu item was chosen, so this deletes exactly what the dialog counted.
+    private func removeMissingFiles() {
+        guard !imagesMissingFiles.isEmpty else { return }
+        let doomed = Set(imagesMissingFiles.map(\.id))
+        if let selected = vm.selectedGalleryID, doomed.contains(selected) {
+            vm.selectedGalleryID = nil
+            vm.clearSeriesSelection()
+        }
+        imagesMissingFiles.forEach { modelContext.delete($0) }
+        try? modelContext.save()
+        imagesMissingFiles = []
+    }
+
+    /// Empties the gallery: every row and its file. `savedImages` is the whole
+    /// @Query, not the 60 the strip displays, so this really does clear all.
+    private func clearAllImages() {
+        vm.selectedGalleryID = nil
+        vm.clearSeriesSelection()
+        for image in savedImages {
+            removeFile(at: image.filePath)
+            modelContext.delete(image)
+        }
+        try? modelContext.save()
+        imagesMissingFiles = []
     }
 
     @ViewBuilder
@@ -673,7 +816,9 @@ struct FocusRoomView: View {
 
     private func deleteImage(_ tsImage: TSImage) {
         if tsImage.id == vm.selectedGalleryID { vm.selectedGalleryID = nil }
-        try? FileManager.default.removeItem(atPath: tsImage.filePath)
+        // Was an unscoped remove, which silently did nothing for the usual case
+        // of a gallery folder outside the sandbox container.
+        removeFile(at: tsImage.filePath)
         modelContext.delete(tsImage)
         try? modelContext.save()
     }

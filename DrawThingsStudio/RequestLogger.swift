@@ -28,6 +28,17 @@ final class RequestLogger {
         if !FileManager.default.fileExists(atPath: url.path) {
             try? "TanqueStudio Request Log\n".write(to: url, atomically: true, encoding: .utf8)
         }
+
+        // Turn on the gRPC client's own request/response logging. It reports
+        // per-response detail (image count, chunk state, signposts, tags) that
+        // nothing else surfaces. Note it goes to os_log under subsystem
+        // "com.drawthings.client" — NOT "com.drawthings.kit" as that package's
+        // README claims — and every message is a dynamic string logged without
+        // `privacy: .public`, so an outside reader (`log stream`) sees
+        // `<private>` unless private-data logging is enabled system-wide. It is
+        // readable in Xcode's console. The stage trace written to this file is
+        // the version that needs no such setup.
+        DrawThingsClientLogger.minimumLevel = .debug
     }
 
     // MARK: - HTTP
@@ -142,6 +153,21 @@ final class RequestLogger {
 
     func logGRPCTimeout(after seconds: Int) {
         append("→ TIMED OUT after \(seconds)s — Draw Things never answered the render call\n")
+    }
+
+    /// The stage sequence Draw Things reported while working on one render.
+    ///
+    /// This is the only readable view of what the server actually did. Draw
+    /// Things emits its own diagnostics through swift-log's default handler,
+    /// which writes to **stdout** — discarded entirely when the app is launched
+    /// from Finder — and it registers nothing with the unified log, so
+    /// `log show`/`log stream` return nothing for it. Meanwhile the progress
+    /// poller in `DrawThingsGRPCClient` already sees every stage and throws away
+    /// the ones it can't turn into a percentage (text encoding, upscale, face
+    /// restore) — which are precisely the ones that say how far a render that
+    /// produced no image actually got before it stopped.
+    func logGRPCStages(_ summary: String) {
+        append("\(summary)\n")
     }
 
     // MARK: - Utilities
