@@ -144,8 +144,8 @@
   ],
   "promptTriggers": {},
   "configShortcuts": {
-    "#krea2_stills": "{\"model\":\"TODO_NED\",\"sampler\":\"TODO_NED\",\"steps\":\"TODO_NED\",\"guidanceScale\":\"TODO_NED\",\"shift\":\"TODO_NED\",\"seedMode\":\"TODO_NED\",\"seed\":-1,\"strength\":1,\"numFrames\":1,\"clipSkip\":1,\"clipWeight\":1,\"controls\":[],\"loras\":[],\"tiledDecoding\":\"TODO_NED\",\"decodingTileWidth\":\"TODO_NED\",\"decodingTileHeight\":\"TODO_NED\",\"decodingTileOverlap\":\"TODO_NED\",\"tiledDiffusion\":\"TODO_NED\",\"hiresFix\":false,\"zeroNegativePrompt\":false}",
-    "#ltx2_video": "{\"model\":\"TODO_NED\",\"sampler\":\"TODO_NED\",\"steps\":\"TODO_NED\",\"guidanceScale\":\"TODO_NED\",\"shift\":\"TODO_NED\",\"seedMode\":\"TODO_NED\",\"seed\":-1,\"strength\":1,\"clipSkip\":1,\"clipWeight\":1,\"controls\":[],\"loras\":[],\"tiledDecoding\":\"TODO_NED\",\"decodingTileWidth\":\"TODO_NED\",\"decodingTileHeight\":\"TODO_NED\",\"decodingTileOverlap\":\"TODO_NED\",\"tiledDiffusion\":\"TODO_NED\",\"hiresFix\":false,\"zeroNegativePrompt\":false}"
+    "#krea2_stills": "{\"model\":\"krea_2_turbo_q8p.ckpt\",\"sampler\":10,\"steps\":8,\"guidanceScale\":1,\"shift\":3,\"seedMode\":2,\"seed\":-1,\"strength\":1,\"numFrames\":1,\"clipSkip\":1,\"clipWeight\":1,\"controls\":[],\"loras\":[],\"tiledDecoding\":false,\"decodingTileWidth\":0,\"decodingTileHeight\":0,\"decodingTileOverlap\":0,\"tiledDiffusion\":false,\"hiresFix\":false,\"zeroNegativePrompt\":false}",
+    "#ltx2_video": "{\"model\":\"ltx_2.3_22b_distilled_q8p.ckpt\",\"sampler\":19,\"steps\":8,\"guidanceScale\":1,\"shift\":5,\"seedMode\":2,\"seed\":-1,\"strength\":1,\"clipSkip\":1,\"clipWeight\":1,\"controls\":[],\"loras\":[],\"tiledDecoding\":false,\"decodingTileWidth\":0,\"decodingTileHeight\":0,\"decodingTileOverlap\":0,\"tiledDiffusion\":false,\"hiresFix\":false,\"zeroNegativePrompt\":false}"
   },
   "poseJSONShortcuts": {},
   "wildcardShortcuts": {}
