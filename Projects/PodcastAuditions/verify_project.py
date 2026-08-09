@@ -219,9 +219,36 @@ def check_config_shortcuts(project: dict, r: Report) -> None:
                 r.fail(f"item {i} (config): shortcut {v!r} is empty")
             else:
                 try:
-                    json.loads(shortcuts[v])
+                    check_config_value_types(v, json.loads(shortcuts[v]), r)
                 except json.JSONDecodeError as e:
                     r.fail(f"configShortcuts[{v!r}] does not parse as JSON — {e}")
+
+
+# Strings that are really a number or a bool wearing quotes. `"2"` is valid JSON, exports
+# cleanly, and is then assigned verbatim to a numeric config field.
+QUOTED_SCALAR = re.compile(r"^\s*(-?\d+(\.\d+)?([eE][-+]?\d+)?|true|false|null)\s*$")
+
+
+def check_config_value_types(name: str, config: dict, r: Report) -> None:
+    """Catch a numeric or boolean config value that was typed with quotes around it.
+
+    `config` is applied with Object.assign(configuration, value) (StoryflowPipeline.js:1002) and
+    nothing coerces on the way in — unlike `sweep`, whose numeric-looking cards ARE coerced on
+    export. So "seedMode": "2" hands Draw Things the string "2" for an integer enum. It parses,
+    it exports, it validates, and then it either errors deep inside DT or is quietly ignored.
+
+    Deliberately a shape rule rather than a per-key table: a value that looks like a number and
+    is wrapped in quotes is wrong whatever the key is called, and this needs no maintenance when
+    the config gains a field.
+    """
+    if not isinstance(config, dict):
+        r.fail(f"configShortcuts[{name!r}] is not an object")
+        return
+    for key, value in config.items():
+        if isinstance(value, str) and QUOTED_SCALAR.match(value):
+            r.fail(f"configShortcuts[{name!r}].{key} is the STRING {value!r}, not the value "
+                   f"{value.strip()}. Draw Things applies the config with Object.assign and "
+                   f"coerces nothing, so a quoted number is handed over as text. Drop the quotes.")
 
 
 # ──────────────────────────────────────────────────────────────────────────────

@@ -35,17 +35,43 @@
       "values are for a 1920x1280 canvas, so its tiling fields do not transfer unchanged."
     ],
 
-    "_4_key_notes": {
+    "_4_quotes": [
+      "TODO_NED is quoted only because a placeholder has to be SOME valid JSON. When you replace",
+      "it, use the field's real type. 'model' is the only one of the 22 that stays a quoted string.",
+      "",
+      "  model .................. string   \"krea_2_turbo_q8p.ckpt\"",
+      "  sampler ................ integer  15",
+      "  steps .................. integer  10",
+      "  guidanceScale .......... number   1.5",
+      "  shift .................. number   5",
+      "  seedMode ............... integer  2",
+      "  tiledDecoding .......... boolean  true",
+      "  decodingTileWidth ...... integer  1920",
+      "  decodingTileHeight ..... integer  704",
+      "  decodingTileOverlap .... integer  128",
+      "  tiledDiffusion ......... boolean  false",
+      "",
+      "WHY IT MATTERS: the pipeline applies a config with Object.assign(configuration, value)",
+      "(StoryflowPipeline.js:1002) and coerces nothing. \"seedMode\": \"2\" hands Draw Things the",
+      "STRING \"2\" for an integer enum — valid JSON, exports fine, wrong at the far end. This is",
+      "unlike 'sweep', whose numeric-looking cards ARE coerced to real numbers on export, so the",
+      "habit does not transfer. verify_project.py fails on any quoted number or boolean here.",
+      "",
+      "The author's own config in misc/.../CharacterSheet_3x2_1920x1280.json is the reference:",
+      "every numeric field in it is bare."
+    ],
+
+    "_5_key_notes": {
       "model": "Exact checkpoint filename including extension, e.g. 'krea_2_turbo_q8p.ckpt'.",
-      "sampler": "INTEGER enum, not a name. Read it off a real render.",
-      "seedMode": "INTEGER enum, not a name. Read it off a real render.",
+      "sampler": "INTEGER enum, not a name and not a quoted digit. Read it off a real render.",
+      "seedMode": "INTEGER enum, not a name and not a quoted digit. Read it off a real render.",
       "numFrames": "Phase A pins 1 deliberately (plan 5.2): 'configuration' persists across the whole run, so on a second pass phase B's framesDialog would otherwise leave it high and Krea 2 would be asked for a video. Do not remove it.",
       "seed": "Phase A ships -1 because the phase-A 'sweep' item overrides it per character from bible.json's seed column. Phase B stays -1 on purpose: seed does not carry identity into an image-to-video pass, the anchor does.",
       "tiledDecoding + decodingTile*": "Only meaningful past roughly one megapixel. Whether you need them depends on the canvas size in 'sizes' below and on your machine.",
       "loras": "Empty list ships. A camera-control / static-shot LoRA on the LTX-2 config is worth trying, since the whole shot design is 'the camera does not move'. Shape: [{\"file\": \"...\", \"mode\": \"all\", \"weight\": 1.0}]."
     },
 
-    "_5_sizes_and_pacing": [
+    "_6_sizes_and_pacing": [
       "'sizes' feeds the two 'size' items, one per phase. Keep every dimension divisible by 32.",
       "",
       "OPEN QUESTION, worth settling BEFORE writing the bible: the shipped stills are square and the",
