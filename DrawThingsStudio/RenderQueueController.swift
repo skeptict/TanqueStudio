@@ -126,7 +126,11 @@ final class RenderQueueController {
         var errorDescription: String? {
             switch self {
             case .noModel: return "No model set — would render noise."
-            case .noImageReturned: return "Draw Things returned no image."
+            // Terse by design — this lands in a queue row, not a banner. The
+            // full explanation (stale DT+ session first, since that was the
+            // real cause on 2026-08-04) lives in GenerateViewModel's
+            // noImageErrorMessage.
+            case .noImageReturned: return "Draw Things returned no image — check Draw Things+ sign-in."
             }
         }
     }

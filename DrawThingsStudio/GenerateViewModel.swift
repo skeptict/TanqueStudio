@@ -1200,15 +1200,24 @@ final class GenerateViewModel {
     }
 
     /// Message for the "DT completed the request but returned zero images" case.
-    /// Branches on the real connection signal instead of always presuming a missing
-    /// *local* model — DT+ cloud-bridge users need no local download, so that
-    /// presumption misleads them. When we have no recent successful connection (or no
-    /// inventory), lead with the likely cause; otherwise list the render-side causes.
+    ///
+    /// The render-side text previously named three causes — missing model,
+    /// unsupported sampler, shared-secret mismatch. On 2026-08-04 all three were
+    /// wrong and chasing them cost a full day. The actual cause was a **stale
+    /// Draw Things+ session**: with the server's Bridge Mode on (its default),
+    /// DT routes renders through the DT+ account, and a bad session there fails
+    /// exactly this way — success, zero images, no local generation attempted.
+    /// Signing out of DT+ and back in cleared it. That now leads the message,
+    /// and the old causes follow as secondary.
+    ///
+    /// Also points at Draw Things' own window, which reports what it actually
+    /// did ("Serving a remote request…") — the app's most useful signal, since
+    /// DT registers nothing with the unified log.
     private var noImageErrorMessage: String {
         if models.isEmpty || !lastConnectionSucceeded {
             return "Draw Things returned no image — you may not be connected. Check the server address and shared secret in Settings → Draw Things, then hit refresh next to the model picker."
         }
-        return "Draw Things returned no image. Possible causes: the model isn't available on the server, the sampler isn't supported by this model, or the shared secret doesn't match (Settings → Draw Things)."
+        return "Draw Things accepted the request but returned no image. With Bridge Mode on, renders go through your Draw Things+ account, and a stale session fails exactly this way — signing out of Draw Things+ and back in clears it. Otherwise the model may not be usable on that server, or the sampler may not suit it. Draw Things' own window shows what it actually did."
     }
 
     // MARK: — Dropped image handling
