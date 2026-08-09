@@ -206,6 +206,48 @@ def check_padding(parsed: list[tuple[int, str, object]], r: Report) -> None:
                    f"The Editor's default of 49 is one of the bad ones; use 48.")
 
 
+def check_sizes_share_an_aspect(parsed: list[tuple[int, str, object]], r: Report) -> None:
+    """Every `size` item must share one aspect ratio, or the anchors come in distorted.
+
+    Found on a real run (2026-08-09): stills at 1024x1024 and video at 1024x576 produced clips
+    whose anchor was vertically SQUASHED — not cropped, not letterboxed. `loopLoad` does not call
+    `updateCanvasSize` (StoryflowPipeline.js:1255-1259); `canvasLoad` does. So loopLoad drops the
+    anchor onto whatever canvas the `size` item above the loop already set, and nothing rescales
+    proportionally.
+
+    Phase A's output IS phase B's first frame, which is what makes this a project-level invariant
+    rather than a matter of taste.
+    """
+    sizes = [(i, o) for i, t, o in parsed if t == "size"]
+    if len(sizes) < 2:
+        return
+
+    def aspect(o):
+        w, h = o.get("width"), o.get("height")
+        return (w / h) if isinstance(w, (int, float)) and isinstance(h, (int, float)) and h else None
+
+    base_i, base = sizes[0]
+    for i, o in sizes[1:]:
+        a, b = aspect(base), aspect(o)
+        if a is None or b is None:
+            r.fail(f"item {i} (size): width/height must be numbers")
+        elif abs(a - b) > 1e-6:
+            r.fail(f"item {i} (size) is {o['width']}x{o['height']} but item {base_i} is "
+                   f"{base['width']}x{base['height']} — different aspect ratios. The anchor is "
+                   f"loaded onto the video canvas without a proportional rescale, so it arrives "
+                   f"SQUASHED. Make both the same shape.")
+        elif (o.get("width"), o.get("height")) != (base.get("width"), base.get("height")):
+            r.warn(f"item {i} (size) is {o['width']}x{o['height']} and item {base_i} is "
+                   f"{base['width']}x{base['height']}: same aspect, different pixels. Untested — "
+                   f"loopLoad does not rescale, so prefer identical dimensions.")
+
+    for i, o in sizes:
+        for key in ("width", "height"):
+            v = o.get(key)
+            if isinstance(v, int) and v % 32 != 0:
+                r.fail(f"item {i} (size): {key} {v} is not divisible by 32")
+
+
 def check_config_shortcuts(project: dict, r: Report) -> None:
     shortcuts = project.get("configShortcuts", {})
     for i, item in enumerate(project.get("items", [])):
@@ -406,6 +448,7 @@ def main() -> int:
                    if t == "wildcard" and isinstance(o.get("cards"), list)}
     check_loops(parsed, card_counts.pop() if len(card_counts) == 1 else None, r)
     check_padding(parsed, r)
+    check_sizes_share_an_aspect(parsed, r)
     check_config_shortcuts(project, r)
     check_dialogue_and_report(project, r)
     check_placeholders(project, args.strict, r)

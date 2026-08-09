@@ -19,7 +19,7 @@
     },
     {
       "type": "size",
-      "value": "{\"width\":1024,\"height\":1024}"
+      "value": "{\"width\":1024,\"height\":576}"
     },
     {
       "type": "loop",

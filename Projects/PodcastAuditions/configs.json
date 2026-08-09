@@ -74,10 +74,13 @@
     "_6_sizes_and_pacing": [
       "'sizes' feeds the two 'size' items, one per phase. Keep every dimension divisible by 32.",
       "",
-      "OPEN QUESTION, worth settling BEFORE writing the bible: the shipped stills are square and the",
-      "shipped video is 16:9. Phase A's output is phase B's first frame, so a square anchor gets",
-      "reframed on the way into the clip. Matching the aspect (e.g. stills at 1024x576 too) avoids",
-      "that. Changing it later means regenerating every anchor.",
+      "SETTLED 2026-08-09, on a real run: the two aspects MUST match. Stills were 1024x1024 and",
+      "video 1024x576, and the anchor came into the clip vertically SQUASHED, not cropped and not",
+      "letterboxed. loopLoad does not call updateCanvasSize (StoryflowPipeline.js:1255-1259) —",
+      "canvasLoad does — so it drops the anchor straight onto whatever canvas the `size` item above",
+      "the loop already set, and nothing rescales proportionally. Both are 1024x576 now.",
+      "",
+      "If you change one, change the other. Changing either means regenerating every anchor.",
       "",
       "'framesDialog' is the clip-length rule. padding is 48, NOT the Editor's default of 49:",
       "framesDialog() returns ceil(words/wps*25 / 8)*8 + 1 and the executor then adds padding raw",
@@ -138,7 +141,7 @@
   },
 
   "sizes": {
-    "stills": { "width": 1024, "height": 1024 },
+    "stills": { "width": 1024, "height": 576 },
     "video":  { "width": 1024, "height": 576 }
   },
 
