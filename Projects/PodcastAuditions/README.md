@@ -41,9 +41,35 @@ numeric group than `anchor_003.png` and where it ends up is not predictable from
 
 1. Create `~Pictures/PodcastAuditions/anchors/`.
 2. Fill in `configs.json` (see **Before it will render** below) and `bible.json`.
-3. `python3 build_project.py` — writes `Podcast Auditions.json`.
+3. `python3 build_project.py` — writes **two** files, see below.
 4. `python3 verify_project.py --strict` — must be clean.
-5. Load `Podcast Auditions.json` into the StoryFlow Editor, **Export to Pipeline**, and run it.
+5. Run the StoryFlow script in Draw Things and paste in **`Podcast Auditions.pipeline.json`**.
+
+### Two files, two formats — this is the easiest mistake to make
+
+`build_project.py` writes both, and they are not interchangeable:
+
+| File | What it is | Where it goes |
+|---|---|---|
+| `Podcast Auditions.json` | the **Editor project** — `{projectName, items, …}`, shortcuts unexpanded | the StoryFlow Editor, or Tanque Studio |
+| `Podcast Auditions.pipeline.json` | the **instruction array** — a flat `[{key: value}, …]`, shortcuts resolved | paste into Draw Things' StoryFlow script |
+
+Paste the project into Draw Things and preflight dies with:
+
+```
+Exception: arr.entries is not a function. (In 'arr.entries()', 'arr.entries' is undefined)
+Line: 122
+Stack: validateInstructionArray@
+```
+
+`arr.entries()` is an Array method and a project is an object. Nothing in the message says
+"wrong format", so it is worth recognising on sight.
+
+Normally the Editor's **Export to Pipeline** does this conversion, and Tanque Studio's Variables
+panel has **Copy Pipeline** / **Export Pipeline** for the same job. The generator emits it directly
+so that a recipient with only Draw Things needs neither. A test asserts the generated array is
+deep-equal to what Tanque Studio's own codec produces for the same project, so the two
+implementations cannot drift.
 
 **First time, run phase A alone with the loop count set to 1.** The three most likely failures —
 the folder not existing, the canvas save landing blank, and a prompt-escaping mistake — all surface
@@ -171,7 +197,8 @@ pairs every character with the wrong anchor — plausibly, and without complaint
 | `configs.json` | The two Draw Things configs, the two canvas sizes, and the pacing. |
 | `build_project.py` | `bible.json` + `configs.json` → `Podcast Auditions.json`. Also writes a copy to `TanqueStudioTests/Fixtures/podcast-auditions.json`, which is what the Swift round-trip tests check. |
 | `verify_project.py` | Pre-flight. `--strict` also fails on remaining placeholders. |
-| `Podcast Auditions.json` | **Generated.** The deliverable. Do not hand-edit. |
+| `Podcast Auditions.json` | **Generated.** The Editor project. For the Editor and Tanque Studio. Do not hand-edit. |
+| `Podcast Auditions.pipeline.json` | **Generated.** The instruction array. This is the one Draw Things wants. |
 
 Both scripts are standard library only.
 

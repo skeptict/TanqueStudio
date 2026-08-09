@@ -39,7 +39,7 @@
     },
     {
       "type": "wildcard",
-      "value": "{\"wild\":\"loop\",\"cards\":[\"A striking bald man in his fifties with a salt-and-pepper beard\",\"an adorable labradoodle puppy\",\"A playful, attractive woman with thick shaggy blonde hair pulled up in a loose bun, dark eyes\",\"A powerful young jungle princess warrior\",\"Playful young woman with shaggy pixie rainbow hair\",\"Young woman in her 20s, platinum blonde long wavy hair, full glossy lips, dark black eyes, freckles, the tip of her nose is painted black and she has whiskers drawn on her cheeks.\"]}"
+      "value": "{\"wild\":\"loop\",\"cards\":[\"A striking bald man in his fifties with a salt-and-pepper beard\",\"an adorable labradoodle puppy\",\"A playful, attractive woman with thick shaggy blonde hair pulled up in a loose bun, dark eyes\",\"A powerful young jungle princess warrior\",\"Playful young woman with shaggy pixie rainbow hair, dark eye-liner\",\"Young woman in her 20s, platinum blonde long wavy hair, full glossy lips, dark black eyes, freckles, the tip of her nose is painted black and she has whiskers drawn on her cheeks.\"]}"
     },
     {
       "type": "concat",
@@ -47,7 +47,7 @@
     },
     {
       "type": "wildcard",
-      "value": "{\"wild\":\"loop\",\"cards\":[\"a corduroy blazer and a yellow cravat\",\"a yellow bandana\",\"loose colorful sundress\",\"leather studded armor over flowing linen robes\",\"Punk rock t-shirt, pleated skirt\",\"a loose-fitting brown furry dog costume over her curvy figure, yellow bandana around her neck, exposed shoulder and bra strap, floppy dog ears\"]}"
+      "value": "{\"wild\":\"loop\",\"cards\":[\"a corduroy blazer and a yellow cravat\",\"a yellow bandana\",\"loose colorful sundress\",\"leather studded armor over flowing linen robes\",\"Punk rock t-shirt, denim cut-off shorts, studded leather jewelry, tattoos\",\"a loose-fitting brown furry dog costume over her curvy figure, yellow bandana around her neck, exposed shoulder and bra strap, floppy dog ears\"]}"
     },
     {
       "type": "concat",
@@ -91,7 +91,7 @@
     },
     {
       "type": "wildcard",
-      "value": "{\"wild\":\"loop\",\"cards\":[\"A striking bald man in his fifties with a salt-and-pepper beard\",\"an adorable labradoodle puppy\",\"A playful, attractive woman with thick shaggy blonde hair pulled up in a loose bun, dark eyes\",\"A powerful young jungle princess warrior\",\"Playful young woman with shaggy pixie rainbow hair\",\"Young woman in her 20s, platinum blonde long wavy hair, full glossy lips, dark black eyes, freckles, the tip of her nose is painted black and she has whiskers drawn on her cheeks.\"]}"
+      "value": "{\"wild\":\"loop\",\"cards\":[\"A striking bald man in his fifties with a salt-and-pepper beard\",\"an adorable labradoodle puppy\",\"A playful, attractive woman with thick shaggy blonde hair pulled up in a loose bun, dark eyes\",\"A powerful young jungle princess warrior\",\"Playful young woman with shaggy pixie rainbow hair, dark eye-liner\",\"Young woman in her 20s, platinum blonde long wavy hair, full glossy lips, dark black eyes, freckles, the tip of her nose is painted black and she has whiskers drawn on her cheeks.\"]}"
     },
     {
       "type": "concat",
@@ -99,7 +99,7 @@
     },
     {
       "type": "wildcard",
-      "value": "{\"wild\":\"loop\",\"cards\":[\"a corduroy blazer and a yellow cravat\",\"a yellow bandana\",\"loose colorful sundress\",\"leather studded armor over flowing linen robes\",\"Punk rock t-shirt, pleated skirt\",\"a loose-fitting brown furry dog costume over her curvy figure, yellow bandana around her neck, exposed shoulder and bra strap, floppy dog ears\"]}"
+      "value": "{\"wild\":\"loop\",\"cards\":[\"a corduroy blazer and a yellow cravat\",\"a yellow bandana\",\"loose colorful sundress\",\"leather studded armor over flowing linen robes\",\"Punk rock t-shirt, denim cut-off shorts, studded leather jewelry, tattoos\",\"a loose-fitting brown furry dog costume over her curvy figure, yellow bandana around her neck, exposed shoulder and bra strap, floppy dog ears\"]}"
     },
     {
       "type": "concat",

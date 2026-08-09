@@ -141,6 +141,45 @@ final class PodcastAuditionsFixtureTests: XCTestCase {
         XCTAssertTrue(warnings.isEmpty, "unresolved config shortcut: \(warnings.joined(separator: "; "))")
     }
 
+    /// The generator emits the pipeline instruction array itself, so a recipient with only Draw
+    /// Things never needs the Editor or Tanque Studio to convert. That is a second implementation
+    /// of `toPipelineArray` written in Python, and two implementations of one transform drift.
+    /// This pins them together.
+    ///
+    /// It matters because the two formats are easy to confuse and the failure is opaque: hand
+    /// `StoryflowPipeline.js` a *project* instead of an instruction array and preflight dies with
+    /// `arr.entries is not a function` at `validateInstructionArray` (:122) — an Array method
+    /// called on an object, with nothing in the message naming the actual problem.
+    func testTheGeneratedPipelineArrayMatchesTheCodecsOwnExport() throws {
+        let bundle = Bundle(for: type(of: self))
+        let referenceURL = try XCTUnwrap(
+            bundle.url(forResource: "podcast-auditions.pipeline", withExtension: "json"),
+            "missing podcast-auditions.pipeline.json — re-run build_project.py"
+        )
+        let generated = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: try Data(contentsOf: referenceURL)) as? [[String: Any]],
+            "generated pipeline export is not an array of instructions"
+        )
+        let ours = StoryFlowProjectCodec.toPipelineArray(try project())
+
+        XCTAssertEqual(ours.count, generated.count,
+                       "instruction count: python \(generated.count), codec \(ours.count)")
+
+        var mismatches: [String] = []
+        for (i, instruction) in generated.enumerated() where i < ours.count {
+            guard let pyKey = instruction.keys.first, let ourKey = ours[i].keys.first else { continue }
+            if pyKey != ourKey {
+                mismatches.append("[\(i)] key: python \(pyKey), codec \(ourKey)")
+                continue
+            }
+            // Canonicalise so dictionary ordering is not a difference.
+            let a = try? JSONSerialization.data(withJSONObject: [instruction[pyKey]!], options: [.sortedKeys])
+            let b = try? JSONSerialization.data(withJSONObject: [ours[i][ourKey]!], options: [.sortedKeys])
+            if a != b { mismatches.append("[\(i)] \(pyKey) value") }
+        }
+        XCTAssertTrue(mismatches.isEmpty, mismatches.joined(separator: "; "))
+    }
+
     // MARK: - The properties the whole design rests on
 
     /// Every wildcard in `loop` mode. `loop` is the only mode that is a pure function of the

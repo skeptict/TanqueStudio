@@ -435,6 +435,77 @@ def build_project(bible: list[dict], cfg: dict) -> dict:
 
 
 # ──────────────────────────────────────────────────────────────────────────────
+# Pipeline export
+#
+# The Editor PROJECT format and the pipeline INSTRUCTION ARRAY are two different things, and
+# `StoryflowPipeline.js` only accepts the second. Hand it a project and preflight dies on
+#
+#     Exception: arr.entries is not a function
+#
+# at validateInstructionArray (:122) — `arr.entries()` is an Array method and a project is an
+# object. Normally the Editor's "Export to Pipeline" (or Tanque Studio's Copy Pipeline) does this
+# conversion; emitting it here means a recipient with only Draw Things never needs either.
+#
+# The transform, matching StoryFlowProjectCodec.toPipelineArray and the Editor's own exporter:
+#   {type, value}          → {type: value}
+#   config "#shortcut"     → the resolved config OBJECT
+#   object-valued strings  → parsed to real objects (allowedKeys types them "object")
+#   note                   → whitespace runs collapsed to single spaces (Editor does this for
+#                            note/interrogate/enhance only; prompt/negPrompt/concat keep theirs)
+#   sweep cards            → numeric-looking strings coerced to real numbers
+#   append                 → {"end": true}
+#
+# PodcastAuditionsFixtureTests asserts this output is deep-equal to what Tanque Studio's codec
+# produces for the same project, so the two implementations cannot drift.
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+def _collapse_whitespace(s: str) -> str:
+    return " ".join(s.split())
+
+
+def _coerce_number(card):
+    if not isinstance(card, str):
+        return card
+    trimmed = card.strip()
+    if not trimmed:
+        return card
+    try:
+        n = float(trimmed)
+    except ValueError:
+        return card
+    return int(n) if n.is_integer() and abs(n) < 1e15 else n
+
+
+def to_pipeline_array(project: dict) -> list[dict]:
+    shortcuts = project["configShortcuts"]
+    out: list[dict] = []
+
+    for item in project["items"]:
+        t, v = item["type"], item["value"]
+
+        if t == "note":
+            out.append({"note": _collapse_whitespace(v)})
+        elif t == "config":
+            if isinstance(v, str) and v.startswith("#"):
+                out.append({"config": json.loads(shortcuts[v])})
+            else:
+                out.append({"config": json.loads(v)})
+        elif t == "sweep":
+            o = json.loads(v)
+            if isinstance(o.get("cards"), list):
+                o["cards"] = [_coerce_number(c) for c in o["cards"]]
+            out.append({"sweep": o})
+        elif t in OBJECT_TYPES:
+            out.append({t: json.loads(v)})
+        else:
+            out.append({t: v})
+
+    out.append({"end": True})
+    return out
+
+
+# ──────────────────────────────────────────────────────────────────────────────
 # Report
 # ──────────────────────────────────────────────────────────────────────────────
 
@@ -478,9 +549,17 @@ def main() -> int:
     blob = json.dumps(project, ensure_ascii=False, indent=2) + "\n"
     args.out.write_text(blob, encoding="utf-8")
     print(f"wrote {args.out}")
+
+    # The Draw Things-ready form. Paste THIS into the StoryFlow script, not the project above.
+    pipeline = json.dumps(to_pipeline_array(project), ensure_ascii=False, indent=2) + "\n"
+    pipeline_out = args.out.with_suffix(".pipeline.json")
+    pipeline_out.write_text(pipeline, encoding="utf-8")
+    print(f"wrote {pipeline_out}   ← paste this one into Draw Things")
+
     if str(args.fixture):
         args.fixture.write_text(blob, encoding="utf-8")
-        print(f"wrote {args.fixture}")
+        args.fixture.with_suffix(".pipeline.json").write_text(pipeline, encoding="utf-8")
+        print(f"wrote {args.fixture} (+ .pipeline.json)")
     print()
     report(project, bible, cfg)
     return 0
