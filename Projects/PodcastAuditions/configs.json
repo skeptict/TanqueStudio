@@ -1,0 +1,123 @@
+{
+  "_schema": {
+    "_1_what_this_is": [
+      "The two Draw Things configs, and the two canvas sizes, held outside build_project.py so",
+      "swapping models never means editing the generator. build_project.py copies each object in",
+      "'configShortcuts' verbatim into the emitted project's own configShortcuts map, and the two",
+      "phase 'config' items reference them by name (#krea2_stills / #ltx2_video).",
+      "",
+      "Shortcuts are an Editor-format concept. Both exporters resolve them before the pipeline ever",
+      "sees them (StoryflowEditor.html:2418 resolveConfigShortcuts; StoryFlowProjectCodec.swift's",
+      "toPipelineArray config branch), so the running pipeline gets a plain inline config object."
+    ],
+
+    "_2_todo_ned": [
+      "Every value below that reads exactly \"TODO_NED\" is a placeholder and the project will NOT",
+      "render correctly until it is replaced. verify_project.py lists them all; run it with --strict",
+      "to turn that list into a hard failure before a real run.",
+      "",
+      "These values are deliberately NOT guessed. Sampler and seedMode are integer enums whose",
+      "meaning changes between Draw Things builds, model filenames are exact strings including the",
+      "quantisation suffix, and the tiling fields only matter at particular canvas sizes. A",
+      "plausible-looking wrong value is worse than an obvious placeholder: it runs, and it runs wrong."
+    ],
+
+    "_3_where_the_values_come_from": [
+      "1. In Draw Things, render ONE still with the Krea 2 model at the phase-A canvas size.",
+      "2. Render ONE clip with LTX-2 at the phase-B canvas size.",
+      "3. In Tanque Studio: Import from DT, select each render, and read its config off the",
+      "   Metadata (raw) viewer. That is the authoritative copy — it is what DT actually used,",
+      "   not what a UI panel was displaying.",
+      "4. Paste the integer/string values into the matching keys below. Keep the key names.",
+      "",
+      "misc/StoryflowPipeline_260802/projects/CharacterSheet_3x2_1920x1280.json holds a real,",
+      "complete Krea 2 Turbo config from the format's author. It is the shape to match — but its",
+      "values are for a 1920x1280 canvas, so its tiling fields do not transfer unchanged."
+    ],
+
+    "_4_key_notes": {
+      "model": "Exact checkpoint filename including extension, e.g. 'krea_2_turbo_q8p.ckpt'.",
+      "sampler": "INTEGER enum, not a name. Read it off a real render.",
+      "seedMode": "INTEGER enum, not a name. Read it off a real render.",
+      "numFrames": "Phase A pins 1 deliberately (plan 5.2): 'configuration' persists across the whole run, so on a second pass phase B's framesDialog would otherwise leave it high and Krea 2 would be asked for a video. Do not remove it.",
+      "seed": "Phase A ships -1 because the phase-A 'sweep' item overrides it per character from bible.json's seed column. Phase B stays -1 on purpose: seed does not carry identity into an image-to-video pass, the anchor does.",
+      "tiledDecoding + decodingTile*": "Only meaningful past roughly one megapixel. Whether you need them depends on the canvas size in 'sizes' below and on your machine.",
+      "loras": "Empty list ships. A camera-control / static-shot LoRA on the LTX-2 config is worth trying, since the whole shot design is 'the camera does not move'. Shape: [{\"file\": \"...\", \"mode\": \"all\", \"weight\": 1.0}]."
+    },
+
+    "_5_sizes_and_pacing": [
+      "'sizes' feeds the two 'size' items, one per phase. Keep every dimension divisible by 32.",
+      "",
+      "OPEN QUESTION, worth settling BEFORE writing the bible: the shipped stills are square and the",
+      "shipped video is 16:9. Phase A's output is phase B's first frame, so a square anchor gets",
+      "reframed on the way into the clip. Matching the aspect (e.g. stills at 1024x576 too) avoids",
+      "that. Changing it later means regenerating every anchor.",
+      "",
+      "'framesDialog' is the clip-length rule. padding is 48, NOT the Editor's default of 49:",
+      "framesDialog() returns ceil(words/wps*25 / 8)*8 + 1 and the executor then adds padding raw",
+      "(StoryflowPipeline.js:1045), so 8k+1+49 = 8k+50, which is 2 mod 8 and not a valid LTX frame",
+      "count. 48 gives 8k+49, which is 1 mod 8. Costs 0.04s of tail.",
+      "",
+      "WARNING: the StoryFlow Editor's own padding field will silently snap 48 back to 49. Its",
+      "clampPadding (StoryflowEditor.html:~1455) rounds to the nearest 8k+1. If you open this",
+      "project in the Editor and touch the framesDialog item, re-run build_project.py afterwards."
+    ]
+  },
+
+  "configShortcuts": {
+    "#krea2_stills": {
+      "model": "TODO_NED",
+      "sampler": "TODO_NED",
+      "steps": "TODO_NED",
+      "guidanceScale": "TODO_NED",
+      "shift": "TODO_NED",
+      "seedMode": "TODO_NED",
+      "seed": -1,
+      "strength": 1,
+      "numFrames": 1,
+      "clipSkip": 1,
+      "clipWeight": 1,
+      "controls": [],
+      "loras": [],
+      "tiledDecoding": "TODO_NED",
+      "decodingTileWidth": "TODO_NED",
+      "decodingTileHeight": "TODO_NED",
+      "decodingTileOverlap": "TODO_NED",
+      "tiledDiffusion": "TODO_NED",
+      "hiresFix": false,
+      "zeroNegativePrompt": false
+    },
+
+    "#ltx2_video": {
+      "model": "TODO_NED",
+      "sampler": "TODO_NED",
+      "steps": "TODO_NED",
+      "guidanceScale": "TODO_NED",
+      "shift": "TODO_NED",
+      "seedMode": "TODO_NED",
+      "seed": -1,
+      "strength": 1,
+      "clipSkip": 1,
+      "clipWeight": 1,
+      "controls": [],
+      "loras": [],
+      "tiledDecoding": "TODO_NED",
+      "decodingTileWidth": "TODO_NED",
+      "decodingTileHeight": "TODO_NED",
+      "decodingTileOverlap": "TODO_NED",
+      "tiledDiffusion": "TODO_NED",
+      "hiresFix": false,
+      "zeroNegativePrompt": false
+    }
+  },
+
+  "sizes": {
+    "stills": { "width": 1024, "height": 1024 },
+    "video":  { "width": 1024, "height": 576 }
+  },
+
+  "framesDialog": { "wps": 2.6, "padding": 48, "generate": false },
+
+  "anchorsDirectory": "PodcastAuditions/anchors/",
+  "anchorFilename": "PodcastAuditions/anchors/anchor.png"
+}

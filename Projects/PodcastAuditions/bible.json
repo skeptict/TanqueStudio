@@ -1,0 +1,95 @@
+{
+  "_schema": {
+    "_1_what_this_is": [
+      "The character bible. This file is the single source of truth for the project.",
+      "build_project.py reads it and emits every per-character card list from these rows,",
+      "so the IDENTITY and WARDROBE lists that appear in BOTH phases cannot drift apart.",
+      "Never hand-edit 'Podcast Auditions.json'. Edit this, then re-run build_project.py."
+    ],
+    "_2_todo_ned": [
+      "EVERY 'characters' row below is PLACEHOLDER. All of it must be replaced.",
+      "The placeholders are deliberately ugly so nobody mistakes them for finished copy.",
+      "'seed' is the one field that does NOT need replacing — see the field notes."
+    ],
+    "_3_row_count": [
+      "The number of rows here sets the loop count in both phases. Six is the design,",
+      "but any count works as long as every row is complete. Add or remove whole rows;",
+      "do not leave a row half-filled."
+    ],
+    "_4_fields": {
+      "name": "Internal label only. Never reaches the model. Used in verify_project.py's report.",
+      "identity": "One clause. Build, age, face, hair. Reads after 'a headshot ... of '. No trailing period, no leading space.",
+      "wardrobe": "One clause. Reads after ', wearing '. No trailing period, no leading space.",
+      "slate": "SPOKEN. The character naming themselves and the role. Written WITHOUT quotation marks — build_project.py adds them.",
+      "line": "SPOKEN. The second beat. Also written WITHOUT quotation marks.",
+      "voice": "One clause. Reads after ' in '. Describes delivery, not content. No trailing period.",
+      "seed": "Integer, pinned so a rejected anchor can be regenerated identically. Arbitrary values are fine; these ship usable. Not a TODO."
+    },
+    "_5_hard_rules": [
+      "NO double-quote characters (\") anywhere in any field. framesDialog sizes the clip by counting",
+      "words inside \"...\" spans, and build_project.py owns those spans. A stray quote in your text",
+      "splits a span and silently changes the frame count. verify_project.py fails on this.",
+      "slate + line together must be 20 SPOKEN WORDS OR FEWER. At wps 2.6 / padding 48, 20 words is",
+      "249 frames; 22 words is 265, which is past Tanque Studio's 257-frame cap while StoryflowPipeline.js",
+      "has no cap at all — so past 20 words the two engines silently render different lengths.",
+      "verify_project.py prints the per-character frame count and flags anything over 257."
+    ]
+  },
+
+  "characters": [
+    {
+      "name": "PLACEHOLDER 1",
+      "identity": "TODO NED REPLACE ME character one identity clause goes here",
+      "wardrobe": "TODO NED REPLACE ME character one wardrobe clause goes here",
+      "slate": "PLACEHOLDER ONE SLATE REPLACE THIS",
+      "line": "PLACEHOLDER ONE LINE REPLACE THIS TOO",
+      "voice": "TODO NED REPLACE ME character one voice clause goes here",
+      "seed": 811001
+    },
+    {
+      "name": "PLACEHOLDER 2",
+      "identity": "TODO NED REPLACE ME character two identity clause goes here",
+      "wardrobe": "TODO NED REPLACE ME character two wardrobe clause goes here",
+      "slate": "PLACEHOLDER TWO SLATE REPLACE THIS",
+      "line": "PLACEHOLDER TWO LINE REPLACE THIS TOO",
+      "voice": "TODO NED REPLACE ME character two voice clause goes here",
+      "seed": 811002
+    },
+    {
+      "name": "PLACEHOLDER 3",
+      "identity": "TODO NED REPLACE ME character three identity clause goes here",
+      "wardrobe": "TODO NED REPLACE ME character three wardrobe clause goes here",
+      "slate": "PLACEHOLDER THREE SLATE REPLACE THIS",
+      "line": "PLACEHOLDER THREE LINE REPLACE THIS TOO",
+      "voice": "TODO NED REPLACE ME character three voice clause goes here",
+      "seed": 811003
+    },
+    {
+      "name": "PLACEHOLDER 4",
+      "identity": "TODO NED REPLACE ME character four identity clause goes here",
+      "wardrobe": "TODO NED REPLACE ME character four wardrobe clause goes here",
+      "slate": "PLACEHOLDER FOUR SLATE REPLACE THIS",
+      "line": "PLACEHOLDER FOUR LINE REPLACE THIS TOO",
+      "voice": "TODO NED REPLACE ME character four voice clause goes here",
+      "seed": 811004
+    },
+    {
+      "name": "PLACEHOLDER 5",
+      "identity": "TODO NED REPLACE ME character five identity clause goes here",
+      "wardrobe": "TODO NED REPLACE ME character five wardrobe clause goes here",
+      "slate": "PLACEHOLDER FIVE SLATE REPLACE THIS",
+      "line": "PLACEHOLDER FIVE LINE REPLACE THIS TOO",
+      "voice": "TODO NED REPLACE ME character five voice clause goes here",
+      "seed": 811005
+    },
+    {
+      "name": "PLACEHOLDER 6",
+      "identity": "TODO NED REPLACE ME character six identity clause goes here",
+      "wardrobe": "TODO NED REPLACE ME character six wardrobe clause goes here",
+      "slate": "PLACEHOLDER SIX SLATE REPLACE THIS",
+      "line": "PLACEHOLDER SIX LINE REPLACE THIS TOO",
+      "voice": "TODO NED REPLACE ME character six voice clause goes here",
+      "seed": 811006
+    }
+  ]
+}

@@ -1,0 +1,152 @@
+{
+  "projectName": "Podcast Auditions",
+  "items": [
+    {
+      "type": "note",
+      "value": "PODCAST AUDITIONS — read this before running.\n\nSETUP: create the folder ~Pictures/PodcastAuditions/anchors/ before the first run. Nothing in the pipeline creates directories, and loopSave is handed a full path.\n\nKeep that folder EMPTY except for what this project writes. loopLoad indexes the directory by sorted position, so any stray image — a thumbnail, an old export — repairs every anchor with the wrong character.\n\nRUN ORDER: phase A writes the six anchors, phase B reads them back as first frames. Run the whole project in one pass. In Tanque Studio it must be one pass — loop paths there resolve against the run's own timestamped output folder, so anchors from an earlier run are invisible to a later one.\n\nFIRST TIME: set both loop counts to 1 and run phase A alone. That proves the folder exists and that the canvas save lands, in a fraction of the time a full run takes.\n\nTRIM: to keep the characters and skip the auditions, delete the marked note below and everything after it."
+    },
+    {
+      "type": "canvasClear",
+      "value": true
+    },
+    {
+      "type": "negPrompt",
+      "value": "blurry, low resolution, jpeg artifacts, watermark, on-screen text, subtitles, warped face, malformed hands, extra fingers, duplicated limbs, camera shake, handheld wobble, zoom, dolly move, rack focus, cut to another shot"
+    },
+    {
+      "type": "config",
+      "value": "#krea2_stills"
+    },
+    {
+      "type": "size",
+      "value": "{\"width\":1024,\"height\":1024}"
+    },
+    {
+      "type": "loop",
+      "value": "{\"loop\":6,\"start\":0}"
+    },
+    {
+      "type": "canvasClear",
+      "value": true
+    },
+    {
+      "type": "sweep",
+      "value": "{\"paramName\":\"seed\",\"wild\":\"loop\",\"cards\":[\"811001\",\"811002\",\"811003\",\"811004\",\"811005\",\"811006\"]}"
+    },
+    {
+      "type": "concat",
+      "value": "A casting-room headshot, medium shot, of "
+    },
+    {
+      "type": "wildcard",
+      "value": "{\"wild\":\"loop\",\"cards\":[\"TODO NED REPLACE ME character one identity clause goes here\",\"TODO NED REPLACE ME character two identity clause goes here\",\"TODO NED REPLACE ME character three identity clause goes here\",\"TODO NED REPLACE ME character four identity clause goes here\",\"TODO NED REPLACE ME character five identity clause goes here\",\"TODO NED REPLACE ME character six identity clause goes here\"]}"
+    },
+    {
+      "type": "concat",
+      "value": ", wearing "
+    },
+    {
+      "type": "wildcard",
+      "value": "{\"wild\":\"loop\",\"cards\":[\"TODO NED REPLACE ME character one wardrobe clause goes here\",\"TODO NED REPLACE ME character two wardrobe clause goes here\",\"TODO NED REPLACE ME character three wardrobe clause goes here\",\"TODO NED REPLACE ME character four wardrobe clause goes here\",\"TODO NED REPLACE ME character five wardrobe clause goes here\",\"TODO NED REPLACE ME character six wardrobe clause goes here\"]}"
+    },
+    {
+      "type": "concat",
+      "value": ", seated on a folding chair against a bare grey wall under flat overhead fluorescent light, facing the lens, mouth closed, neutral expression, hands at rest. Sharp focus, 50mm, shallow depth of field."
+    },
+    {
+      "type": "prompt",
+      "value": ""
+    },
+    {
+      "type": "loopSave",
+      "value": "PodcastAuditions/anchors/anchor.png"
+    },
+    {
+      "type": "loopEnd",
+      "value": true
+    },
+    {
+      "type": "note",
+      "value": "──────── TRIM LINE ────────  Delete this note and EVERY item below it to turn this into a characters-only project. Everything above it stands alone: it renders six stills and saves them to ~Pictures/PodcastAuditions/anchors/. Nothing below it is referenced from above."
+    },
+    {
+      "type": "config",
+      "value": "#ltx2_video"
+    },
+    {
+      "type": "size",
+      "value": "{\"width\":1024,\"height\":576}"
+    },
+    {
+      "type": "loop",
+      "value": "{\"loop\":6,\"start\":0}"
+    },
+    {
+      "type": "loopLoad",
+      "value": "PodcastAuditions/anchors/"
+    },
+    {
+      "type": "concat",
+      "value": "A locked-off medium shot of "
+    },
+    {
+      "type": "wildcard",
+      "value": "{\"wild\":\"loop\",\"cards\":[\"TODO NED REPLACE ME character one identity clause goes here\",\"TODO NED REPLACE ME character two identity clause goes here\",\"TODO NED REPLACE ME character three identity clause goes here\",\"TODO NED REPLACE ME character four identity clause goes here\",\"TODO NED REPLACE ME character five identity clause goes here\",\"TODO NED REPLACE ME character six identity clause goes here\"]}"
+    },
+    {
+      "type": "concat",
+      "value": ", wearing "
+    },
+    {
+      "type": "wildcard",
+      "value": "{\"wild\":\"loop\",\"cards\":[\"TODO NED REPLACE ME character one wardrobe clause goes here\",\"TODO NED REPLACE ME character two wardrobe clause goes here\",\"TODO NED REPLACE ME character three wardrobe clause goes here\",\"TODO NED REPLACE ME character four wardrobe clause goes here\",\"TODO NED REPLACE ME character five wardrobe clause goes here\",\"TODO NED REPLACE ME character six wardrobe clause goes here\"]}"
+    },
+    {
+      "type": "concat",
+      "value": ", seated on a folding chair in an empty casting room. They look into the lens and say, "
+    },
+    {
+      "type": "wildcard",
+      "value": "{\"wild\":\"loop\",\"cards\":[\"\\\"PLACEHOLDER ONE SLATE REPLACE THIS\\\"\",\"\\\"PLACEHOLDER TWO SLATE REPLACE THIS\\\"\",\"\\\"PLACEHOLDER THREE SLATE REPLACE THIS\\\"\",\"\\\"PLACEHOLDER FOUR SLATE REPLACE THIS\\\"\",\"\\\"PLACEHOLDER FIVE SLATE REPLACE THIS\\\"\",\"\\\"PLACEHOLDER SIX SLATE REPLACE THIS\\\"\"]}"
+    },
+    {
+      "type": "concat",
+      "value": " After a beat they add, "
+    },
+    {
+      "type": "wildcard",
+      "value": "{\"wild\":\"loop\",\"cards\":[\"\\\"PLACEHOLDER ONE LINE REPLACE THIS TOO\\\"\",\"\\\"PLACEHOLDER TWO LINE REPLACE THIS TOO\\\"\",\"\\\"PLACEHOLDER THREE LINE REPLACE THIS TOO\\\"\",\"\\\"PLACEHOLDER FOUR LINE REPLACE THIS TOO\\\"\",\"\\\"PLACEHOLDER FIVE LINE REPLACE THIS TOO\\\"\",\"\\\"PLACEHOLDER SIX LINE REPLACE THIS TOO\\\"\"]}"
+    },
+    {
+      "type": "concat",
+      "value": " in "
+    },
+    {
+      "type": "wildcard",
+      "value": "{\"wild\":\"loop\",\"cards\":[\"TODO NED REPLACE ME character one voice clause goes here\",\"TODO NED REPLACE ME character two voice clause goes here\",\"TODO NED REPLACE ME character three voice clause goes here\",\"TODO NED REPLACE ME character four voice clause goes here\",\"TODO NED REPLACE ME character five voice clause goes here\",\"TODO NED REPLACE ME character six voice clause goes here\"]}"
+    },
+    {
+      "type": "concat",
+      "value": ". The camera holds perfectly still on a tripod, 50mm at f/2.8, no reframing and no zoom. Faint room tone, the low hum of an air vent and the occasional creak of the chair fill the space between lines. Single continuous shot, natural motion blur, film-like cadence."
+    },
+    {
+      "type": "framesDialog",
+      "value": "{\"wps\":2.6,\"padding\":48,\"generate\":false}"
+    },
+    {
+      "type": "prompt",
+      "value": ""
+    },
+    {
+      "type": "loopEnd",
+      "value": true
+    }
+  ],
+  "promptTriggers": {},
+  "configShortcuts": {
+    "#krea2_stills": "{\"model\":\"TODO_NED\",\"sampler\":\"TODO_NED\",\"steps\":\"TODO_NED\",\"guidanceScale\":\"TODO_NED\",\"shift\":\"TODO_NED\",\"seedMode\":\"TODO_NED\",\"seed\":-1,\"strength\":1,\"numFrames\":1,\"clipSkip\":1,\"clipWeight\":1,\"controls\":[],\"loras\":[],\"tiledDecoding\":\"TODO_NED\",\"decodingTileWidth\":\"TODO_NED\",\"decodingTileHeight\":\"TODO_NED\",\"decodingTileOverlap\":\"TODO_NED\",\"tiledDiffusion\":\"TODO_NED\",\"hiresFix\":false,\"zeroNegativePrompt\":false}",
+    "#ltx2_video": "{\"model\":\"TODO_NED\",\"sampler\":\"TODO_NED\",\"steps\":\"TODO_NED\",\"guidanceScale\":\"TODO_NED\",\"shift\":\"TODO_NED\",\"seedMode\":\"TODO_NED\",\"seed\":-1,\"strength\":1,\"clipSkip\":1,\"clipWeight\":1,\"controls\":[],\"loras\":[],\"tiledDecoding\":\"TODO_NED\",\"decodingTileWidth\":\"TODO_NED\",\"decodingTileHeight\":\"TODO_NED\",\"decodingTileOverlap\":\"TODO_NED\",\"tiledDiffusion\":\"TODO_NED\",\"hiresFix\":false,\"zeroNegativePrompt\":false}"
+  },
+  "poseJSONShortcuts": {},
+  "wildcardShortcuts": {}
+}
