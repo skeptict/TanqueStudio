@@ -240,6 +240,86 @@ final class StoryFlowStorage {
         return nil
     }
 
+    // MARK: — Loop directory I/O
+
+    /// Runs `body` with the custom Generate folder's security scope held, when one is
+    /// configured. A no-op otherwise, so the App Support fallback path is unchanged.
+    ///
+    /// Same dance as `saveCanvasPNG`/`loadCanvasPNG`, factored out because `loopSave` and
+    /// `loopLoad` need it around a *directory listing plus a read*, not a single file access.
+    private func withImageFolderAccess<T>(_ body: () throws -> T) rethrows -> T {
+        var scoped: URL?
+        if let bookmark = AppSettings.shared.defaultImageFolderBookmark,
+           !AppSettings.shared.defaultImageFolder.isEmpty {
+            var isStale = false
+            if let resolved = try? URL(
+                resolvingBookmarkData: bookmark,
+                options: .withSecurityScope,
+                relativeTo: nil,
+                bookmarkDataIsStale: &isStale
+            ), resolved.startAccessingSecurityScopedResource() {
+                scoped = resolved
+            }
+        }
+        defer { scoped?.stopAccessingSecurityScopedResource() }
+        return try body()
+    }
+
+    /// Where a `loopSave`/`loopLoad` relative path lands.
+    ///
+    /// Draw Things resolves these against `filesystem.pictures.path`. Tanque Studio is
+    /// sandboxed and already has a sanctioned folder for a run's output, so the root differs
+    /// on purpose while the *semantics* — a relative path, numbered files, save and load
+    /// pairing by index — match. The engine logs the resolved directory on first use so a
+    /// mismatch shows up in the run log instead of as a silently empty folder.
+    func loopPathURL(_ relativePath: String, under folder: URL) -> URL {
+        folder.appendingPathComponent(relativePath).standardizedFileURL
+    }
+
+    /// Write the canvas for one loop pass. `relativePath` already carries its `_NNN` index.
+    @discardableResult
+    func saveLoopImagePNG(_ image: NSImage, relativePath: String, to folder: URL) throws -> URL {
+        try withImageFolderAccess {
+            let url = loopPathURL(relativePath, under: folder)
+            ensureFolder(url.deletingLastPathComponent())
+            do {
+                try ImageStorageManager.writePNG(image, to: url, config: nil, prompt: nil)
+            } catch {
+                throw StoryFlowError.imageSaveFailed
+            }
+            return url
+        }
+    }
+
+    /// What a `loopLoad` pass found, kept distinct so the run log can tell "you pointed it at
+    /// an empty folder" apart from "the file it picked would not decode".
+    enum LoopLoadOutcome {
+        case loaded(NSImage, path: String)
+        case empty
+        case unreadable(path: String)
+    }
+
+    /// List → filter → sort → index → load, in one security-scoped window.
+    ///
+    /// The ordering lives in `StoryFlowLoopPaths` (ported from `getDirectoryByIndex`); this
+    /// only supplies the directory contents and decodes the winner.
+    func loadLoopImage(inRelativeDirectory relativeDirectory: String,
+                       index: Int,
+                       under folder: URL) -> LoopLoadOutcome {
+        withImageFolderAccess {
+            let directory = loopPathURL(relativeDirectory, under: folder)
+            let contents = (try? fm.contentsOfDirectory(at: directory,
+                                                        includingPropertiesForKeys: nil)) ?? []
+            guard let path = StoryFlowLoopPaths.entry(from: contents.map(\.path), at: index) else {
+                return .empty
+            }
+            guard let image = NSImage(contentsOfFile: path) else {
+                return .unreadable(path: path)
+            }
+            return .loaded(image, path: path)
+        }
+    }
+
     // MARK: — Built-in seeding
 
     func seedBuiltInsIfNeeded() {

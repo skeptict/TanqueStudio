@@ -46,7 +46,19 @@ final class StoryFlowEngine {
     private var wildcards = StoryFlowWildcardRegistry()
     /// Total loop passes completed — the pipeline's `_loopCounter`. Trackers in
     /// `loop` mode are pure in this, which is what keeps equal-length ones in step.
+    ///
+    /// Reset to 0 when a loop depletes, matching `loopEnd` (`StoryflowPipeline.js:1293`).
+    /// Without that reset a second loop block starts where the first left off and every
+    /// `wild: "loop"` card in it is rotated by one — silent, and it looks like a plausible
+    /// render rather than an error.
     private var globalLoopCounter = 0
+
+    /// The pipeline's `_startCount` — the open loop's `start` field, the offset `loopSave`
+    /// adds to the counter when it numbers a file (`StoryflowPipeline.js:1250`, `:1279`).
+    private var loopStartCount = 0
+
+    /// One-shot guard for the "resolved loop folder" log line.
+    private var didLogLoopRoot = false
 
     /// Set by the endLoop handler to cause the run loop to jump to a specific index.
     private var jumpToIndex: Int? = nil
@@ -150,6 +162,8 @@ final class StoryFlowEngine {
         // them across runs would quietly degrade them into `loop` and `random`.
         wildcards = StoryFlowWildcardRegistry()
         globalLoopCounter = 0
+        loopStartCount = 0
+        didLogLoopRoot = false
         jumpToIndex = nil
 
         // Lead with what this run will skip, so the log says it once up front rather
@@ -315,6 +329,11 @@ final class StoryFlowEngine {
             let count = Int(step.parameters["count"] ?? "1") ?? 1
             if loopCounters[step.id] == nil {
                 loopCounters[step.id] = count
+                // `_startCount = value.start`, set on the pass that opens the loop and
+                // only then — the same `if (_loopMarker === -1)` guard that sets
+                // `_maxLoops` (`StoryflowPipeline.js:1245-1252`). Legacy bare-count
+                // loops carry no `start`; the codec and this both read that as 0.
+                loopStartCount = Int(step.parameters["start"] ?? "0") ?? 0
             }
             log("  ↩ Loop start (×\(loopCounters[step.id] ?? count) remaining)")
 
@@ -333,6 +352,11 @@ final class StoryFlowEngine {
                     log("  ↩ Loop back (\(remaining - 1) remaining)")
                 } else {
                     loopCounters.removeValue(forKey: loopStep.id)
+                    // `_loopCounter = 0` on depletion (`StoryflowPipeline.js:1293`), so the
+                    // next loop block starts from card 0 rather than resuming this one's
+                    // count. Two sequential blocks over the same six cards otherwise pair
+                    // every pass of the second with the previous pass's card.
+                    globalLoopCounter = 0
                     log("  ✓ Loop complete")
                 }
             } else {
@@ -544,6 +568,12 @@ final class StoryFlowEngine {
                 try await executeGenerate(step: step, variables: variables)
                 currentPrompt = ""
             }
+
+        case .passthrough where step.parameters["itemType"] == "loopSave":
+            executeLoopSave(step: step)
+
+        case .passthrough where step.parameters["itemType"] == "loopLoad":
+            executeLoopLoad(step: step)
 
         case .passthrough where step.parameters["itemType"] == "approve":
             guard canPresentApproval else {
@@ -809,6 +839,80 @@ final class StoryFlowEngine {
     /// Same registry as `sweep` and the same position keying, so a wildcard and a
     /// sweep at different indices never share a tracker. Appends raw, like
     /// `concat` — the pipeline does `concat = concat + pickedCard`.
+    // MARK: - loopSave / loopLoad
+
+    /// Names the run's loop folder in the log, once.
+    ///
+    /// Draw Things resolves these paths against `filesystem.pictures.path`; we resolve them
+    /// against the run's output folder (see `StoryFlowStorage.loopPathURL`). A reader who
+    /// expects `~/Pictures` needs to be told where the files actually went, or "saved 6
+    /// anchors" and "found no images" are both unfalsifiable.
+    private func logLoopRootOnce(_ folder: URL) {
+        guard !didLogLoopRoot else { return }
+        didLogLoopRoot = true
+        log("  ℹ Loop files resolve under \(folder.path) "
+          + "(Draw Things uses ~/Pictures; Tanque Studio uses the run's output folder)")
+    }
+
+    /// `loopSave` — `generatePath(value, _loopCounter + _startCount)`, then save the canvas
+    /// there (`StoryflowPipeline.js:1277`).
+    ///
+    /// Takes the same image `saveCanvas` does: the working canvas if there is one, else the
+    /// last render. DT's `canvas.saveImage` has exactly one canvas to draw from.
+    private func executeLoopSave(step: WorkflowStep) {
+        let value = Self.passthroughString(step.parameters["rawValueJSON"] ?? "")
+        guard !value.isEmpty else {
+            log("  ⚠ loopSave: no path set — skipped")
+            return
+        }
+        guard let folder = outputFolder else {
+            log("  ⚠ loopSave: no output folder for this run — skipped")
+            return
+        }
+        guard let image = currentCanvasImage ?? lastGeneratedImage else {
+            log("  ⚠ loopSave: no canvas image to save")
+            return
+        }
+        let relative = StoryFlowLoopPaths.indexedPath(value, index: globalLoopCounter + loopStartCount)
+        logLoopRootOnce(folder)
+        do {
+            try StoryFlowStorage.shared.saveLoopImagePNG(image, relativePath: relative, to: folder)
+            log("  ✓ loopSave → \(relative)")
+        } catch {
+            log("  ⚠ loopSave: \(error.localizedDescription) (\(relative))")
+        }
+    }
+
+    /// `loopLoad` — `getDirectoryByIndex(value, _loopCounter)` onto the canvas
+    /// (`StoryflowPipeline.js:1255`). The index is the loop counter, **not** offset by
+    /// `start`: only `loopSave` adds that.
+    private func executeLoopLoad(step: WorkflowStep) {
+        let value = Self.passthroughString(step.parameters["rawValueJSON"] ?? "")
+        guard !value.isEmpty else {
+            log("  ⚠ loopLoad: no folder set — skipped")
+            return
+        }
+        guard let folder = outputFolder else {
+            log("  ⚠ loopLoad: no output folder for this run — skipped")
+            return
+        }
+        logLoopRootOnce(folder)
+        switch StoryFlowStorage.shared.loadLoopImage(inRelativeDirectory: value,
+                                                     index: globalLoopCounter,
+                                                     under: folder) {
+        case .loaded(let image, let path):
+            // Same two assignments `loadCanvas` makes — DT's `canvas.loadImage` sets the
+            // canvas, and the canvas is what img2img renders from.
+            savedCanvases["__img2img__"] = image
+            currentCanvasImage = image
+            log("  ✓ loopLoad [\(globalLoopCounter)] → \(StoryFlowLoopPaths.fileName(of: path))")
+        case .empty:
+            log("  ⚠ loopLoad: no .png/.jpg/.jpeg/.webp in '\(value)' — canvas unchanged")
+        case .unreadable(let path):
+            log("  ⚠ loopLoad: could not read \(StoryFlowLoopPaths.fileName(of: path)) — canvas unchanged")
+        }
+    }
+
     private func executeWildcard(step: WorkflowStep, at index: Int) {
         guard let raw = step.parameters["rawValueJSON"],
               let obj = Self.passthroughObject(raw),

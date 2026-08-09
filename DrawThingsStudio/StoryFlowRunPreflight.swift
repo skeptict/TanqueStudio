@@ -82,6 +82,10 @@ struct StoryFlowRunPreflight {
         "xlMagic", "removeBkgd", "maskFG",
         // 260802 additions
         "hrf", "sizex2", "matte",
+        // Multi-loop pass: these two now run. `loopAddMB` and `loopLoadMask` share their
+        // directory helper but have no executor yet, so they stay in the canvas-only list
+        // below and keep being reported.
+        "loopSave", "loopLoad",
     ]
 
     /// True if this step is a `framesDialog` with its `generate` flag set.
@@ -177,12 +181,13 @@ struct StoryFlowRunPreflight {
             return .altersRender
 
         // Draw Things-local canvas, mask, depth and pose operations (spec §3.4).
-        // removeBkgd and maskFG moved to nativelyExecuted (Vision foreground mask).
+        // removeBkgd and maskFG moved to nativelyExecuted (Vision foreground mask), as have
+        // loopLoad and loopSave — `nativelyExecuted` filters those out before this runs.
         case "faceZoom", "askZoom",
              "maskClear", "maskLoad", "maskGet", "maskBkgd", "maskBody", "maskAsk",
              "depthExtract", "depthCanvas", "depthToCanvas",
              "poseExtract", "poseJSON",
-             "loopLoad", "loopSave", "loopAddMB", "loopLoadMask":
+             "loopAddMB", "loopLoadMask":
             return .canvasOnly
 
         // Pipeline terminator — the codec emits it on export regardless.
