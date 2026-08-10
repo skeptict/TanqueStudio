@@ -42,6 +42,25 @@ final class StoryFlowEngine {
     var totalSteps: Int = 0
     var stepProgress: GenerationProgress = .complete
 
+    /// The raw stage Draw Things last reported, and when it entered it.
+    ///
+    /// `stepProgress` covers sampling and decoding only — `mapStage` returns nil for the encoding
+    /// stages, so the bar deliberately holds its last value rather than snapping to zero. That is
+    /// right for a progress bar and wrong for diagnosis: a render that hangs hangs in exactly
+    /// those unmapped stages. The clip that stalled sat in `imageEncoding` for 284 seconds while
+    /// the UI showed nothing changing at all.
+    var currentStage: String = ""
+    var currentStageSince: Date?
+
+    /// e.g. "imageEncoding · 4m12s". Empty when no stage has been reported.
+    var currentStageLabel: String {
+        guard !currentStage.isEmpty, let since = currentStageSince else { return "" }
+        let elapsed = Int(Date().timeIntervalSince(since))
+        let clock = elapsed >= 60 ? "\(elapsed / 60)m\(String(format: "%02d", elapsed % 60))s"
+                                  : "\(elapsed)s"
+        return "\(currentStage) · \(clock)"
+    }
+
     private var runTask: Task<Void, Never>?
 
     /// Remaining loop counts keyed by the loop step's UUID.
@@ -1050,9 +1069,18 @@ final class StoryFlowEngine {
             config: cfg,
             onProgress: { [weak self] p in
                 Task { @MainActor [weak self] in self?.stepProgress = p }
+            },
+            onStage: { [weak self] stage in
+                Task { @MainActor [weak self] in
+                    guard let self, self.currentStage != stage else { return }
+                    self.currentStage = stage
+                    self.currentStageSince = Date()
+                }
             }
         )
         stepProgress = .complete
+        currentStage = ""
+        currentStageSince = nil
 
         guard let img = images.first else {
             log("  ⚠ No image returned from generate step")

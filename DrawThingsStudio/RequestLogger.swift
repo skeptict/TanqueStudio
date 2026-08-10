@@ -155,6 +155,13 @@ final class RequestLogger {
         append("→ TIMED OUT after \(seconds)s — Draw Things never answered the render call\n")
     }
 
+    /// Where a render went quiet. The watchdog is idle-based, so this names the stage the render
+    /// sat in and for how long — the difference between "slow" and "stuck", which the total
+    /// elapsed time alone never told us.
+    func logGRPCStall(stage: String, seconds: Int) {
+        append("→ STALLED in \(stage) for \(seconds)s with no further progress\n")
+    }
+
     /// The stage sequence Draw Things reported while working on one render.
     ///
     /// This is the only readable view of what the server actually did. Draw
