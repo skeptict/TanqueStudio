@@ -38,6 +38,14 @@ final class AppSettings {
     var llmOperationsFolderBookmark: Data? {
         didSet { UserDefaults.standard.set(llmOperationsFolderBookmark, forKey: "tanqueStudio.llmOperationsFolderBookmark") }
     }
+    /// Last cast-and-staging project folder — the one holding `bible.json` + `configs.json`.
+    /// Reopened on launch so the pane comes back to the project you were authoring.
+    var castProjectFolder: String {
+        didSet { UserDefaults.standard.set(castProjectFolder, forKey: "tanqueStudio.castProjectFolder") }
+    }
+    var castProjectFolderBookmark: Data? {
+        didSet { UserDefaults.standard.set(castProjectFolderBookmark, forKey: "tanqueStudio.castProjectFolderBookmark") }
+    }
 
     // MARK: - Host History
 
@@ -158,6 +166,8 @@ final class AppSettings {
         dtConfigsBookmark  = d.data(forKey: "tanqueStudio.dtConfigsBookmark")
         llmOperationsFolder         = d.string(forKey: "tanqueStudio.llmOperationsFolder") ?? ""
         llmOperationsFolderBookmark = d.data(forKey: "tanqueStudio.llmOperationsFolderBookmark")
+        castProjectFolder           = d.string(forKey: "tanqueStudio.castProjectFolder") ?? ""
+        castProjectFolderBookmark   = d.data(forKey: "tanqueStudio.castProjectFolderBookmark")
         dtHostHistory  = d.stringArray(forKey: "tanqueStudio.dtHostHistory")  ?? []
         llmHostHistory = d.stringArray(forKey: "tanqueStudio.llmHostHistory") ?? []
         storyStudioDefaultConfigName = d.string(forKey: "tanqueStudio.storyStudioDefaultConfigName") ?? ""
