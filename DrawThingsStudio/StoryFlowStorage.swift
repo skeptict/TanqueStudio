@@ -181,6 +181,104 @@ final class StoryFlowStorage {
         return url
     }
 
+    // MARK: — Clip output
+
+    /// Where a multi-frame render landed.
+    struct ClipOutput {
+        /// The assembled movie.
+        let movieURL: URL
+        /// Every frame, in order, in the sibling folder. Kept rather than deleted: re-cutting,
+        /// re-timing or muxing audio later all need them, and re-rendering to get them back
+        /// costs minutes per clip.
+        let frameURLs: [URL]
+        /// Frame 0, written at the top level with full metadata, so the gallery has a still
+        /// to show and the run folder reads the same as a stills-only run.
+        let posterURL: URL
+    }
+
+    /// Write every frame of a video render and assemble them into an `.mp4`.
+    ///
+    /// Layout, for a step labelled `Generate`:
+    ///
+    ///     Generate-A1B2C3D4.png        ← poster (frame 0, carries config + prompt metadata)
+    ///     Generate-A1B2C3D4.mp4        ← the clip
+    ///     Generate-A1B2C3D4/           ← every frame, zero-padded
+    ///         frame_0000.png
+    ///         frame_0001.png
+    ///         …
+    ///
+    /// Frames are padded to 4 digits, which orders correctly to 9999 — well past the 257-frame
+    /// ceiling anything here renders. (Note the contrast with `StoryFlowLoopPaths`, whose 3-digit
+    /// padding comes from Draw Things' own `generatePath` and cannot be widened without breaking
+    /// the anchor sort.)
+    func saveOutputClip(_ frames: [NSImage],
+                        stepLabel: String,
+                        to folder: URL,
+                        fps: Int32,
+                        config: DrawThingsGenerationConfig? = nil,
+                        prompt: String? = nil) async throws -> ClipOutput {
+        guard !frames.isEmpty else { throw StoryFlowError.imageSaveFailed }
+
+        return try await withSecurityScope {
+            ensureFolder(folder)
+            let safe = (stepLabel.isEmpty ? "output" : stepLabel)
+                .replacingOccurrences(of: "/", with: "-")
+                .replacingOccurrences(of: ":", with: "-")
+            let stem = "\(safe)-\(UUID().uuidString.prefix(8))"
+
+            // Poster first: if assembly fails, the run still leaves a usable still behind
+            // rather than nothing at all.
+            let posterURL = folder.appendingPathComponent("\(stem).png")
+            try ImageStorageManager.writePNG(frames[0], to: posterURL, config: config, prompt: prompt)
+
+            let framesFolder = folder.appendingPathComponent(stem, isDirectory: true)
+            ensureFolder(framesFolder)
+            var frameURLs: [URL] = []
+            frameURLs.reserveCapacity(frames.count)
+            for (i, frame) in frames.enumerated() {
+                let url = framesFolder.appendingPathComponent(String(format: "frame_%04d.png", i))
+                try ImageStorageManager.writePNG(frame, to: url, config: nil, prompt: nil)
+                frameURLs.append(url)
+            }
+
+            let movieURL = folder.appendingPathComponent("\(stem).mp4")
+            try await VideoAssembler.assemble(
+                frameURLs: frameURLs,
+                fps: fps,
+                metadataComment: config.flatMap {
+                    ImageStorageManager.dtMetadataJSON(config: $0, prompt: prompt)
+                },
+                to: movieURL
+            )
+            return ClipOutput(movieURL: movieURL, frameURLs: frameURLs, posterURL: posterURL)
+        }
+    }
+
+    /// Run `body` with security-scoped access to a custom Generate folder, when one is configured.
+    ///
+    /// The same preamble appears inline in `saveOutputImage` and `saveCanvasPNG`; this is a third
+    /// copy factored out rather than added. Those two are deliberately left alone — they work, and
+    /// folding them in would put working save paths in a diff about video.
+    private func withSecurityScope<T>(_ body: () async throws -> T) async throws -> T {
+        var securityScopedURL: URL?
+        if let bookmark = AppSettings.shared.defaultImageFolderBookmark,
+           !AppSettings.shared.defaultImageFolder.isEmpty {
+            var isStale = false
+            let resolvedURL = try URL(
+                resolvingBookmarkData: bookmark,
+                options: .withSecurityScope,
+                relativeTo: nil,
+                bookmarkDataIsStale: &isStale
+            )
+            guard resolvedURL.startAccessingSecurityScopedResource() else {
+                throw StoryFlowError.imageSaveFailed
+            }
+            securityScopedURL = resolvedURL
+        }
+        defer { securityScopedURL?.stopAccessingSecurityScopedResource() }
+        return try await body()
+    }
+
     // MARK: — Canvas PNG I/O
 
     /// Write `image` to `folder/<name>.png`. Uses security-scoped access when a custom folder is configured.

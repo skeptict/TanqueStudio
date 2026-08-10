@@ -35,6 +35,10 @@ final class StoryFlowEngine {
     var stepLog: [String] = []
     var currentStepIndex: Int = 0
     var outputFolder: URL?
+
+    /// Set to 25 when `framesDialog` computed the current frame count, cleared when a bare
+    /// `frames` item overwrites it. See `clipFPS(for:framesDialogFPS:)`.
+    private var framesDialogFPS: Int32?
     var totalSteps: Int = 0
     var stepProgress: GenerationProgress = .complete
 
@@ -163,6 +167,7 @@ final class StoryFlowEngine {
         wildcards = StoryFlowWildcardRegistry()
         globalLoopCounter = 0
         loopStartCount = 0
+        framesDialogFPS = nil
         didLogLoopRoot = false
         jumpToIndex = nil
 
@@ -466,6 +471,10 @@ final class StoryFlowEngine {
                 return
             }
             currentConfig.numFrames = Int(n)
+            // A bare `frames` count carries no rate of its own, so fall back to the model family.
+            // (The Editor's `frames` vs `frames8` split encodes 16fps Wan vs 25fps LTX, but that
+            // distinction is erased on export — both become `frames` — so it cannot be read here.)
+            framesDialogFPS = nil
             log("  ✓ frames → \(Int(n))")
 
         case .passthrough where step.parameters["itemType"] == "negPrompt":
@@ -560,6 +569,10 @@ final class StoryFlowEngine {
             let padding = Int(Self.numberValue(obj["padding"]) ?? 0)
             let spoken = Self.spokenFrameCount(in: currentPrompt, wordsPerSecond: wps)
             currentConfig.numFrames = spoken + padding
+            // framesDialog's formula is `words / wps * 25` — 25fps by construction, whatever the
+            // model. Recording it here is what lets clip assembly use the rate the frame count
+            // was actually derived from instead of guessing from the model name.
+            framesDialogFPS = 25
             log("  ✓ framesDialog → \(spoken) + \(padding) pad = \(currentConfig.numFrames) frames")
             // `if (value.generate) { generate(); concat = ""; }` — the only
             // instruction besides `prompt` that DT counts as a render, which is
@@ -727,6 +740,31 @@ final class StoryFlowEngine {
 
     /// Frame count derived from the words spoken in the accumulated prompt.
     ///
+    /// Playback rate for an assembled clip.
+    ///
+    /// **Deliberately does not read `config.fps`.** That field is Draw Things' `fps_id`
+    /// (`config.fbs:139`, default 5), and it is not a frame rate at all — it is a conditioning
+    /// input consumed by exactly one model branch, `case .svdI2v` in `UNetFixedEncoder.swift:186`,
+    /// where it becomes a time-embedding beside `motionBucketId` and `condAug`. LTX, Wan and
+    /// Hunyuan never read it. Assembling an LTX clip at `config.fps` would use DT's default of 5
+    /// and produce a movie five times too slow.
+    ///
+    /// So the rate comes from where the frame COUNT came from: `framesDialog` derives it at 25fps
+    /// by construction, and otherwise the model family decides.
+    ///
+    /// LTX is 25 here, matching the StoryFlow Editor's own label for `frames8`
+    /// ("25fps (LTX2)") and `framesDialog`'s ×25. Note `GenerateViewModel.seriesFPS` says 24 for
+    /// the same family and prefers `meta.fps` over any default — both worth revisiting, and
+    /// deliberately left alone here rather than changed in a StoryFlow commit.
+    static func clipFPS(for config: DrawThingsGenerationConfig, framesDialogFPS: Int32?) -> Int32 {
+        if let fps = framesDialogFPS { return fps }
+        switch config.modelFamily {
+        case .ltx:                            return 25
+        case .wan, .hunyuan, .cogVideo, .mochi, .animateDiff: return 16
+        default:                              return 16
+        }
+    }
+
     /// `framesDialog(pacing)` in the pipeline: count whitespace-separated tokens
     /// inside every `"…"` span of the accumulator, divide by words-per-second,
     /// multiply by 25 fps, round **up** to a multiple of 8, then add one. Only
@@ -1036,16 +1074,46 @@ final class StoryFlowEngine {
         }
 
         // Save to output folder and fire gallery callback
+        //
+        // A video render returns EVERY frame. This used to keep `images.first` and drop the rest
+        // on the floor: the full clip was rendered and paid for, one frame was written, and
+        // nothing said so — the log line read "✓ Generated image" either way. StoryFlow predates
+        // video (every project in `misc/` is stills-only), so nothing exercised it until the
+        // Podcast Auditions project did.
         var savedURL: URL?
         if let folder = outputFolder {
-            savedURL = try? StoryFlowStorage.shared.saveOutputImage(
-                img,
-                stepLabel: step.displayLabel,
-                to: folder,
-                config: cfg,
-                prompt: prompt
-            )
-            if let url = savedURL { log("  💾 Saved to \(url.lastPathComponent)") }
+            if images.count > 1 {
+                let fps = Self.clipFPS(for: cfg, framesDialogFPS: framesDialogFPS)
+                do {
+                    let clip = try await StoryFlowStorage.shared.saveOutputClip(
+                        images,
+                        stepLabel: step.displayLabel,
+                        to: folder,
+                        fps: fps,
+                        config: cfg,
+                        prompt: prompt
+                    )
+                    savedURL = clip.posterURL
+                    log("  🎬 Saved \(images.count) frames at \(fps) fps → "
+                      + "\(clip.movieURL.lastPathComponent) (frames in "
+                      + "\(clip.movieURL.deletingPathExtension().lastPathComponent)/)")
+                } catch {
+                    // Never lose the render to a muxing problem: fall back to the poster frame.
+                    log("  ⚠ Clip assembly failed (\(error.localizedDescription)) — saving frame 0 only")
+                    savedURL = try? StoryFlowStorage.shared.saveOutputImage(
+                        img, stepLabel: step.displayLabel, to: folder, config: cfg, prompt: prompt
+                    )
+                }
+            } else {
+                savedURL = try? StoryFlowStorage.shared.saveOutputImage(
+                    img,
+                    stepLabel: step.displayLabel,
+                    to: folder,
+                    config: cfg,
+                    prompt: prompt
+                )
+                if let url = savedURL { log("  💾 Saved to \(url.lastPathComponent)") }
+            }
         }
         // Notify gallery so the image appears with metadata
         onImageGenerated?(img, cfg, prompt, savedURL)
