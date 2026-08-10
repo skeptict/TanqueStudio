@@ -10,7 +10,6 @@
       "sees them (StoryflowEditor.html:2418 resolveConfigShortcuts; StoryFlowProjectCodec.swift's",
       "toPipelineArray config branch), so the running pipeline gets a plain inline config object."
     ],
-
     "_2_todo_ned": [
       "Every value below that reads exactly \"TODO_NED\" is a placeholder and the project will NOT",
       "render correctly until it is replaced. verify_project.py lists them all; run it with --strict",
@@ -21,7 +20,6 @@
       "quantisation suffix, and the tiling fields only matter at particular canvas sizes. A",
       "plausible-looking wrong value is worse than an obvious placeholder: it runs, and it runs wrong."
     ],
-
     "_3_where_the_values_come_from": [
       "1. In Draw Things, render ONE still with the Krea 2 model at the phase-A canvas size.",
       "2. Render ONE clip with LTX-2 at the phase-B canvas size.",
@@ -34,7 +32,6 @@
       "complete Krea 2 Turbo config from the format's author. It is the shape to match — but its",
       "values are for a 1920x1280 canvas, so its tiling fields do not transfer unchanged."
     ],
-
     "_4_quotes": [
       "TODO_NED is quoted only because a placeholder has to be SOME valid JSON. When you replace",
       "it, use the field's real type. 'model' is the only one of the 22 that stays a quoted string.",
@@ -60,7 +57,6 @@
       "The author's own config in misc/.../CharacterSheet_3x2_1920x1280.json is the reference:",
       "every numeric field in it is bare."
     ],
-
     "_5_key_notes": {
       "model": "Exact checkpoint filename including extension, e.g. 'krea_2_turbo_q8p.ckpt'.",
       "sampler": "INTEGER enum, not a name and not a quoted digit. Read it off a real render.",
@@ -70,7 +66,6 @@
       "tiledDecoding + decodingTile*": "Only meaningful past roughly one megapixel. Whether you need them depends on the canvas size in 'sizes' below and on your machine.",
       "loras": "Empty list ships. A camera-control / static-shot LoRA on the LTX-2 config is worth trying, since the whole shot design is 'the camera does not move'. Shape: [{\"file\": \"...\", \"mode\": \"all\", \"weight\": 1.0}]."
     },
-
     "_6_sizes_and_pacing": [
       "'sizes' feeds the two 'size' items, one per phase. Keep every dimension divisible by 32.",
       "",
@@ -92,7 +87,6 @@
       "project in the Editor and touch the framesDialog item, re-run build_project.py afterwards."
     ]
   },
-
   "configShortcuts": {
     "#krea2_stills": {
       "model": "krea_2_turbo_q8p.ckpt",
@@ -116,7 +110,6 @@
       "hiresFix": false,
       "zeroNegativePrompt": false
     },
-
     "#ltx2_video": {
       "model": "ltx_2.3_22b_distilled_q8p.ckpt",
       "sampler": 19,
@@ -139,14 +132,52 @@
       "zeroNegativePrompt": false
     }
   },
-
   "sizes": {
-    "stills": { "width": 1024, "height": 576 },
-    "video":  { "width": 1024, "height": 576 }
+    "stills": {
+      "width": 1024,
+      "height": 576
+    },
+    "video": {
+      "width": 1024,
+      "height": 576
+    }
   },
-
-  "framesDialog": { "wps": 2.6, "padding": 48, "generate": false },
-
+  "framesDialog": {
+    "wps": 2.6,
+    "padding": 48,
+    "generate": false
+  },
+  "_fragments_note": [
+    "The shared scene writing. Everything the model reads that is NOT a character comes from here,",
+    "so restaging a project is a data edit and build_project.py stays identical between projects.",
+    "",
+    "The assembled phase-B prompt is, in order:",
+    "  B_OPEN + identity + WEARING + wardrobe + B_SAYS + \"slate\" + B_BEAT + \"line\" + B_IN + voice + B_CLOSE",
+    "",
+    "SPACES ARE LOAD-BEARING. concat appends with NO separator, so every space between a fragment",
+    "and the card next to it is one you supply here. build_project.py asserts each fragment's",
+    "leading/trailing space against FRAGMENT_SPEC and fails the build if you eat one.",
+    "",
+    "NO double-quote characters in any fragment — framesDialog counts words inside \"...\" spans and",
+    "a stray quote re-pairs them, silently changing every clip's length.",
+    "",
+    "KEEP 'mouth closed' in A_CLOSE. Phase A's still is phase B's first frame and LTX-2 handles",
+    "dialogue badly starting mid-word. The builder warns if it goes missing.",
+    "",
+    "B_CLOSE carries the ENTIRE audio design — there is no audio config field, audio is prompt-",
+    "driven, so room tone lives in that sentence or it does not exist."
+  ],
+  "fragments": {
+    "A_OPEN": "A portrait photograph in a small audio recording studio, medium shot, of ",
+    "WEARING": ", wearing ",
+    "A_CLOSE": ", seated at a cluttered desk behind a large silver condenser microphone on a folding mic stand, a round foam pop filter in front of it, closed-back headphones resting around their neck, a second mic stand and coiled XLR cables just behind, dark acoustic foam panels on the wall and one warm practical lamp, facing the lens, mouth closed, neutral expression, hands at rest. Sharp focus, 50mm, shallow depth of field.",
+    "B_OPEN": "A locked-off medium shot of ",
+    "B_SAYS": ", seated at the studio desk behind a condenser microphone on a folding mic stand, headphones on. They lean in toward the mic and say, ",
+    "B_BEAT": " After a beat they add, ",
+    "B_IN": " in ",
+    "B_CLOSE": ". The camera holds perfectly still on a tripod, 50mm at f/2.8, no reframing and no zoom. Faint room tone, the hum of a mixing desk and the soft creak of a chair fill the space between lines. Single continuous shot, natural motion blur, film-like cadence."
+  },
+  "negativePrompt": "blurry, low resolution, jpeg artifacts, watermark, on-screen text, subtitles, warped face, malformed hands, extra fingers, duplicated limbs, camera shake, handheld wobble, zoom, dolly move, rack focus, cut to another shot",
   "_project_note": [
     "This block is a project's whole identity. build_project.py and verify_project.py read it,",
     "so the two .py files are byte-identical between projects and copying a project means",
@@ -162,7 +193,6 @@
     "outputBasename": "PodcastEpisodes-beta",
     "fixtureBasename": "podcast-episodes-beta"
   },
-
   "anchorsDirectory": "PodcastEpisodes-beta/anchors/",
   "anchorFilename": "PodcastEpisodes-beta/anchors/anchor.png"
 }

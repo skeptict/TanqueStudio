@@ -169,85 +169,98 @@ class Fragment:
         self.value = value
 
 
-#                                                                       lead   trail
-A_OPEN = Fragment("A_OPEN",
-                  "A casting-room headshot, medium shot, of ",
-                  lead=False, trail=True)
-
-WEARING = Fragment("WEARING",
-                   ", wearing ",
-                   lead=False, trail=True)
-
-A_CLOSE = Fragment("A_CLOSE",
-                   ", seated on a folding chair against a bare grey wall under flat overhead "
-                   "fluorescent light, facing the lens, mouth closed, neutral expression, hands "
-                   "at rest. Sharp focus, 50mm, shallow depth of field.",
-                   lead=False, trail=False)
-
-B_OPEN = Fragment("B_OPEN",
-                  "A locked-off medium shot of ",
-                  lead=False, trail=True)
-
-B_SAYS = Fragment("B_SAYS",
-                  ", seated on a folding chair in an empty casting room. They look into the lens "
-                  "and say, ",
-                  lead=False, trail=True)
-
-B_BEAT = Fragment("B_BEAT",
-                  " After a beat they add, ",
-                  lead=True, trail=True)
-
-B_IN = Fragment("B_IN",
-                " in ",
-                lead=True, trail=True)
-
-B_CLOSE = Fragment("B_CLOSE",
-                   ". The camera holds perfectly still on a tripod, 50mm at f/2.8, no reframing "
-                   "and no zoom. Faint room tone, the low hum of an air vent and the occasional "
-                   "creak of the chair fill the space between lines. Single continuous shot, "
-                   "natural motion blur, film-like cadence.",
-                   lead=False, trail=False)
+# The fragment TEXT is per-project scene writing and lives in configs.json's "fragments" block,
+# beside the bible. The SHAPE — which fragments exist and where each one needs its spaces — is
+# structural, belongs to the format, and stays here where it can be asserted.
+#
+# That split is what keeps every project's build_project.py byte-identical. Editing the staging
+# is a data change, not a code change.
+#
+#                     name        lead   trail
+FRAGMENT_SPEC: dict[str, tuple[bool, bool]] = {
+    "A_OPEN":  (False, True),   # opens phase A, runs into the IDENTITY card
+    "WEARING": (False, True),   # between IDENTITY and WARDROBE, both phases
+    "A_CLOSE": (False, False),  # closes phase A. MUST keep "mouth closed" — see below
+    "B_OPEN":  (False, True),   # opens phase B, runs into the IDENTITY card
+    "B_SAYS":  (False, True),   # runs into the first quoted span
+    "B_BEAT":  (True,  True),   # sits between the two quoted spans
+    "B_IN":    (True,  True),   # runs into the VOICE card
+    "B_CLOSE": (False, False),  # closes phase B. Carries the entire audio design — see below
+}
 
 # `mouth closed` in A_CLOSE is load-bearing, not decoration: phase A's output IS phase B's first
-# frame, and LTX-2 handles dialogue badly when the start frame is mid-word.
+# frame, and LTX-2 handles dialogue badly when the start frame is mid-word. Keep it in whatever
+# you rewrite.
 #
-# Everything B_CLOSE says about room tone, the vent and the chair is the ENTIRE audio design.
-# LTX-2 has no audio config field in this pipeline — audio is prompt-driven — so that fragment,
-# the quoted dialogue and the voice wildcard are the whole of it.
+# Whatever B_CLOSE says about room tone is the ENTIRE audio design. LTX-2 has no audio config
+# field in this pipeline — audio is prompt-driven — so that fragment, the quoted dialogue and the
+# voice wildcard are the whole of it.
 
-NEG_PROMPT = ("blurry, low resolution, jpeg artifacts, watermark, on-screen text, subtitles, "
-              "warped face, malformed hands, extra fingers, duplicated limbs, camera shake, "
-              "handheld wobble, zoom, dolly move, rack focus, cut to another shot")
 
-SETUP_NOTE = (
-    "PODCAST AUDITIONS — read this before running.\n"
-    "\n"
-    "SETUP: create the folder ~Pictures/PodcastAuditions/anchors/ before the first run. Nothing "
-    "in the pipeline creates directories, and loopSave is handed a full path.\n"
-    "\n"
-    "Keep that folder EMPTY except for what this project writes. loopLoad indexes the directory "
-    "by sorted position, so any stray image — a thumbnail, an old export — repairs every anchor "
-    "with the wrong character.\n"
-    "\n"
-    "RUN ORDER: phase A writes the six anchors, phase B reads them back as first frames. Run the "
-    "whole project in one pass. In Tanque Studio it must be one pass — loop paths there resolve "
-    "against the run's own timestamped output folder, so anchors from an earlier run are invisible "
-    "to a later one.\n"
-    "\n"
-    "FIRST TIME: set both loop counts to 1 and run phase A alone. That proves the folder exists "
-    "and that the canvas save lands, in a fraction of the time a full run takes.\n"
-    "\n"
-    "TRIM: to keep the characters and skip the auditions, delete the marked note below and "
-    "everything after it."
-)
+def load_fragments(cfg: dict) -> dict[str, Fragment]:
+    """Build every fragment from configs.json, asserting the spacing the format requires."""
+    block = cfg.get("fragments")
+    if not isinstance(block, dict):
+        sys.exit("configs.json is missing its \"fragments\" block")
+    missing = [name for name in FRAGMENT_SPEC if name not in block]
+    if missing:
+        sys.exit(f"configs.json \"fragments\" is missing: {', '.join(missing)}")
+    unknown = [name for name in block if name not in FRAGMENT_SPEC and not name.startswith("_")]
+    if unknown:
+        sys.exit(f"configs.json \"fragments\" has entries nothing reads: {', '.join(unknown)}")
+
+    fragments = {}
+    for name, (lead, trail) in FRAGMENT_SPEC.items():
+        fragments[name] = Fragment(name, block[name], lead=lead, trail=trail)
+    if "mouth closed" not in fragments["A_CLOSE"].value:
+        print("  ⚠ A_CLOSE no longer says 'mouth closed'. Phase A's still is phase B's first "
+              "frame, and LTX-2 handles dialogue badly starting mid-word.")
+    return fragments
+
+
+def load_neg_prompt(cfg: dict) -> str:
+    neg = cfg.get("negativePrompt")
+    if not isinstance(neg, str) or not neg.strip():
+        sys.exit("configs.json is missing its \"negativePrompt\" string")
+    return neg
 
 TRIM_MARKER = "──────── TRIM LINE ────────"
 
-TRIM_NOTE = (
-    f"{TRIM_MARKER}  Delete this note and EVERY item below it to turn this into a "
-    "characters-only project. Everything above it stands alone: it renders six stills and saves "
-    "them to ~Pictures/PodcastAuditions/anchors/. Nothing below it is referenced from above."
-)
+
+def setup_note(cfg: dict, count: int) -> str:
+    """The note at the top of the project — written for whoever runs it, not for us."""
+    name = project_paths(cfg)[0]
+    anchors = cfg["anchorsDirectory"]
+    return (
+        f"{name.upper()} — read this before running.\n"
+        "\n"
+        f"SETUP: create the folder ~Pictures/{anchors} before the first run. Nothing in the "
+        "pipeline creates directories, and loopSave is handed a full path.\n"
+        "\n"
+        "Keep that folder EMPTY except for what this project writes. loopLoad indexes the "
+        "directory by sorted position, so any stray image — a thumbnail, an old export — pairs "
+        "every anchor with the wrong character.\n"
+        "\n"
+        f"RUN ORDER: phase A writes the {count} anchors, phase B reads them back as first frames. "
+        "Run the whole project in one pass. In Tanque Studio it must be one pass — loop paths "
+        "there resolve against the run's own timestamped output folder, so anchors from an "
+        "earlier run are invisible to a later one.\n"
+        "\n"
+        "FIRST TIME: set both loop counts to 1 and run phase A alone. That proves the folder "
+        "exists and that the canvas save lands, in a fraction of the time a full run takes.\n"
+        "\n"
+        "TRIM: to keep the characters and skip the spoken scenes, delete the marked note below "
+        "and everything after it."
+    )
+
+
+def trim_note(cfg: dict, count: int) -> str:
+    anchors = cfg["anchorsDirectory"]
+    return (
+        f"{TRIM_MARKER}  Delete this note and EVERY item below it to turn this into a "
+        f"characters-only project. Everything above it stands alone: it renders {count} stills "
+        f"and saves them to ~Pictures/{anchors}. Nothing below it is referenced from above."
+    )
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -329,6 +342,7 @@ def build_items(bible: list[dict], cfg: dict) -> list[dict]:
     # Matching that convention keeps the file byte-shaped like one the Editor would have written.
     seed_cards = [str(row["seed"]) for row in bible]
 
+    frag = load_fragments(cfg)
     sizes = cfg["sizes"]
     fd = cfg["framesDialog"]
     anchors_dir = cfg["anchorsDirectory"]
@@ -342,11 +356,11 @@ def build_items(bible: list[dict], cfg: dict) -> list[dict]:
     loop_value = {"loop": n, "start": 0}
 
     items: list[dict] = [
-        text("note", SETUP_NOTE),
+        text("note", setup_note(cfg, n)),
         flag("canvasClear"),
         # negPrompt is persistent and does not render (StoryflowPipeline.js:1000). One setting
         # above both phases rather than one per phase.
-        text("negPrompt", NEG_PROMPT),
+        text("negPrompt", load_neg_prompt(cfg)),
 
         # ── PHASE A · CHARACTERS (stills) ────────────────────────────────────
         config_ref("#krea2_stills"),
@@ -362,18 +376,18 @@ def build_items(bible: list[dict], cfg: dict) -> list[dict]:
         # Pinned seeds: insurance for regenerating an anchor you already approved. Seed is NOT the
         # consistency mechanism here — phase B is image-to-video, so identity arrives as pixels.
         obj("sweep", {"paramName": "seed", "wild": "loop", "cards": seed_cards}),
-        text("concat", A_OPEN.value),
+        text("concat", frag["A_OPEN"].value),
         wildcard(identity_cards),
-        text("concat", WEARING.value),
+        text("concat", frag["WEARING"].value),
         wildcard(wardrobe_cards),
-        text("concat", A_CLOSE.value),
+        text("concat", frag["A_CLOSE"].value),
         # `prompt` IS the render trigger: concat += value; generate(); concat = "" (:959).
         # There is no separate generate instruction in this format.
         text("prompt", ""),
         text("loopSave", anchor_file),
         flag("loopEnd"),
 
-        text("note", TRIM_NOTE),
+        text("note", trim_note(cfg, n)),
 
         # ── PHASE B · AUDITIONS (video) ──────────────────────────────────────
         config_ref("#ltx2_video"),
@@ -381,17 +395,17 @@ def build_items(bible: list[dict], cfg: dict) -> list[dict]:
 
         obj("loop", loop_value),
         text("loopLoad", anchors_dir),
-        text("concat", B_OPEN.value),
+        text("concat", frag["B_OPEN"].value),
         wildcard(identity_cards),
-        text("concat", WEARING.value),
+        text("concat", frag["WEARING"].value),
         wildcard(wardrobe_cards),
-        text("concat", B_SAYS.value),
+        text("concat", frag["B_SAYS"].value),
         wildcard(slate_cards),
-        text("concat", B_BEAT.value),
+        text("concat", frag["B_BEAT"].value),
         wildcard(line_cards),
-        text("concat", B_IN.value),
+        text("concat", frag["B_IN"].value),
         wildcard(voice_cards),
-        text("concat", B_CLOSE.value),
+        text("concat", frag["B_CLOSE"].value),
         # generate:false plus an explicit bare `prompt`. Both engines honour generate:true, but the
         # explicit prompt makes the render point visible in both step lists and keeps preflight's
         # generate-detection honest. Costs one item.

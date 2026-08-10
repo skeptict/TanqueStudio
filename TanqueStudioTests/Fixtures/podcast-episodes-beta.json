@@ -3,7 +3,7 @@
   "items": [
     {
       "type": "note",
-      "value": "PODCAST AUDITIONS — read this before running.\n\nSETUP: create the folder ~Pictures/PodcastAuditions/anchors/ before the first run. Nothing in the pipeline creates directories, and loopSave is handed a full path.\n\nKeep that folder EMPTY except for what this project writes. loopLoad indexes the directory by sorted position, so any stray image — a thumbnail, an old export — repairs every anchor with the wrong character.\n\nRUN ORDER: phase A writes the six anchors, phase B reads them back as first frames. Run the whole project in one pass. In Tanque Studio it must be one pass — loop paths there resolve against the run's own timestamped output folder, so anchors from an earlier run are invisible to a later one.\n\nFIRST TIME: set both loop counts to 1 and run phase A alone. That proves the folder exists and that the canvas save lands, in a fraction of the time a full run takes.\n\nTRIM: to keep the characters and skip the auditions, delete the marked note below and everything after it."
+      "value": "PODCAST EPISODES BETA — read this before running.\n\nSETUP: create the folder ~Pictures/PodcastEpisodes-beta/anchors/ before the first run. Nothing in the pipeline creates directories, and loopSave is handed a full path.\n\nKeep that folder EMPTY except for what this project writes. loopLoad indexes the directory by sorted position, so any stray image — a thumbnail, an old export — pairs every anchor with the wrong character.\n\nRUN ORDER: phase A writes the 7 anchors, phase B reads them back as first frames. Run the whole project in one pass. In Tanque Studio it must be one pass — loop paths there resolve against the run's own timestamped output folder, so anchors from an earlier run are invisible to a later one.\n\nFIRST TIME: set both loop counts to 1 and run phase A alone. That proves the folder exists and that the canvas save lands, in a fraction of the time a full run takes.\n\nTRIM: to keep the characters and skip the spoken scenes, delete the marked note below and everything after it."
     },
     {
       "type": "canvasClear",
@@ -31,15 +31,15 @@
     },
     {
       "type": "sweep",
-      "value": "{\"paramName\":\"seed\",\"wild\":\"loop\",\"cards\":[\"811001\",\"811002\",\"811003\",\"811004\",\"811005\",\"811006\",\"811006\"]}"
+      "value": "{\"paramName\":\"seed\",\"wild\":\"loop\",\"cards\":[\"811001\",\"811002\",\"811003\",\"811004\",\"811005\",\"811007\",\"811006\"]}"
     },
     {
       "type": "concat",
-      "value": "A casting-room headshot, medium shot, of "
+      "value": "A portrait photograph in a small audio recording studio, medium shot, of "
     },
     {
       "type": "wildcard",
-      "value": "{\"wild\":\"loop\",\"cards\":[\"A striking bald man in his fifties with a salt-and-pepper beard\",\"an adorable labradoodle puppy\",\"A playful, attractive woman with thick shaggy blonde hair pulled up in a loose bun, dark eyes\",\"A powerful young jungle princess warrior\",\"Playful young woman with shaggy pixie rainbow hair, dark eye-liner\",\"Young brunette woman in her 20s, Playful young woman with long dark wavy hair, dark eye-liner, freckles\",\"Young woman in her 20s, platinum blonde long wavy hair, full glossy lips, dark black eyes, freckles, the tip of her nose is painted black and she has whiskers drawn on her cheeks.\"]}"
+      "value": "{\"wild\":\"loop\",\"cards\":[\"A striking bald man in his fifties with a salt-and-pepper beard\",\"an adorable labradoodle puppy\",\"A playful, attractive middle-aged woman with thick shaggy blonde hair pulled up in a loose bun, dark eyes\",\"A powerful young jungle princess warrior\",\"Playful young woman with shaggy pixie rainbow hair, dark eye-liner\",\"Young brunette woman in her 20s, Playful young woman with long dark wavy hair, dark eye-liner, freckles\",\"Young woman in her 20s, platinum blonde long wavy hair, full glossy lips, dark black eyes, freckles, the tip of her nose is painted black and she has whiskers drawn on her cheeks.\"]}"
     },
     {
       "type": "concat",
@@ -51,7 +51,7 @@
     },
     {
       "type": "concat",
-      "value": ", seated on a folding chair against a bare grey wall under flat overhead fluorescent light, facing the lens, mouth closed, neutral expression, hands at rest. Sharp focus, 50mm, shallow depth of field."
+      "value": ", seated at a cluttered desk behind a large silver condenser microphone on a folding mic stand, a round foam pop filter in front of it, closed-back headphones resting around their neck, a second mic stand and coiled XLR cables just behind, dark acoustic foam panels on the wall and one warm practical lamp, facing the lens, mouth closed, neutral expression, hands at rest. Sharp focus, 50mm, shallow depth of field."
     },
     {
       "type": "prompt",
@@ -67,7 +67,7 @@
     },
     {
       "type": "note",
-      "value": "──────── TRIM LINE ────────  Delete this note and EVERY item below it to turn this into a characters-only project. Everything above it stands alone: it renders six stills and saves them to ~Pictures/PodcastAuditions/anchors/. Nothing below it is referenced from above."
+      "value": "──────── TRIM LINE ────────  Delete this note and EVERY item below it to turn this into a characters-only project. Everything above it stands alone: it renders 7 stills and saves them to ~Pictures/PodcastEpisodes-beta/anchors/. Nothing below it is referenced from above."
     },
     {
       "type": "config",
@@ -91,7 +91,7 @@
     },
     {
       "type": "wildcard",
-      "value": "{\"wild\":\"loop\",\"cards\":[\"A striking bald man in his fifties with a salt-and-pepper beard\",\"an adorable labradoodle puppy\",\"A playful, attractive woman with thick shaggy blonde hair pulled up in a loose bun, dark eyes\",\"A powerful young jungle princess warrior\",\"Playful young woman with shaggy pixie rainbow hair, dark eye-liner\",\"Young brunette woman in her 20s, Playful young woman with long dark wavy hair, dark eye-liner, freckles\",\"Young woman in her 20s, platinum blonde long wavy hair, full glossy lips, dark black eyes, freckles, the tip of her nose is painted black and she has whiskers drawn on her cheeks.\"]}"
+      "value": "{\"wild\":\"loop\",\"cards\":[\"A striking bald man in his fifties with a salt-and-pepper beard\",\"an adorable labradoodle puppy\",\"A playful, attractive middle-aged woman with thick shaggy blonde hair pulled up in a loose bun, dark eyes\",\"A powerful young jungle princess warrior\",\"Playful young woman with shaggy pixie rainbow hair, dark eye-liner\",\"Young brunette woman in her 20s, Playful young woman with long dark wavy hair, dark eye-liner, freckles\",\"Young woman in her 20s, platinum blonde long wavy hair, full glossy lips, dark black eyes, freckles, the tip of her nose is painted black and she has whiskers drawn on her cheeks.\"]}"
     },
     {
       "type": "concat",
@@ -103,11 +103,11 @@
     },
     {
       "type": "concat",
-      "value": ", seated on a folding chair in an empty casting room. They look into the lens and say, "
+      "value": ", seated at the studio desk behind a condenser microphone on a folding mic stand, headphones on. They lean in toward the mic and say, "
     },
     {
       "type": "wildcard",
-      "value": "{\"wild\":\"loop\",\"cards\":[\"\\\"Hi there. I'm here for the audition\\\"\",\"\\\"Ruff, ruff\\\"\",\"\\\"So, um, yeah, I'm here for the audition. Name's Kira\\\"\",\"\\\"I think I'm what you're looking for. Name's Tiger\\\"\",\"\\\"I'm Cindy. I think I'll be perfect for this\\\"\",\"\\\"My friends call me Bunny. And I'll tell you up front, if I can't do this with Abby, then I don't want to do it.\\\"\",\"\\\"So, this is for the podcast, right? This is rolling?\\\"\"]}"
+      "value": "{\"wild\":\"loop\",\"cards\":[\"\\\"Today we are talking saved configurations\\\"\",\"\\\"Ruff, ruff\\\"\",\"\\\"A config is every slider, saved together\\\"\",\"\\\"Get your settings right, then open the config menu\\\"\",\"\\\"Getting it back is one tap\\\"\",\"\\\"One catch, and it gets everyone\\\"\",\"\\\"So make one config per model, once\\\"\"]}"
     },
     {
       "type": "concat",
@@ -115,7 +115,7 @@
     },
     {
       "type": "wildcard",
-      "value": "{\"wild\":\"loop\",\"cards\":[\"\\\"Hello, welcome back, be sure to hit like and subscribe\\\"\",\"\\\"Bow-wow\\\"\",\"\\\"This just in, puppies released, film at eleven\\\"\",\"\\\"Are the frontier models even important anymore? We'll find out!\\\"\",\"\\\"This week in Krea LoRAs, we'll dig deep to find the best new models!\\\"\",\"\\\"Once you've gotten the hang of a model like Z Image Turbo, your whole world changes.\\\"\",\"\\\"I just love to see people Draw Things\\\"\"]}"
+      "value": "{\"wild\":\"loop\",\"cards\":[\"\\\"They are the fastest way to repeat a look you liked\\\"\",\"\\\"Bow-wow\\\"\",\"\\\"Model, steps, guidance, all of it, under one name\\\"\",\"\\\"Save as new, and name it something you will remember\\\"\",\"\\\"Open the config list, pick your preset, everything snaps back\\\"\",\"\\\"Saving a config does not save your prompt. Separate things\\\"\",\"\\\"Then you never lose a good setup again\\\"\"]}"
     },
     {
       "type": "concat",
@@ -127,7 +127,7 @@
     },
     {
       "type": "concat",
-      "value": ". The camera holds perfectly still on a tripod, 50mm at f/2.8, no reframing and no zoom. Faint room tone, the low hum of an air vent and the occasional creak of the chair fill the space between lines. Single continuous shot, natural motion blur, film-like cadence."
+      "value": ". The camera holds perfectly still on a tripod, 50mm at f/2.8, no reframing and no zoom. Faint room tone, the hum of a mixing desk and the soft creak of a chair fill the space between lines. Single continuous shot, natural motion blur, film-like cadence."
     },
     {
       "type": "framesDialog",

@@ -35,14 +35,13 @@
       "verify_project.py prints the per-character frame count and flags anything over 257."
     ]
   },
-
   "characters": [
     {
       "name": "Skep",
       "identity": "A striking bald man in his fifties with a salt-and-pepper beard",
       "wardrobe": "a corduroy blazer and a yellow cravat",
-      "slate": "Hi there. I'm here for the audition",
-      "line": "Hello, welcome back, be sure to hit like and subscribe",
+      "slate": "Today we are talking saved configurations",
+      "line": "They are the fastest way to repeat a look you liked",
       "voice": "Warm, friendly tone",
       "seed": 811001
     },
@@ -57,10 +56,10 @@
     },
     {
       "name": "Kira",
-      "identity": "A playful, attractive woman with thick shaggy blonde hair pulled up in a loose bun, dark eyes",
+      "identity": "A playful, attractive middle-aged woman with thick shaggy blonde hair pulled up in a loose bun, dark eyes",
       "wardrobe": "loose colorful sundress",
-      "slate": "So, um, yeah, I'm here for the audition. Name's Kira",
-      "line": "This just in, puppies released, film at eleven",
+      "slate": "A config is every slider, saved together",
+      "line": "Model, steps, guidance, all of it, under one name",
       "voice": "soft voice, vocal fry, playful tone",
       "seed": 811003
     },
@@ -68,8 +67,8 @@
       "name": "Tiger",
       "identity": "A powerful young jungle princess warrior",
       "wardrobe": "leather studded armor over flowing linen robes",
-      "slate": "I think I'm what you're looking for. Name's Tiger",
-      "line": "Are the frontier models even important anymore? We'll find out!",
+      "slate": "Get your settings right, then open the config menu",
+      "line": "Save as new, and name it something you will remember",
       "voice": "husky, bold tone, confident and amused",
       "seed": 811004
     },
@@ -77,8 +76,8 @@
       "name": "Cindy",
       "identity": "Playful young woman with shaggy pixie rainbow hair, dark eye-liner",
       "wardrobe": "Punk rock t-shirt, denim cut-off shorts, studded leather jewelry, tattoos",
-      "slate": "I'm Cindy. I think I'll be perfect for this",
-      "line": "This week in Krea LoRAs, we'll dig deep to find the best new models!",
+      "slate": "Getting it back is one tap",
+      "line": "Open the config list, pick your preset, everything snaps back",
       "voice": "Soft Scottish accent, playful, enthusiastic tone",
       "seed": 811005
     },
@@ -86,17 +85,17 @@
       "name": "Bunny",
       "identity": "Young brunette woman in her 20s, Playful young woman with long dark wavy hair, dark eye-liner, freckles",
       "wardrobe": "A loose-fitting pink bunny suit with long floppy ears on the hood.",
-      "slate": "My friends call me Bunny. And I'll tell you up front, if I can't do this with Abby, then I don't want to do it.",
-      "line": "Once you've gotten the hang of a model like Z Image Turbo, your whole world changes.",
+      "slate": "One catch, and it gets everyone",
+      "line": "Saving a config does not save your prompt. Separate things",
       "voice": "Soft Cockney British accent, playful, enthusiastic tone",
-      "seed": 811006
+      "seed": 811007
     },
     {
       "name": "Abby",
       "identity": "Young woman in her 20s, platinum blonde long wavy hair, full glossy lips, dark black eyes, freckles, the tip of her nose is painted black and she has whiskers drawn on her cheeks.",
       "wardrobe": "a loose-fitting brown furry dog costume over her curvy figure, yellow bandana around her neck, exposed shoulder and bra strap, floppy dog ears",
-      "slate": "So, this is for the podcast, right? This is rolling?",
-      "line": "I just love to see people Draw Things",
+      "slate": "So make one config per model, once",
+      "line": "Then you never lose a good setup again",
       "voice": "Soft British accent, giggling, playful",
       "seed": 811006
     }

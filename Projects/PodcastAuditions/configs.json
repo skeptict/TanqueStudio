@@ -147,6 +147,39 @@
 
   "framesDialog": { "wps": 2.6, "padding": 48, "generate": false },
 
+  "_fragments_note": [
+    "The shared scene writing. Everything the model reads that is NOT a character comes from here,",
+    "so restaging a project is a data edit and build_project.py stays identical between projects.",
+    "",
+    "The assembled phase-B prompt is, in order:",
+    "  B_OPEN + identity + WEARING + wardrobe + B_SAYS + \"slate\" + B_BEAT + \"line\" + B_IN + voice + B_CLOSE",
+    "",
+    "SPACES ARE LOAD-BEARING. concat appends with NO separator, so every space between a fragment",
+    "and the card next to it is one you supply here. build_project.py asserts each fragment's",
+    "leading/trailing space against FRAGMENT_SPEC and fails the build if you eat one.",
+    "",
+    "NO double-quote characters in any fragment — framesDialog counts words inside \"...\" spans and",
+    "a stray quote re-pairs them, silently changing every clip's length.",
+    "",
+    "KEEP 'mouth closed' in A_CLOSE. Phase A's still is phase B's first frame and LTX-2 handles",
+    "dialogue badly starting mid-word. The builder warns if it goes missing.",
+    "",
+    "B_CLOSE carries the ENTIRE audio design — there is no audio config field, audio is prompt-",
+    "driven, so room tone lives in that sentence or it does not exist."
+  ],
+  "fragments": {
+    "A_OPEN":  "A casting-room headshot, medium shot, of ",
+    "WEARING": ", wearing ",
+    "A_CLOSE": ", seated on a folding chair against a bare grey wall under flat overhead fluorescent light, facing the lens, mouth closed, neutral expression, hands at rest. Sharp focus, 50mm, shallow depth of field.",
+    "B_OPEN":  "A locked-off medium shot of ",
+    "B_SAYS":  ", seated on a folding chair in an empty casting room. They look into the lens and say, ",
+    "B_BEAT":  " After a beat they add, ",
+    "B_IN":    " in ",
+    "B_CLOSE": ". The camera holds perfectly still on a tripod, 50mm at f/2.8, no reframing and no zoom. Faint room tone, the low hum of an air vent and the occasional creak of the chair fill the space between lines. Single continuous shot, natural motion blur, film-like cadence."
+  },
+
+  "negativePrompt": "blurry, low resolution, jpeg artifacts, watermark, on-screen text, subtitles, warped face, malformed hands, extra fingers, duplicated limbs, camera shake, handheld wobble, zoom, dolly move, rack focus, cut to another shot",
+
   "_project_note": [
     "This block is a project's whole identity. build_project.py and verify_project.py read it,",
     "so the two .py files are byte-identical between projects and copying a project means",

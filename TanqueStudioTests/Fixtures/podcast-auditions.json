@@ -3,7 +3,7 @@
   "items": [
     {
       "type": "note",
-      "value": "PODCAST AUDITIONS — read this before running.\n\nSETUP: create the folder ~Pictures/PodcastAuditions/anchors/ before the first run. Nothing in the pipeline creates directories, and loopSave is handed a full path.\n\nKeep that folder EMPTY except for what this project writes. loopLoad indexes the directory by sorted position, so any stray image — a thumbnail, an old export — repairs every anchor with the wrong character.\n\nRUN ORDER: phase A writes the six anchors, phase B reads them back as first frames. Run the whole project in one pass. In Tanque Studio it must be one pass — loop paths there resolve against the run's own timestamped output folder, so anchors from an earlier run are invisible to a later one.\n\nFIRST TIME: set both loop counts to 1 and run phase A alone. That proves the folder exists and that the canvas save lands, in a fraction of the time a full run takes.\n\nTRIM: to keep the characters and skip the auditions, delete the marked note below and everything after it."
+      "value": "PODCAST AUDITIONS — read this before running.\n\nSETUP: create the folder ~Pictures/PodcastAuditions/anchors/ before the first run. Nothing in the pipeline creates directories, and loopSave is handed a full path.\n\nKeep that folder EMPTY except for what this project writes. loopLoad indexes the directory by sorted position, so any stray image — a thumbnail, an old export — pairs every anchor with the wrong character.\n\nRUN ORDER: phase A writes the 7 anchors, phase B reads them back as first frames. Run the whole project in one pass. In Tanque Studio it must be one pass — loop paths there resolve against the run's own timestamped output folder, so anchors from an earlier run are invisible to a later one.\n\nFIRST TIME: set both loop counts to 1 and run phase A alone. That proves the folder exists and that the canvas save lands, in a fraction of the time a full run takes.\n\nTRIM: to keep the characters and skip the spoken scenes, delete the marked note below and everything after it."
     },
     {
       "type": "canvasClear",
@@ -67,7 +67,7 @@
     },
     {
       "type": "note",
-      "value": "──────── TRIM LINE ────────  Delete this note and EVERY item below it to turn this into a characters-only project. Everything above it stands alone: it renders six stills and saves them to ~Pictures/PodcastAuditions/anchors/. Nothing below it is referenced from above."
+      "value": "──────── TRIM LINE ────────  Delete this note and EVERY item below it to turn this into a characters-only project. Everything above it stands alone: it renders 7 stills and saves them to ~Pictures/PodcastAuditions/anchors/. Nothing below it is referenced from above."
     },
     {
       "type": "config",
