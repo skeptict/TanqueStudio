@@ -158,11 +158,11 @@
     "                     or one project's build silently overwrites another's test fixture"
   ],
   "project": {
-    "name": "Podcast Auditions",
-    "outputBasename": "Podcast Auditions",
-    "fixtureBasename": "podcast-auditions"
+    "name": "Podcast Episodes Beta",
+    "outputBasename": "PodcastEpisodes-beta",
+    "fixtureBasename": "podcast-episodes-beta"
   },
 
-  "anchorsDirectory": "PodcastAuditions/anchors/",
-  "anchorFilename": "PodcastAuditions/anchors/anchor.png"
+  "anchorsDirectory": "PodcastEpisodes-beta/anchors/",
+  "anchorFilename": "PodcastEpisodes-beta/anchors/anchor.png"
 }

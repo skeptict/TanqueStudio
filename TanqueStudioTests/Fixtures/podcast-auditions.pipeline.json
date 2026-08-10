@@ -40,7 +40,7 @@
   },
   {
     "loop": {
-      "loop": 6,
+      "loop": 7,
       "start": 0
     }
   },
@@ -57,6 +57,7 @@
         811003,
         811004,
         811005,
+        811006,
         811006
       ]
     }
@@ -73,6 +74,7 @@
         "A playful, attractive woman with thick shaggy blonde hair pulled up in a loose bun, dark eyes",
         "A powerful young jungle princess warrior",
         "Playful young woman with shaggy pixie rainbow hair, dark eye-liner",
+        "Young brunette woman in her 20s, Playful young woman with long dark wavy hair, dark eye-liner, freckles",
         "Young woman in her 20s, platinum blonde long wavy hair, full glossy lips, dark black eyes, freckles, the tip of her nose is painted black and she has whiskers drawn on her cheeks."
       ]
     }
@@ -89,6 +91,7 @@
         "loose colorful sundress",
         "leather studded armor over flowing linen robes",
         "Punk rock t-shirt, denim cut-off shorts, studded leather jewelry, tattoos",
+        "A loose-fitting pink bunny suit with long floppy ears on the hood.",
         "a loose-fitting brown furry dog costume over her curvy figure, yellow bandana around her neck, exposed shoulder and bra strap, floppy dog ears"
       ]
     }
@@ -139,7 +142,7 @@
   },
   {
     "loop": {
-      "loop": 6,
+      "loop": 7,
       "start": 0
     }
   },
@@ -158,6 +161,7 @@
         "A playful, attractive woman with thick shaggy blonde hair pulled up in a loose bun, dark eyes",
         "A powerful young jungle princess warrior",
         "Playful young woman with shaggy pixie rainbow hair, dark eye-liner",
+        "Young brunette woman in her 20s, Playful young woman with long dark wavy hair, dark eye-liner, freckles",
         "Young woman in her 20s, platinum blonde long wavy hair, full glossy lips, dark black eyes, freckles, the tip of her nose is painted black and she has whiskers drawn on her cheeks."
       ]
     }
@@ -174,6 +178,7 @@
         "loose colorful sundress",
         "leather studded armor over flowing linen robes",
         "Punk rock t-shirt, denim cut-off shorts, studded leather jewelry, tattoos",
+        "A loose-fitting pink bunny suit with long floppy ears on the hood.",
         "a loose-fitting brown furry dog costume over her curvy figure, yellow bandana around her neck, exposed shoulder and bra strap, floppy dog ears"
       ]
     }
@@ -190,6 +195,7 @@
         "\"So, um, yeah, I'm here for the audition. Name's Kira\"",
         "\"I think I'm what you're looking for. Name's Tiger\"",
         "\"I'm Cindy. I think I'll be perfect for this\"",
+        "\"My friends call me Bunny. And I'll tell you up front, if I can't do this with Abby, then I don't want to do it.\"",
         "\"So, this is for the podcast, right? This is rolling?\""
       ]
     }
@@ -206,6 +212,7 @@
         "\"This just in, puppies released, film at eleven\"",
         "\"Are the frontier models even important anymore? We'll find out!\"",
         "\"This week in Krea LoRAs, we'll dig deep to find the best new models!\"",
+        "\"Once you've gotten the hang of a model like Z Image Turbo, your whole world changes.\"",
         "\"I just love to see people Draw Things\""
       ]
     }
@@ -222,6 +229,7 @@
         "soft voice, vocal fry, playful tone",
         "husky, bold tone, confident and amused",
         "Soft Scottish accent, playful, enthusiastic tone",
+        "Soft Cockney British accent, playful, enthusiastic tone",
         "Soft British accent, giggling, playful"
       ]
     }

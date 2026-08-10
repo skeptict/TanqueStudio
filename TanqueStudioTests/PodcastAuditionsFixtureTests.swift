@@ -207,7 +207,15 @@ final class PodcastAuditionsFixtureTests: XCTestCase {
         let counts = Set(lists.map(\.count))
 
         XCTAssertEqual(counts.count, 1, "card counts are not all equal: \(lists.map(\.count))")
-        XCTAssertEqual(counts.first, 6, "expected the six-character bible")
+        // Deliberately not a hardcoded cast size. The bible is meant to be edited — adding a
+        // seventh character is a normal thing to do, and it broke this assertion when it was
+        // spelled `== 6`. What must hold is that the lists agree with each other and with the
+        // loop count, which is what actually keeps the two phases in lockstep.
+        let loopCount = try objectValues(ofType: "loop").compactMap { $0["loop"] as? Int }
+        XCTAssertFalse(loopCount.isEmpty, "no loop items")
+        for count in loopCount {
+            XCTAssertEqual(count, counts.first, "loop count disagrees with the card lists")
+        }
     }
 
     /// The escaping check, and the reason the fixture round-trip is the right place for it.
@@ -259,10 +267,13 @@ final class PodcastAuditionsFixtureTests: XCTestCase {
         let loops = try objectValues(ofType: "loop")
 
         XCTAssertEqual(loops.count, 2, "expected phase A and phase B")
+        let counts = loops.map { $0["loop"] as? Int }
         for loop in loops {
             XCTAssertEqual(loop["start"] as? Int, 0)
-            XCTAssertEqual(loop["loop"] as? Int, 6)
         }
+        // Both blocks run the same number of passes — the cast size, whatever it currently is.
+        XCTAssertEqual(Set(counts).count, 1, "the two phases loop different numbers of times: \(counts)")
+        XCTAssertNotNil(counts.first ?? nil)
 
         // Sequential, not nested: every `loop` is closed before the next one opens.
         var depth = 0
@@ -341,6 +352,73 @@ final class PodcastAuditionsFixtureTests: XCTestCase {
                       "the beat join between the two spoken spans is malformed")
         XCTAssertTrue(concat.contains("\" in "), "the voice join lost a space")
         XCTAssertFalse(concat.contains("  "), "double space in the assembled prompt")
+    }
+
+    // MARK: - Every generated project, not just this one
+
+    /// The assertions above name `podcast-auditions` explicitly. That is fine until the generator
+    /// is stood up a second time — which happened — and the copy is subtly wrong in ways a
+    /// fixture referenced by name cannot see.
+    ///
+    /// This sweeps every bundled project that ships a `.pipeline.json` beside it, so a new project
+    /// gets the load-bearing checks by existing rather than by someone remembering to add a test.
+    /// It caught nothing when written; its job is the copy after next.
+    ///
+    /// Note what a shared fixture *name* would do: two generators writing the same
+    /// `Fixtures/<name>.json` means the second build silently overwrites the first, and every
+    /// named test above keeps passing while asserting against the wrong project's content. The
+    /// generator now takes that name from its own `configs.json`, and this sweep is the backstop.
+    func testEveryBundledProjectExportsToItsGeneratedPipelineArray() throws {
+        let bundle = Bundle(for: type(of: self))
+        let all = bundle.urls(forResourcesWithExtension: "json", subdirectory: nil) ?? []
+        let projects = all.filter { !$0.lastPathComponent.hasSuffix(".pipeline.json") }
+
+        var checked = 0
+        for projectURL in projects {
+            let stem = projectURL.deletingPathExtension().lastPathComponent
+            guard let pipelineURL = bundle.url(forResource: "\(stem).pipeline", withExtension: "json")
+            else { continue }   // hand-added fixtures without a generated pair
+            checked += 1
+
+            let project = try StoryFlowProjectCodec.load(from: projectURL)
+            let generated = try XCTUnwrap(
+                JSONSerialization.jsonObject(with: try Data(contentsOf: pipelineURL)) as? [[String: Any]],
+                "\(stem): pipeline fixture is not an array"
+            )
+            let ours = StoryFlowProjectCodec.toPipelineArray(project)
+            XCTAssertEqual(ours.count, generated.count, "\(stem): instruction count")
+
+            for (i, instruction) in generated.enumerated() where i < ours.count {
+                guard let key = instruction.keys.first, let ourKey = ours[i].keys.first else { continue }
+                XCTAssertEqual(key, ourKey, "\(stem)[\(i)]: key")
+                let a = try? JSONSerialization.data(withJSONObject: [instruction[key]!], options: [.sortedKeys])
+                let b = try? JSONSerialization.data(withJSONObject: [ours[i][ourKey]!], options: [.sortedKeys])
+                XCTAssertEqual(a, b, "\(stem)[\(i)]: \(key) value")
+            }
+
+            // The invariants below belong to the two-phase anchor pattern — save stills in one
+            // loop, load them back in the next — and only to it. The author's own fixtures are
+            // single-loop projects that legitimately use `shuffle` with mismatched deck sizes,
+            // which is correct for them and would fail here. Detect the pattern rather than
+            // assuming every bundled project is one of ours.
+            let isTwoPhaseAnchorProject = project.items.contains { $0.type == "loopSave" }
+                                       && project.items.contains { $0.type == "loopLoad" }
+            guard isTwoPhaseAnchorProject else { continue }
+
+            var cardCounts = Set<Int>()
+            for item in project.items where item.type == "wildcard" || item.type == "sweep" {
+                guard let data = item.value.stringValue?.data(using: .utf8),
+                      let obj = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+                else { return XCTFail("\(stem): \(item.type) value is not parseable JSON") }
+                XCTAssertEqual(obj["wild"] as? String, "loop",
+                               "\(stem): every wildcard and sweep must be in loop mode")
+                if let cards = obj["cards"] as? [Any] { cardCounts.insert(cards.count) }
+            }
+            XCTAssertLessThanOrEqual(cardCounts.count, 1,
+                                     "\(stem): card counts are not all equal — \(cardCounts.sorted())")
+        }
+
+        XCTAssertGreaterThanOrEqual(checked, 1, "no generated project/pipeline fixture pairs found")
     }
 
     // MARK: - Helpers

@@ -103,7 +103,7 @@
     "prompt": ""
   },
   {
-    "loopSave": "PodcastAuditions/anchors/anchor.png"
+    "loopSave": "PodcastEpisodes-beta/anchors/anchor.png"
   },
   {
     "loopEnd": true
@@ -147,7 +147,7 @@
     }
   },
   {
-    "loopLoad": "PodcastAuditions/anchors/"
+    "loopLoad": "PodcastEpisodes-beta/anchors/"
   },
   {
     "concat": "A locked-off medium shot of "

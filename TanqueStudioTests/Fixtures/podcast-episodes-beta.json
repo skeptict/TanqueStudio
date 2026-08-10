@@ -1,5 +1,5 @@
 {
-  "projectName": "Podcast Auditions",
+  "projectName": "Podcast Episodes Beta",
   "items": [
     {
       "type": "note",
@@ -59,7 +59,7 @@
     },
     {
       "type": "loopSave",
-      "value": "PodcastAuditions/anchors/anchor.png"
+      "value": "PodcastEpisodes-beta/anchors/anchor.png"
     },
     {
       "type": "loopEnd",
@@ -83,7 +83,7 @@
     },
     {
       "type": "loopLoad",
-      "value": "PodcastAuditions/anchors/"
+      "value": "PodcastEpisodes-beta/anchors/"
     },
     {
       "type": "concat",
