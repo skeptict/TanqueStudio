@@ -309,16 +309,54 @@ final class StoryFlowCastEmitterTests: XCTestCase {
     // MARK: - Frame budget
 
     func testTheFrameBudgetMatchesThePipelineFormula() {
-        // 20 spoken words at wps 2.6 / padding 48 is 249 frames — the documented ceiling.
-        XCTAssertEqual(StoryFlowFrameBudget.numFrames(words: 10, wps: 2.6, padding: 48), 153)
-        XCTAssertEqual(StoryFlowFrameBudget.numFrames(words: 14, wps: 2.6, padding: 48), 185)
-        XCTAssertEqual(StoryFlowFrameBudget.numFrames(words: 18, wps: 2.6, padding: 48), 225)
-        XCTAssertEqual(StoryFlowFrameBudget.numFrames(words: 20, wps: 2.6, padding: 48), 249)
-        // 22 words is 265, which is past Tanque Studio's cap while StoryflowPipeline.js has
-        // none — so past 20 words the two engines silently render different lengths.
-        let over = StoryFlowFrameBudget.numFrames(words: 22, wps: 2.6, padding: 48)
-        XCTAssertEqual(over, 265)
-        XCTAssertGreaterThan(over, StoryFlowFrameBudget.tanqueStudioCap)
+        for (words, frames) in [(10, 153), (14, 185), (18, 225), (20, 249), (22, 265)] {
+            XCTAssertEqual(StoryFlowFrameBudget.drawThingsFrames(words: words, wps: 2.6, padding: 48),
+                           frames, "\(words) words")
+        }
+    }
+
+    /// **Where the cap lands.** `StoryFlowEngine` caps the `8k+1` spoken count at 257 and the
+    /// executor then adds padding on top (`StoryFlowEngine.swift:589-591`), so the two engines
+    /// agree until the *pre-padding* count passes 257 — not until the final frame count does.
+    ///
+    /// This test exists because I had it wrong first: comparing the padded total against 257
+    /// warned at 20 spoken words, and flagged a 23-word character as divergent when both
+    /// engines render it identically at 273 frames. The plan document and the kickoff brief
+    /// both quote 20; the source says 27, and the source wins.
+    func testTheEnginesOnlyDivergeOnceTheSpokenCountPasses257() {
+        // 22 words → 265 total, but only 217 before padding. Well under the cap; no divergence.
+        XCTAssertEqual(StoryFlowFrameBudget.spokenFrames(words: 22, wps: 2.6), 217)
+        XCTAssertFalse(StoryFlowFrameBudget.enginesDiverge(words: 22, wps: 2.6))
+
+        // 23 words → 273 total in BOTH engines. This is the case the wrong threshold flagged.
+        let twentyThree = StoryFlowFrameBudget.readout(words: 23, wps: 2.6, padding: 48)
+        XCTAssertEqual(twentyThree.tanqueStudioFrames, 273)
+        XCTAssertEqual(twentyThree.drawThingsFrames, 273)
+        XCTAssertFalse(twentyThree.diverges)
+
+        // 26 words is the last word count that agrees; 27 is the first that does not.
+        XCTAssertFalse(StoryFlowFrameBudget.enginesDiverge(words: 26, wps: 2.6))
+        XCTAssertTrue(StoryFlowFrameBudget.enginesDiverge(words: 27, wps: 2.6))
+
+        // 41 words: Tanque Studio caps the spoken count and then still adds padding, so it
+        // renders 305 — NOT 257, which is what a cap-on-the-total reading would predict.
+        let long = StoryFlowFrameBudget.readout(words: 41, wps: 2.6, padding: 48)
+        XCTAssertEqual(long.drawThingsFrames, 449)
+        XCTAssertEqual(long.tanqueStudioFrames, 257 + 48)
+        XCTAssertTrue(long.diverges)
+    }
+
+    /// The budget helper and the engine's own `spokenFrameCount` must not drift: they are two
+    /// implementations of one formula, and the engine's is the one that actually renders.
+    func testTheBudgetAgreesWithTheEnginesOwnSpokenFrameCount() {
+        for words in [1, 5, 17, 22, 23, 26, 27, 41, 80] {
+            let quoted = "\"" + Array(repeating: "word", count: words).joined(separator: " ") + "\""
+            XCTAssertEqual(
+                StoryFlowEngine.spokenFrameCount(in: quoted, wordsPerSecond: 2.6),
+                min(StoryFlowFrameBudget.spokenFrames(words: words, wps: 2.6),
+                    StoryFlowFrameBudget.spokenFrameCap),
+                "\(words) words")
+        }
     }
 
     // MARK: - Validation

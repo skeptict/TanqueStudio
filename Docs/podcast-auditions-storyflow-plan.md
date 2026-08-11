@@ -243,9 +243,30 @@ If the card-count groups aren't all `6`, the lockstep is broken and characters w
 | 14 | 185 | 7.4 s |
 | 18 | 225 | 9.0 s |
 | 20 | 249 | 10.0 s |
-| 22 | 265 | **over Tanque Studio's cap** |
+| 22 | 265 | 10.6 s |
+| 26 | 313 | 12.5 s — last count both engines agree on |
+| 27 | 321 | **the engines diverge from here** |
 
-**Write every character to 20 spoken words or fewer.** Tanque Studio caps `spokenFrameCount` at 257 deliberately; `StoryflowPipeline.js` has no cap. Past 20 words the two engines silently render different lengths.
+**Write every character to 26 spoken words or fewer** if you want both engines to render the same
+length.
+
+> ⚠️ **Corrected 2026-08-10 — this section said 20, and it was wrong.** Tanque Studio caps
+> `spokenFrameCount` at 257 **before padding is added**, and the executor then adds padding on top
+> (`StoryFlowEngine.swift:589-591`); `StoryflowPipeline.js` has no cap anywhere:
+>
+> ```
+> Tanque Studio    min(8k+1, 257) + padding
+> Draw Things            8k+1     + padding
+> ```
+>
+> So the two agree until the **pre-padding** count passes 257, not until the final frame count
+> does — 27 spoken words at `wps 2.6`, not 20. Two consequences the old wording got backwards: a
+> 23-word character renders at 273 frames in *both* engines and is fine, and a character that does
+> exceed the cap renders at `257 + padding` in Tanque Studio (305 at padding 48), never at 257 flat.
+>
+> The Cast & Staging pane shipped with this same error and was corrected the same day; the fix is
+> pinned by `StoryFlowCastEmitterTests.testTheBudgetAgreesWithTheEnginesOwnSpokenFrameCount`, which
+> compares the helper against the engine's own function rather than against this table.
 
 ---
 

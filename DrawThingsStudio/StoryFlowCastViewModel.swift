@@ -260,10 +260,8 @@ final class StoryFlowCastViewModel {
 
     // MARK: - Readouts
 
-    func frameReadout(for member: CastMember) -> (words: Int, frames: Int, overCap: Bool) {
-        let words = StoryFlowFrameBudget.spokenWordCount(member)
-        let frames = StoryFlowFrameBudget.numFrames(for: member, staging: document.staging)
-        return (words, frames, frames > StoryFlowFrameBudget.tanqueStudioCap)
+    func frameReadout(for member: CastMember) -> StoryFlowFrameBudget.Readout {
+        StoryFlowFrameBudget.readout(for: member, staging: document.staging)
     }
 
     func issues(forRow index: Int) -> [StoryFlowCastIssue] {

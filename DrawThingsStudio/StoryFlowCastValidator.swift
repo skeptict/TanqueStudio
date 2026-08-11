@@ -489,14 +489,17 @@ enum StoryFlowCastValidator {
                     continue
                 }
                 let words = spans.reduce(0) { $0 + max(1, StoryFlowFrameBudget.wordCount($1)) }
-                let frames = StoryFlowFrameBudget.numFrames(words: words, wps: wps, padding: padding)
-                if frames > StoryFlowFrameBudget.tanqueStudioCap {
+                let readout = StoryFlowFrameBudget.readout(words: words, wps: wps, padding: padding)
+                if readout.diverges {
                     issues.append(.init(
                         severity: .warn, anchor: .castRow(pass),
-                        message: "Pass \(pass + 1): \(frames) frames exceeds Tanque Studio's "
-                            + "\(StoryFlowFrameBudget.tanqueStudioCap)-frame cap. "
-                            + "StoryflowPipeline.js has no cap, so the two engines would silently "
-                            + "render different lengths. Trim to 20 spoken words or fewer."))
+                        message: "Pass \(pass + 1): \(words) spoken words put the two engines out "
+                            + "of step — Tanque Studio renders \(readout.tanqueStudioFrames) frames "
+                            + "and Draw Things renders \(readout.drawThingsFrames). Tanque Studio "
+                            + "caps the spoken count at "
+                            + "\(StoryFlowFrameBudget.spokenFrameCap) before padding is added and "
+                            + "StoryflowPipeline.js has no cap at all. Trim this character, or "
+                            + "accept two different clip lengths."))
                 }
             }
         }
