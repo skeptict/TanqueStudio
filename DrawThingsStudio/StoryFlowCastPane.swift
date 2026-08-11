@@ -180,9 +180,19 @@ private struct CastStagingPanel: View {
 
     private var canvasSection: some View {
         CastSection(title: "Canvas") {
-            HStack(spacing: 10) {
-                CastSizeField(label: "Stills", size: $vm.document.staging.stillsSize)
-                CastSizeField(label: "Video", size: $vm.document.staging.videoSize)
+            // Side by side while there is room, stacked once there isn't. At laptop width the
+            // two-across row is exactly wide enough that SwiftUI compressed the `×` between
+            // each pair to nothing — the fields are fixed-width, so the separator is the only
+            // thing that can give — and each canvas then read as two unrelated numbers.
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 10) {
+                    CastSizeField(label: "Stills", size: $vm.document.staging.stillsSize)
+                    CastSizeField(label: "Video", size: $vm.document.staging.videoSize)
+                }
+                VStack(alignment: .leading, spacing: 8) {
+                    CastSizeField(label: "Stills", size: $vm.document.staging.stillsSize)
+                    CastSizeField(label: "Video", size: $vm.document.staging.videoSize)
+                }
             }
             Text("Both canvases must share an aspect ratio. loopLoad does not call "
                  + "updateCanvasSize — canvasLoad does — so the anchor is dropped onto the video "
@@ -381,7 +391,7 @@ private struct CastMemberCard: View {
     @Bindable var vm: StoryFlowCastViewModel
     @State private var confirmingDelete = false
 
-    private var readout: (words: Int, frames: Int, overCap: Bool) { vm.frameReadout(for: member) }
+    private var readout: StoryFlowFrameBudget.Readout { vm.frameReadout(for: member) }
     private var rowIssues: [StoryFlowCastIssue] { vm.issues(forRow: index) }
 
     var body: some View {
@@ -464,32 +474,38 @@ private struct CastMemberCard: View {
         }
     }
 
-    /// `numFrames = ceil(words / wps * 25 / 8) * 8 + 1 + padding`, counting only the words the
-    /// emitter will put inside `"…"` spans. Shown live because the over-cap case is otherwise
-    /// invisible: Tanque Studio caps at 257 and `StoryflowPipeline.js` does not, so past 20
-    /// spoken words the two engines quietly render different lengths.
+    /// Spoken word count and the clip length it buys, live.
+    ///
+    /// Shows what **Tanque Studio** will render, and calls out the case where Draw Things would
+    /// render something else. That divergence is the only thing worth flagging here and it is
+    /// invisible otherwise: Tanque Studio caps the `8k+1` spoken count at 257 *before* padding is
+    /// added and `StoryflowPipeline.js` has no cap, so the two agree right up until the
+    /// pre-padding count passes 257 — 27 spoken words at wps 2.6, not the 20 the plan document
+    /// and the kickoff brief both quote.
     private var frameBadge: some View {
         let readout = self.readout
-        let tint = readout.overCap ? DashboardDS.red : DashboardDS.muted2
+        let tint = readout.diverges ? DashboardDS.red : DashboardDS.muted2
         return HStack(spacing: 5) {
             Text("\(readout.words)w")
             Text("·")
-            Text("\(readout.frames)f")
+            Text("\(readout.tanqueStudioFrames)f")
             Text("·")
-            Text(String(format: "%.1fs", Double(readout.frames) / 25.0))
-            if readout.overCap {
+            Text(String(format: "%.1fs", Double(readout.tanqueStudioFrames) / 25.0))
+            if readout.diverges {
                 Image(systemName: "exclamationmark.triangle.fill").font(.system(size: 9))
+                Text("DT \(readout.drawThingsFrames)f")
             }
         }
         .font(TanqueDS.Font.mono(10.5))
         .foregroundStyle(tint)
         .padding(.horizontal, 7).padding(.vertical, 3)
         .background(tint.opacity(0.10), in: RoundedRectangle(cornerRadius: 5))
-        .help(readout.overCap
-              ? "\(readout.frames) frames is past Tanque Studio's 257-frame cap. "
-                + "StoryflowPipeline.js has no cap, so the two engines would render different "
-                + "lengths. Trim to 20 spoken words or fewer."
-              : "\(readout.words) spoken words → \(readout.frames) frames")
+        .help(readout.diverges
+              ? "The two engines disagree here: Tanque Studio renders "
+                + "\(readout.tanqueStudioFrames) frames, Draw Things renders "
+                + "\(readout.drawThingsFrames). Tanque Studio caps the spoken count at 257 before "
+                + "padding; StoryflowPipeline.js has no cap."
+              : "\(readout.words) spoken words → \(readout.tanqueStudioFrames) frames in both engines")
     }
 
     private func field(_ label: String,
@@ -652,9 +668,12 @@ private struct CastSizeField: View {
                     .multilineTextAlignment(.trailing)
                     .frame(width: 52)
                     .storyFlowFieldChrome()
+                // Belt and braces with the ViewThatFits above: this glyph is what turns two
+                // numbers into a dimension, and it must never be the thing that gets squeezed.
                 Text("×")
                     .font(TanqueDS.Font.mono(10.5))
                     .foregroundStyle(DashboardDS.muted)
+                    .fixedSize()
                 TextField("576", value: $size.height, format: .number.grouping(.never))
                     .multilineTextAlignment(.trailing)
                     .frame(width: 52)
