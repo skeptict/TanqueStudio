@@ -107,6 +107,32 @@ final class StoryFlowPhase3Tests: XCTestCase {
                        expected)
     }
 
+    // MARK: - The empty-render explanation
+
+    /// A stale Draw Things+ session makes DT answer successfully with an empty image list, and
+    /// the symptom looks like anything but its cause. The explanation used to be private to
+    /// `GenerateViewModel`, so StoryFlow logged a bare "No image returned" and a run that
+    /// rendered nothing still reported "✓ Completed".
+    ///
+    /// Asserted on the text because that text *is* the feature: it is what turns an afternoon of
+    /// chasing models and samplers into one sign-out. It has cost two sessions already.
+    func testTheEmptyRenderExplanationLeadsWithTheDrawThingsPlusSession() {
+        let message = DrawThingsDiagnostics.noImageReturned
+        XCTAssertTrue(message.contains("Draw Things+"),
+                      "the DT+ session is the cause and must be named")
+        XCTAssertTrue(message.lowercased().contains("sign out"),
+                      "the fix has to be in the message, not just the diagnosis")
+
+        // The obvious-but-wrong causes may appear, but must not lead.
+        let plusIndex = message.range(of: "Draw Things+")?.lowerBound
+        for wrong in ["model may not be usable", "sampler"] {
+            if let laterIndex = message.range(of: wrong)?.lowerBound, let plusIndex {
+                XCTAssertGreaterThan(laterIndex, plusIndex,
+                                     "'\(wrong)' must come after the DT+ session, not before it")
+            }
+        }
+    }
+
     // MARK: - Dimension snapping
 
     /// **Floor, never round.** This is the whole point: 700 is nearer to 704 than to

@@ -83,6 +83,10 @@ final class StoryFlowEngine {
     /// One-shot guard for the "resolved loop folder" log line.
     private var didLogLoopRoot = false
 
+    /// Renders in this run that Draw Things answered with an empty image list. Counted so the
+    /// completion line can say so — a run that produced nothing must not report a clean "✓".
+    private var emptyRenderCount = 0
+
     /// Set by the endLoop handler to cause the run loop to jump to a specific index.
     private var jumpToIndex: Int? = nil
 
@@ -219,6 +223,13 @@ final class StoryFlowEngine {
                 if Task.isCancelled {
                     runState = .cancelled
                     log("⏹ Cancelled")
+                } else if emptyRenderCount > 0 {
+                    // Every step ran, so this is not a failure — but "✓ Completed" over a run
+                    // that rendered nothing is the kind of green light this whole project exists
+                    // to stop giving.
+                    runState = .completed
+                    log("⚠ Completed, but \(emptyRenderCount) render\(emptyRenderCount == 1 ? "" : "s") "
+                      + "produced no image. \(DrawThingsDiagnostics.noImageReturned)")
                 } else {
                     runState = .completed
                     log("✓ Completed")
@@ -1095,7 +1106,14 @@ final class StoryFlowEngine {
         currentStageSince = nil
 
         guard let img = images.first else {
-            log("  ⚠ No image returned from generate step")
+            // Draw Things answered successfully with an empty image list. This used to log a
+            // bare "No image returned", which is true and useless: the run carried on, reported
+            // "✓ Completed", and left the user looking at a still where a clip should be with
+            // nothing to explain it. It cost an afternoon on 2026-08-11 — twice over, because
+            // the app already had the real explanation in GenerateViewModel and StoryFlow could
+            // not reach it.
+            emptyRenderCount += 1
+            log("  ⚠ Draw Things returned NO image for this render. \(DrawThingsDiagnostics.noImageReturned)")
             return
         }
 
