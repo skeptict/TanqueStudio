@@ -119,9 +119,11 @@ Three rules the verifier enforces, each of which fails *silently* in Draw Things
 
 - **No `"` characters anywhere in a bible field.** The clip length is computed by counting words
   inside `"…"` spans, and the generator owns those quotes. A stray one re-pairs the spans.
-- **`slate` + `line` together: 20 spoken words or fewer.** At `wps 2.6` / `padding 48`, 20 words is
-  249 frames. 22 words is 265 — past Tanque Studio's 257-frame cap, which `StoryflowPipeline.js`
-  does not have, so beyond that the two engines quietly render different lengths.
+- **Spoken words set the clip length, and nothing caps it.** At `wps 2.6` / `padding 48`, 20 words
+  is 249 frames and 41 words is 449 — 18 seconds. Both engines compute the same number; Tanque
+  Studio used to clamp at 257 while `StoryflowPipeline.js` did not, and that clamp was removed on
+  2026-08-11 because it made one project render two different lengths. Write a character as long as
+  the shot wants to be, and read the frame count before spending the GPU time.
 - **Write `slate` and `line` without quotation marks.** The generator adds them.
 
 `verify_project.py` prints the frame count and duration for every character, so you can see what

@@ -117,40 +117,39 @@ Re-emit the project (or re-open it) so phase B is back, both loops at 7, and run
 **Pass:**
 - Seven `.mp4` files.
 - Each clip's face matches its own anchor and its own dialogue.
-- Frame counts match the Cast & Staging badges: 217, 81, 225, 233, 273, 305, 225.
+- Frame counts match the Cast & Staging badges exactly:
 
-Those last two are the interesting ones — see below.
+| # | Character | Spoken words | Frames | Seconds |
+|---|---|---|---|---|
+| 1 | Skep | 17 | 217 | 8.7 |
+| 2 | Button | 3 | 81 | 3.2 |
+| 3 | Kira | 18 | 225 | 9.0 |
+| 4 | Tiger | 19 | 233 | 9.3 |
+| 5 | Cindy | 23 | 273 | 10.9 |
+| 6 | Bunny | 41 | 449 | 18.0 |
+| 7 | Abby | 18 | 225 | 9.0 |
+
+**Both engines should produce these same numbers.** Neither caps the frame count any more
+(2026-08-11), so a mismatch between Tanque Studio and Draw Things on any row is a real finding,
+not an expected difference. That is what makes frame count the useful thing to compare.
 
 ---
 
-## Stage 5 — the three warnings, and what they should look like
+## Stage 5 — the one warning, and what it means
 
-The shipped project validates with **0 fail, 3 warn**. All three are expected. Two of them are
-predictions a run can confirm.
+The shipped project validates with **0 fail, 1 warn**.
 
-**1. Duplicate pinned seeds — 811006 at rows 6 and 7 (Bunny and Abby).** Not a rendering fault; it
+**Duplicate pinned seeds — 811006 at rows 6 and 7 (Bunny and Abby).** Not a rendering fault; it
 means regenerating either one's anchor reproduces the other's roll. Ignorable unless you reject an
 anchor and want it back. Fix by giving Abby her own seed.
 
-**2 and 3. Cindy and Bunny.** These are the engine-divergence warnings, and this is the part worth
-getting right because I had it wrong at first:
-
-Tanque Studio caps the spoken frame count at **257 before padding is added**; Draw Things'
-`StoryflowPipeline.js` has no cap at all. So the two agree until the *pre-padding* count passes 257
-— **27 spoken words** at wps 2.6, not the 20 the plan document and the kickoff brief both quote.
-
-| Character | Spoken words | Tanque Studio | Draw Things |
-|---|---|---|---|
-| Cindy | 23 | 273 | 273 — **agree** |
-| Bunny | 41 | 305 | 449 — **differ by 5.8 s** |
-
-So only Bunny actually diverges, and Tanque Studio renders her at 305 frames, not 257: the cap
-lands on the spoken count and padding is still added on top. If you run the same project in both
-engines, Bunny's clip is the one to compare, and a ~12 s Tanque Studio clip against a ~18 s Draw
-Things clip is **correct behaviour**, not a bug.
-
-Trim Bunny's slate — it is the longest line in the bible by a distance — if you want the two
-engines to agree everywhere.
+> **This section used to describe two more warnings, and they are gone.** Tanque Studio clamped
+> the spoken frame count at 257 while `StoryflowPipeline.js` clamped nothing, so the same project
+> rendered different lengths in the two engines — Bunny at 305 here and 449 there. The clamp was
+> removed on 2026-08-11: it was the only place the two engines were deliberately made to disagree,
+> and the real limit is what a given model at a given canvas size will render, which no constant
+> can anticipate. Bunny is now 449 frames in both. If you see 305 anywhere, you are running an
+> old build.
 
 ---
 
@@ -166,7 +165,10 @@ sorted position — so a single stray image shifts every anchor onto the wrong c
 
 Compare **frame counts and character/anchor pairings**, not the images. Frame count is derived from
 the quoted-word count, so it exposes an escaping bug; pairing exposes a loop-counter bug. Eyeballing
-the videos catches neither reliably. Expect the Bunny difference above and nothing else.
+the videos catches neither reliably.
+
+Every row should match stage 4's table in both engines. There is no expected difference any more —
+so if one shows up, it is worth chasing rather than explaining away.
 
 ---
 
