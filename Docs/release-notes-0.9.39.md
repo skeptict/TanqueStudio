@@ -136,23 +136,36 @@ exercised it until a two-phase project did.
 A multi-frame render now writes the poster frame, the assembled `.mp4`, and every
 frame in a sibling folder, at the frame rate the count was actually derived from.
 
-## Where the frame cap actually lands
+## The dialogue frame count is no longer capped
 
-Tanque Studio caps `framesDialog`'s spoken count at 257 **before** padding is
-added; Draw Things' pipeline has no cap at all:
+Tanque Studio used to clamp `framesDialog`'s spoken count at 257, on the grounds
+that Draw Things' own generation UI stops there. `StoryflowPipeline.js` clamps
+nothing, so **one project rendered different lengths in the two engines** — past
+27 spoken words, silently, and it was the only place the two were deliberately
+made to disagree.
 
-```
-Tanque Studio    min(8k+1, 257) + padding
-Draw Things            8k+1     + padding
-```
+The clamp is gone. Three reasons it had to go rather than move:
 
-So the two engines agree until the *pre-padding* count passes 257 — **27 spoken
-words** at the default pacing, not the 20 that the plan document, the project
-bible and the original scripts all claimed by comparing the padded total. Two
-consequences that were backwards: a 23-word character renders identically in both
-engines, and a character that does exceed the cap renders at `257 + padding`,
-never at 257 flat. Corrected everywhere, and pinned by a test that compares the
-helper against the engine's own function so the two cannot drift again.
+- It landed on the spoken count and padding was added afterwards, so the number it
+  produced was `257 + padding`, not 257. A ceiling that isn't the ceiling it
+  advertises is worse than none.
+- The real limit is what a given model at a given canvas size will actually
+  render — for Draw Things+, what it renders without extra cost — which varies by
+  both and can't be anticipated by a constant.
+- The length is already visible before anything runs: the run log states it on
+  every `framesDialog` step, and each cast row shows its frames and seconds live.
+  Generate's own `numFrames` field has always been uncapped for the same reason.
+
+What that deletes is bigger than what it changes: two frame counts, a divergence
+predicate, and a warning all existed purely to describe the disagreement. On the
+shipped bible, the longest character goes from "305 here, 449 there" to 449 in
+both, and the project drops from two warnings to one.
+
+## LoRA search in the Focus Room
+
+The drawer's LoRA list is searchable, matching the Model section beside it
+exactly — same filter over name and filename, same field, same clear button, same
+empty state. It was the one list in the drawer you had to scroll in full.
 
 ## Render watchdog
 
