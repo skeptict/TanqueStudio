@@ -329,26 +329,19 @@ enum StoryFlowCastEmitter {
 
 // MARK: - Frame budget
 
-/// `framesDialog()` plus the executor's `+ padding`, for both engines.
+/// `framesDialog()` plus the executor's `+ padding` — one number, because both engines now
+/// compute the same one.
 ///
-/// **Where the cap lands is the whole subtlety, and it is easy to get wrong.**
-/// `StoryFlowEngine.spokenFrameCount` applies Tanque Studio's 257 ceiling to the `8k+1` spoken
-/// count and *then* the executor adds padding on top (`StoryFlowEngine.swift:589-591`):
-///
-///     Tanque Studio   min(8k+1, 257) + padding
-///     StoryflowPipeline.js      8k+1  + padding        ← no cap anywhere
-///
-/// So the two engines agree until the **pre-padding** count passes 257, not until the final
-/// frame count does. At `wps 2.6` that is 27 spoken words, not 20: 23 words is 225 + 48 = 273
-/// in *both* engines, which looks like it is over the cap and is not. The plan document and
-/// the kickoff brief both say 20; the source says 27, and the source wins.
+/// Tanque Studio used to clamp the spoken count at 257 while `StoryflowPipeline.js` clamped
+/// nothing, so one project rendered different lengths in the two engines past 27 spoken words.
+/// That clamp is gone (see `StoryFlowEngine.spokenFrameCount`), and with it the entire
+/// apparatus that existed to describe the disagreement: two frame counts, a divergence
+/// predicate, and a warning. There is no ceiling to anticipate — the real limit is what a given
+/// model and canvas size will actually render, which varies by both.
 ///
 /// Kept apart from the engine's own function because this one works from a single cast row, so
 /// the table can show a live readout before any prompt has been assembled.
 enum StoryFlowFrameBudget {
-
-    /// Tanque Studio's ceiling on the spoken count — applied *before* padding.
-    static let spokenFrameCap = 257
 
     /// Words across every **spoken** column. Those are the ones the emitter wraps in `"…"`, so
     /// counting them directly is the same count `framesDialog` arrives at by regex, without
@@ -362,35 +355,24 @@ enum StoryFlowFrameBudget {
         text.split(whereSeparator: \.isWhitespace).count
     }
 
-    /// The `8k+1` spoken-frame count, before padding and before any cap.
+    /// The `8k+1` spoken-frame count, before padding.
     static func spokenFrames(words: Int, wps: Double) -> Int {
         guard wps > 0 else { return 1 }
         let raw = (Double(words) / wps) * 25.0
         return Int((raw / 8).rounded(.up)) * 8 + 1
     }
 
-    /// What `StoryflowPipeline.js` renders.
-    static func drawThingsFrames(words: Int, wps: Double, padding: Int) -> Int {
+    /// What both engines render.
+    static func numFrames(words: Int, wps: Double, padding: Int) -> Int {
         spokenFrames(words: words, wps: wps) + padding
-    }
-
-    /// What `StoryFlowEngine` renders.
-    static func tanqueStudioFrames(words: Int, wps: Double, padding: Int) -> Int {
-        min(spokenFrames(words: words, wps: wps), spokenFrameCap) + padding
-    }
-
-    /// True when the two engines would render different lengths for this word count.
-    static func enginesDiverge(words: Int, wps: Double) -> Bool {
-        spokenFrames(words: words, wps: wps) > spokenFrameCap
     }
 
     struct Readout: Equatable {
         let words: Int
-        /// What Tanque Studio renders.
-        let tanqueStudioFrames: Int
-        /// What Draw Things renders. Equal to the above unless `diverges`.
-        let drawThingsFrames: Int
-        let diverges: Bool
+        let frames: Int
+
+        /// At the 25 fps `framesDialog` is defined in, whatever the model.
+        var seconds: Double { Double(frames) / 25.0 }
     }
 
     static func readout(for member: CastMember, staging: CastStaging) -> Readout {
@@ -399,9 +381,6 @@ enum StoryFlowFrameBudget {
     }
 
     static func readout(words: Int, wps: Double, padding: Int) -> Readout {
-        Readout(words: words,
-                tanqueStudioFrames: tanqueStudioFrames(words: words, wps: wps, padding: padding),
-                drawThingsFrames: drawThingsFrames(words: words, wps: wps, padding: padding),
-                diverges: enginesDiverge(words: words, wps: wps))
+        Readout(words: words, frames: numFrames(words: words, wps: wps, padding: padding))
     }
 }

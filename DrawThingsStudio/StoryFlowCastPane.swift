@@ -546,38 +546,27 @@ private struct CastMemberCard: View {
         }
     }
 
-    /// Spoken word count and the clip length it buys, live.
+    /// Spoken word count and the clip length it buys, live and uncapped.
     ///
-    /// Shows what **Tanque Studio** will render, and calls out the case where Draw Things would
-    /// render something else. That divergence is the only thing worth flagging here and it is
-    /// invisible otherwise: Tanque Studio caps the `8k+1` spoken count at 257 *before* padding is
-    /// added and `StoryflowPipeline.js` has no cap, so the two agree right up until the
-    /// pre-padding count passes 257 — 27 spoken words at wps 2.6, not the 20 the plan document
-    /// and the kickoff brief both quote.
+    /// There is no ceiling to warn about: neither engine clamps the count any more, and the real
+    /// limit is what a given model at a given canvas size will render — which varies by both, so
+    /// no constant here could be right. What this owes the user instead is the number itself,
+    /// before anything is rendered, which is what it shows.
     private var frameBadge: some View {
         let readout = self.readout
-        let tint = readout.diverges ? DashboardDS.red : DashboardDS.muted2
         return HStack(spacing: 5) {
             Text("\(readout.words)w")
             Text("·")
-            Text("\(readout.tanqueStudioFrames)f")
+            Text("\(readout.frames)f")
             Text("·")
-            Text(String(format: "%.1fs", Double(readout.tanqueStudioFrames) / 25.0))
-            if readout.diverges {
-                Image(systemName: "exclamationmark.triangle.fill").font(.system(size: 9))
-                Text("DT \(readout.drawThingsFrames)f")
-            }
+            Text(String(format: "%.1fs", readout.seconds))
         }
         .font(TanqueDS.Font.mono(10.5))
-        .foregroundStyle(tint)
+        .foregroundStyle(DashboardDS.muted2)
         .padding(.horizontal, 7).padding(.vertical, 3)
-        .background(tint.opacity(0.10), in: RoundedRectangle(cornerRadius: 5))
-        .help(readout.diverges
-              ? "The two engines disagree here: Tanque Studio renders "
-                + "\(readout.tanqueStudioFrames) frames, Draw Things renders "
-                + "\(readout.drawThingsFrames). Tanque Studio caps the spoken count at 257 before "
-                + "padding; StoryflowPipeline.js has no cap."
-              : "\(readout.words) spoken words → \(readout.tanqueStudioFrames) frames in both engines")
+        .background(DashboardDS.muted2.opacity(0.10), in: RoundedRectangle(cornerRadius: 5))
+        .help("\(readout.words) spoken words → \(readout.frames) frames, "
+              + String(format: "%.1f", readout.seconds) + "s at 25 fps. Both engines agree.")
     }
 
     /// One column's field. The label is the column's own name, so renaming a column in Staging

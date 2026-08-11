@@ -1050,6 +1050,18 @@ struct ParametersSection: View {
 
 struct LoRAsSection: View {
     @Bindable var vm: GenerateViewModel
+    @State private var searchText = ""
+
+    /// Same filter the Model section uses, over the same two fields. A LoRA library gets long
+    /// faster than a model library does, and this list was the one place in the drawer that
+    /// made you scroll it all.
+    private var filteredLoRAs: [DrawThingsLoRA] {
+        if searchText.isEmpty { return vm.loras }
+        return vm.loras.filter {
+            $0.name.localizedCaseInsensitiveContains(searchText) ||
+            $0.filename.localizedCaseInsensitiveContains(searchText)
+        }
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -1076,7 +1088,37 @@ struct LoRAsSection: View {
             if !vm.loras.isEmpty {
                 Rectangle().fill(DashboardDS.border).frame(height: 1).padding(.vertical, 4)
                 Text("AVAILABLE").font(TanqueDS.Font.mono(10)).tracking(1.0).foregroundStyle(DashboardDS.muted)
-                ForEach(vm.loras) { catalog in
+
+                HStack(spacing: 6) {
+                    Image(systemName: "magnifyingglass")
+                        .font(.system(size: 10))
+                        .foregroundStyle(DashboardDS.muted)
+                    TextField("Search LoRAs\u{2026}", text: $searchText)
+                        .textFieldStyle(.plain)
+                        .font(TanqueDS.Font.mono(11.5))
+                        .foregroundStyle(DashboardDS.text)
+                    if !searchText.isEmpty {
+                        Button { searchText = "" } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.system(size: 10))
+                                .foregroundStyle(DashboardDS.muted)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(7)
+                .background(DashboardDS.surf2, in: RoundedRectangle(cornerRadius: 7))
+                .overlay(RoundedRectangle(cornerRadius: 7).strokeBorder(DashboardDS.border, lineWidth: 1))
+                .padding(.bottom, 2)
+
+                if filteredLoRAs.isEmpty {
+                    Text("No LoRAs match \u{201C}\(searchText)\u{201D}")
+                        .font(TanqueDS.Font.mono(11))
+                        .foregroundStyle(DashboardDS.muted)
+                        .padding(.vertical, 4)
+                }
+
+                ForEach(filteredLoRAs) { catalog in
                     let applied = vm.config.loras.contains { $0.file == catalog.filename }
                     Button { if !applied { vm.addLoRA(catalog) } } label: {
                         HStack {

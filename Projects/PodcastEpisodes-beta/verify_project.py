@@ -45,17 +45,16 @@ def default_project_path() -> Path:
     except (OSError, json.JSONDecodeError, KeyError, TypeError):
         return HERE / "project.json"
 
-# Tanque Studio caps framesDialog's SPOKEN count here — before padding is added — and its executor
-# then adds padding on top (StoryFlowEngine.swift:589-591). StoryflowPipeline.js has no cap at all:
+# NO FRAME CAP, in either engine (2026-08-11, Ned's call).
 #
-#     Tanque Studio    min(8k+1, 257) + padding
-#     Draw Things            8k+1     + padding
+# Tanque Studio used to clamp framesDialog's spoken count at 257 while StoryflowPipeline.js
+# clamped nothing, so one project rendered different lengths in the two engines past 27 spoken
+# words. That clamp is gone. The real limit is what a given model at a given canvas size will
+# render — for Draw Things+, what it renders without extra cost — which varies by both and cannot
+# be anticipated by a constant here.
 #
-# So the two engines agree until the PRE-PADDING count passes 257, not until the final frame count
-# does — 27 spoken words at wps 2.6, not the 20 this file and the plan doc both used to say.
-# Comparing the padded total against 257 (which is what this did until 2026-08-10) warns on
-# characters both engines render identically.
-TANQUE_SPOKEN_FRAME_CAP = 257
+# So this file reports the frame count and says nothing about whether it is too large; the number
+# and its duration are the useful output, and the judgement is the author's.
 
 # ──────────────────────────────────────────────────────────────────────────────
 # `allowedKeys`, transcribed verbatim from StoryflowPipeline.js:59-113 (the 260802 drop).
@@ -385,19 +384,9 @@ def js_word_count(concat: str) -> tuple[int, list[str]]:
     return sum(len(s.strip().split()) for s in spans), spans
 
 
-def spoken_frames(words: int, wps: float) -> int:
-    """The 8k+1 spoken count, before padding and before any cap."""
-    return math.ceil((words / wps) * 25 / 8) * 8 + 1
-
-
 def frames_for(words: int, wps: float, padding: int) -> int:
-    """What StoryflowPipeline.js renders: no cap anywhere."""
-    return spoken_frames(words, wps) + padding
-
-
-def tanque_frames_for(words: int, wps: float, padding: int) -> int:
-    """What StoryFlowEngine renders: the cap lands on the spoken count, then padding is added."""
-    return min(spoken_frames(words, wps), TANQUE_SPOKEN_FRAME_CAP) + padding
+    """What both engines render."""
+    return math.ceil((words / wps) * 25 / 8) * 8 + 1 + padding
 
 
 def check_dialogue_and_report(project: dict, r: Report) -> None:
@@ -439,14 +428,7 @@ def check_dialogue_and_report(project: dict, r: Report) -> None:
                        f"{padding} frames — the failure that looks like a working run.")
                 continue
             frames = frames_for(words, wps, padding)
-            ts_frames = tanque_frames_for(words, wps, padding)
             note = ""
-            if ts_frames != frames:
-                note = f"   ⚠ Tanque Studio renders {ts_frames}"
-                r.warn(f"pass {k}: {words} spoken words put the two engines out of step — Tanque "
-                       f"Studio renders {ts_frames} frames and Draw Things renders {frames}. "
-                       f"Tanque Studio caps the spoken count at {TANQUE_SPOKEN_FRAME_CAP} BEFORE "
-                       f"padding is added; StoryflowPipeline.js has no cap at all.")
             preview = " + ".join(f'"{s}"' for s in spans)
             if len(preview) > 58:
                 preview = preview[:55] + "…"

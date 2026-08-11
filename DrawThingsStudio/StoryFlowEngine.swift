@@ -789,12 +789,25 @@ final class StoryFlowEngine {
     /// multiply by 25 fps, round **up** to a multiple of 8, then add one. Only
     /// quoted spans count — unquoted stage direction is not spoken.
     ///
-    /// Capped at 257 — Draw Things' own generation UI does not accept more frames
-    /// than that. Unlike Generate's free-form numFrames field and its JSON-paste
-    /// path (both deliberately uncapped, so a power user can hand-author past DT's
-    /// UI limit), nothing about a word count derived from spoken dialogue implies a
-    /// render that large is ever wanted — a long monologue in a StoryFlow prompt
-    /// would otherwise silently request an enormous, unbounded render.
+    /// **Uncapped, deliberately** (2026-08-11, Ned's call). This used to clamp at 257 on the
+    /// grounds that Draw Things' own generation UI does not offer more. The clamp cost more
+    /// than it bought:
+    ///
+    /// - It made Tanque Studio and `StoryflowPipeline.js` render **different lengths** from one
+    ///   project, silently, past 27 spoken words. That is the exact class of divergence the rest
+    ///   of this code goes out of its way to eliminate, and it was the only place the two
+    ///   engines were deliberately made to disagree.
+    /// - It landed on the spoken count and padding was added afterwards, so the number it
+    ///   actually produced was `257 + padding`, not 257. A ceiling that is not the ceiling it
+    ///   advertises is worse than none.
+    /// - The real limit is what a given model at a given canvas size will render — for Draw
+    ///   Things+, what it renders without extra cost — which varies by both and cannot be
+    ///   anticipated by a constant here.
+    ///
+    /// What replaces it is visibility rather than a different number: this step logs its frame
+    /// count on every run, and Cast & Staging shows each character's frame count and duration
+    /// live, before anything renders. Generate's own `numFrames` field and its JSON-paste path
+    /// have always been uncapped for the same reason.
     static func spokenFrameCount(in text: String, wordsPerSecond: Double) -> Int {
         guard wordsPerSecond > 0,
               let regex = try? NSRegularExpression(pattern: "\"([^\"]+)\"") else { return 1 }
@@ -809,8 +822,7 @@ final class StoryFlowEngine {
             wordCount += span.isEmpty ? 1 : span.split(whereSeparator: \.isWhitespace).count
         }
         let rawFrames = (Double(wordCount) / wordsPerSecond) * 25.0
-        let frames = Int((rawFrames / 8).rounded(.up)) * 8 + 1
-        return min(frames, 257)
+        return Int((rawFrames / 8).rounded(.up)) * 8 + 1
     }
 
     /// Suspends the run until the approval sheet hands back an edited prompt.

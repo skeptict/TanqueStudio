@@ -29,14 +29,13 @@
       "NO double-quote characters (\") anywhere in any field. framesDialog sizes the clip by counting",
       "words inside \"...\" spans, and build_project.py owns those spans. A stray quote in your text",
       "splits a span and silently changes the frame count. verify_project.py fails on this.",
-      "slate + line together should be 26 SPOKEN WORDS OR FEWER if you want both engines to render",
-      "the same length. Tanque Studio caps the spoken frame count at 257 BEFORE padding is added and",
-      "StoryflowPipeline.js has no cap at all, so the two agree until the PRE-PADDING count passes 257",
-      "— 27 words at wps 2.6. (Corrected 2026-08-10: this said 20, which compared the padded total",
-      "against 257 and flagged characters both engines render identically. A 23-word character is 273",
-      "frames in BOTH; a 41-word one is 305 in Tanque Studio and 449 in Draw Things.)",
-      "verify_project.py and the Cast & Staging pane both print the per-character frame count and flag",
-      "only the characters where the two engines actually disagree."
+      "There is NO frame cap, in either engine (2026-08-11). Spoken words set the clip length and",
+      "that is all: a 41-word character is 449 frames, 18 seconds, in both Tanque Studio and Draw",
+      "Things. Tanque Studio used to clamp at 257 and Draw Things never did, which made one project",
+      "render two different lengths; the clamp is gone. The real limit is what a given model at a",
+      "given canvas size will render, which no number here can anticipate.",
+      "verify_project.py and the Cast & Staging pane both print the per-character frame count and",
+      "duration — the judgement about what is too long is yours."
     ]
   },
 

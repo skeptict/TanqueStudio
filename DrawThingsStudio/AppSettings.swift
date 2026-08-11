@@ -46,6 +46,12 @@ final class AppSettings {
     var castProjectFolderBookmark: Data? {
         didSet { UserDefaults.standard.set(castProjectFolderBookmark, forKey: "tanqueStudio.castProjectFolderBookmark") }
     }
+    /// Where the last cast project was created or opened *from* — the parent, not the project.
+    /// New Project… starts here, so a second project lands beside the first instead of in the
+    /// home folder, which is where a save panel with no directory of its own goes.
+    var castProjectParentFolder: String {
+        didSet { UserDefaults.standard.set(castProjectParentFolder, forKey: "tanqueStudio.castProjectParentFolder") }
+    }
 
     // MARK: - Host History
 
@@ -168,6 +174,7 @@ final class AppSettings {
         llmOperationsFolderBookmark = d.data(forKey: "tanqueStudio.llmOperationsFolderBookmark")
         castProjectFolder           = d.string(forKey: "tanqueStudio.castProjectFolder") ?? ""
         castProjectFolderBookmark   = d.data(forKey: "tanqueStudio.castProjectFolderBookmark")
+        castProjectParentFolder     = d.string(forKey: "tanqueStudio.castProjectParentFolder") ?? ""
         dtHostHistory  = d.stringArray(forKey: "tanqueStudio.dtHostHistory")  ?? []
         llmHostHistory = d.stringArray(forKey: "tanqueStudio.llmHostHistory") ?? []
         storyStudioDefaultConfigName = d.string(forKey: "tanqueStudio.storyStudioDefaultConfigName") ?? ""

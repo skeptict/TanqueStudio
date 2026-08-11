@@ -77,9 +77,10 @@ final class StoryFlowCastViewModel {
         panel.nameFieldLabel = "Project name:"
         panel.nameFieldStringValue = "New Auditions"
         panel.canCreateDirectories = true
-        if let folderURL { panel.directoryURL = folderURL.deletingLastPathComponent() }
+        if let start = lastParentFolder { panel.directoryURL = start }
 
         guard panel.runModal() == .OK, let target = panel.url else { return }
+        rememberParent(of: target)
 
         let folderName = target.lastPathComponent
         // The save panel offers to "replace" an existing item. Replacing a folder that already
@@ -166,13 +167,28 @@ final class StoryFlowCastViewModel {
         panel.allowsMultipleSelection = false
         panel.message = "Choose the project folder holding bible.json and configs.json"
         panel.prompt = "Open Project"
-        if let folderURL { panel.directoryURL = folderURL.deletingLastPathComponent() }
+        if let start = lastParentFolder { panel.directoryURL = start }
 
         guard panel.runModal() == .OK, let chosen = panel.url else { return }
+        rememberParent(of: chosen)
         let bookmark = try? chosen.bookmarkData(options: .withSecurityScope,
                                                 includingResourceValuesForKeys: nil,
                                                 relativeTo: nil)
         open(folder: chosen, bookmark: bookmark, announceFailure: true)
+    }
+
+    /// Where both panels should open. Falls back to the open project's own parent, then to
+    /// nothing — which is what put a new project in the home folder.
+    private var lastParentFolder: URL? {
+        if !settings.castProjectParentFolder.isEmpty {
+            let url = URL(fileURLWithPath: settings.castProjectParentFolder)
+            if FileManager.default.fileExists(atPath: url.path) { return url }
+        }
+        return folderURL?.deletingLastPathComponent()
+    }
+
+    private func rememberParent(of projectFolder: URL) {
+        settings.castProjectParentFolder = projectFolder.deletingLastPathComponent().path
     }
 
     private func open(folder: URL, bookmark: Data?, announceFailure: Bool) {

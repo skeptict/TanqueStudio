@@ -90,14 +90,21 @@ final class StoryFlowPhase3Tests: XCTestCase {
         XCTAssertEqual(StoryFlowEngine.spokenFrameCount(in: "\"a b c\"", wordsPerSecond: 0), 1)
     }
 
-    /// A long monologue implies an enormous word count with nothing else stopping
-    /// it — unlike Generate's free-form numFrames field, nothing here signals an
-    /// unbounded result was ever wanted. 257 is where Draw Things' own UI stops.
-    func testALongMonologueIsCappedAtDrawThingsOwnFrameLimit() {
+    /// A long monologue produces a long clip, **uncapped** (changed 2026-08-11, Ned's call).
+    ///
+    /// This used to assert a clamp at 257, on the grounds that Draw Things' own generation UI
+    /// stops there. The clamp made Tanque Studio and `StoryflowPipeline.js` render different
+    /// lengths from one project — the only place the two engines were deliberately made to
+    /// disagree — and the number it produced was `257 + padding` anyway, since the executor adds
+    /// padding after. The real limit is what a given model at a given canvas size will render,
+    /// which no constant here can anticipate. Generate's free-form `numFrames` field has always
+    /// been uncapped for the same reason.
+    func testALongMonologueIsNotClamped() {
         let manyWords = Array(repeating: "word", count: 100).joined(separator: " ")
-        let uncapped = Int((((100.0 / 2.4) * 25.0) / 8).rounded(.up)) * 8 + 1
-        XCTAssertGreaterThan(uncapped, 257, "test fixture must exceed the cap to prove it bites")
-        XCTAssertEqual(StoryFlowEngine.spokenFrameCount(in: "\"\(manyWords)\"", wordsPerSecond: 2.4), 257)
+        let expected = Int((((100.0 / 2.4) * 25.0) / 8).rounded(.up)) * 8 + 1
+        XCTAssertGreaterThan(expected, 257, "fixture must exceed the old cap for this to mean anything")
+        XCTAssertEqual(StoryFlowEngine.spokenFrameCount(in: "\"\(manyWords)\"", wordsPerSecond: 2.4),
+                       expected)
     }
 
     // MARK: - Dimension snapping

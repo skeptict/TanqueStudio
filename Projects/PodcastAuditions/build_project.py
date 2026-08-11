@@ -549,25 +549,17 @@ def to_pipeline_array(project: dict) -> list[dict]:
 # ──────────────────────────────────────────────────────────────────────────────
 
 
-# Tanque Studio caps framesDialog's SPOKEN count here — before padding — and its executor then adds
-# padding on top (StoryFlowEngine.swift:589-591). StoryflowPipeline.js has no cap at all:
-#
-#     Tanque Studio    min(8k+1, 257) + padding
-#     Draw Things            8k+1     + padding
-#
-# So the engines agree until the PRE-PADDING count passes 257, not until the final frame count does
-# — 27 spoken words at wps 2.6, not the 20 this file used to imply by comparing the padded total.
-TANQUE_SPOKEN_FRAME_CAP = 257
+# NO FRAME CAP, in either engine (2026-08-11, Ned's call). Tanque Studio used to clamp
+# framesDialog's spoken count at 257 while StoryflowPipeline.js clamped nothing, so one project
+# rendered different lengths in the two engines past 27 spoken words. The real limit is what a
+# given model at a given canvas size will render — for Draw Things+, what it renders without extra
+# cost — which varies by both and cannot be anticipated by a constant here. So the report prints
+# the number and leaves the judgement to the author.
 
 
 def spoken_frames(words: int, wps: float, padding: int) -> int:
     """StoryflowPipeline.js framesDialog() + the executor's `wps + value.padding` (:1045-1050)."""
     return math.ceil((words / wps) * 25 / 8) * 8 + 1 + padding
-
-
-def tanque_frames(words: int, wps: float, padding: int) -> int:
-    """What StoryFlowEngine renders: cap the spoken count, THEN add padding."""
-    return min(math.ceil((words / wps) * 25 / 8) * 8 + 1, TANQUE_SPOKEN_FRAME_CAP) + padding
 
 
 def report(project: dict, bible: list[dict], cfg: dict) -> None:
@@ -578,9 +570,7 @@ def report(project: dict, bible: list[dict], cfg: dict) -> None:
     for row in bible:
         words = len(row["slate"].split()) + len(row["line"].split())
         frames = spoken_frames(words, fd["wps"], fd["padding"])
-        ts = tanque_frames(words, fd["wps"], fd["padding"])
-        flagged = f"  ⚠ Tanque Studio renders {ts}" if ts != frames else ""
-        print(f"  {row['name']:<16} {words:>5}  {frames:>6}  {frames / 25:>6.1f}s{flagged}")
+        print(f"  {row['name']:<16} {words:>5}  {frames:>6}  {frames / 25:>6.1f}s")
 
     todos = json.dumps(cfg["configShortcuts"]).count('"TODO_NED"')
     if todos:

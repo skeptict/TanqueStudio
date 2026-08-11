@@ -350,51 +350,37 @@ final class StoryFlowCastEmitterTests: XCTestCase {
 
     func testTheFrameBudgetMatchesThePipelineFormula() {
         for (words, frames) in [(10, 153), (14, 185), (18, 225), (20, 249), (22, 265)] {
-            XCTAssertEqual(StoryFlowFrameBudget.drawThingsFrames(words: words, wps: 2.6, padding: 48),
+            XCTAssertEqual(StoryFlowFrameBudget.numFrames(words: words, wps: 2.6, padding: 48),
                            frames, "\(words) words")
         }
     }
 
-    /// **Where the cap lands.** `StoryFlowEngine` caps the `8k+1` spoken count at 257 and the
-    /// executor then adds padding on top (`StoryFlowEngine.swift:589-591`), so the two engines
-    /// agree until the *pre-padding* count passes 257 — not until the final frame count does.
+    /// **Neither engine caps the frame count.**
     ///
-    /// This test exists because I had it wrong first: comparing the padded total against 257
-    /// warned at 20 spoken words, and flagged a 23-word character as divergent when both
-    /// engines render it identically at 273 frames. The plan document and the kickoff brief
-    /// both quote 20; the source says 27, and the source wins.
-    func testTheEnginesOnlyDivergeOnceTheSpokenCountPasses257() {
-        // 22 words → 265 total, but only 217 before padding. Well under the cap; no divergence.
-        XCTAssertEqual(StoryFlowFrameBudget.spokenFrames(words: 22, wps: 2.6), 217)
-        XCTAssertFalse(StoryFlowFrameBudget.enginesDiverge(words: 22, wps: 2.6))
+    /// Tanque Studio used to clamp the spoken count at 257 while `StoryflowPipeline.js` clamped
+    /// nothing, so one project rendered different lengths in the two engines past 27 spoken
+    /// words — the only place they were deliberately made to disagree. The clamp is gone. This
+    /// test is what keeps it gone: a long line has to produce a long clip, not a truncated one.
+    func testALongLineIsNotClampedByEitherEngine() {
+        // 41 spoken words — the longest in the shipped bible. Used to be 305 here and 449 in
+        // Draw Things; now both are 449.
+        XCTAssertEqual(StoryFlowFrameBudget.numFrames(words: 41, wps: 2.6, padding: 48), 449)
 
-        // 23 words → 273 total in BOTH engines. This is the case the wrong threshold flagged.
-        let twentyThree = StoryFlowFrameBudget.readout(words: 23, wps: 2.6, padding: 48)
-        XCTAssertEqual(twentyThree.tanqueStudioFrames, 273)
-        XCTAssertEqual(twentyThree.drawThingsFrames, 273)
-        XCTAssertFalse(twentyThree.diverges)
-
-        // 26 words is the last word count that agrees; 27 is the first that does not.
-        XCTAssertFalse(StoryFlowFrameBudget.enginesDiverge(words: 26, wps: 2.6))
-        XCTAssertTrue(StoryFlowFrameBudget.enginesDiverge(words: 27, wps: 2.6))
-
-        // 41 words: Tanque Studio caps the spoken count and then still adds padding, so it
-        // renders 305 — NOT 257, which is what a cap-on-the-total reading would predict.
-        let long = StoryFlowFrameBudget.readout(words: 41, wps: 2.6, padding: 48)
-        XCTAssertEqual(long.drawThingsFrames, 449)
-        XCTAssertEqual(long.tanqueStudioFrames, 257 + 48)
-        XCTAssertTrue(long.diverges)
+        // And well past any plausible ceiling, the number keeps growing rather than flattening.
+        let long = StoryFlowFrameBudget.numFrames(words: 400, wps: 2.6, padding: 48)
+        XCTAssertEqual(long, 3897)
+        XCTAssertGreaterThan(long, StoryFlowFrameBudget.numFrames(words: 200, wps: 2.6, padding: 48))
     }
 
-    /// The budget helper and the engine's own `spokenFrameCount` must not drift: they are two
-    /// implementations of one formula, and the engine's is the one that actually renders.
+    /// The budget helper and the engine's own `spokenFrameCount` are two implementations of one
+    /// formula, and the engine's is the one that actually renders. Pinned so they cannot drift —
+    /// including well past the old 257 clamp, which is where they last did.
     func testTheBudgetAgreesWithTheEnginesOwnSpokenFrameCount() {
-        for words in [1, 5, 17, 22, 23, 26, 27, 41, 80] {
+        for words in [1, 5, 17, 22, 23, 26, 27, 41, 80, 400] {
             let quoted = "\"" + Array(repeating: "word", count: words).joined(separator: " ") + "\""
             XCTAssertEqual(
                 StoryFlowEngine.spokenFrameCount(in: quoted, wordsPerSecond: 2.6),
-                min(StoryFlowFrameBudget.spokenFrames(words: words, wps: 2.6),
-                    StoryFlowFrameBudget.spokenFrameCap),
+                StoryFlowFrameBudget.spokenFrames(words: words, wps: 2.6),
                 "\(words) words")
         }
     }

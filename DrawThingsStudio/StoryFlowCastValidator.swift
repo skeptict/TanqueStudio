@@ -583,19 +583,10 @@ enum StoryFlowCastValidator {
                     continue
                 }
                 issues += checkSeams(in: concat, pass: pass)
-                let words = spans.reduce(0) { $0 + max(1, StoryFlowFrameBudget.wordCount($1)) }
-                let readout = StoryFlowFrameBudget.readout(words: words, wps: wps, padding: padding)
-                if readout.diverges {
-                    issues.append(.init(
-                        severity: .warn, anchor: .castRow(pass),
-                        message: "Pass \(pass + 1): \(words) spoken words put the two engines out "
-                            + "of step — Tanque Studio renders \(readout.tanqueStudioFrames) frames "
-                            + "and Draw Things renders \(readout.drawThingsFrames). Tanque Studio "
-                            + "caps the spoken count at "
-                            + "\(StoryFlowFrameBudget.spokenFrameCap) before padding is added and "
-                            + "StoryflowPipeline.js has no cap at all. Trim this character, or "
-                            + "accept two different clip lengths."))
-                }
+                // No frame-count warning: neither engine caps, so a long line is a long clip
+                // rather than a divergence, and how long is too long depends on the model and
+                // the canvas rather than on anything knowable here. The cast table shows every
+                // row's frame count and duration before a run starts.
             }
         }
         return issues
