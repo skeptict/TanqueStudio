@@ -173,16 +173,162 @@ struct StoryFlowCastDocument: Equatable {
     ]
 }
 
+// MARK: - Starting a new project
+
+extension StoryFlowCastDocument {
+
+    /// A complete, valid project to start from.
+    ///
+    /// **Seeded rather than blank, and that is the point.** The eight fragments carry the
+    /// spacing the format requires — `concat` appends with no separator — so a new project
+    /// opens with the one thing a user cannot reasonably be expected to get right by typing
+    /// already correct. The cast rows are deliberately obvious placeholders, following the
+    /// same convention as the bundled bibles: nobody should mistake them for finished copy,
+    /// and prose that reads as real is worse than prose that reads as a TODO.
+    ///
+    /// The result validates clean apart from the config shortcuts, which cannot be invented —
+    /// they are read off a real Draw Things render. `configShortcuts` are seeded from the
+    /// user's own saved `#config` variables when there are any.
+    static func starter(projectName: String,
+                        folderName: String,
+                        configShortcuts: [OrderedJSONMember] = []) -> StoryFlowCastDocument {
+        var document = StoryFlowCastDocument()
+
+        document.cast = [
+            CastMember(name: "Character One",
+                       identity: "TODO a one-clause description of who this is, no trailing period",
+                       wardrobe: "TODO what they are wearing, reads after the WEARING fragment",
+                       slate: "TODO the line where they say their name and what they are here for",
+                       line: "TODO their second spoken beat",
+                       voice: "TODO how they sound, not what they say",
+                       seed: 100001),
+            CastMember(name: "Character Two",
+                       identity: "TODO a second one-clause description",
+                       wardrobe: "TODO what the second character is wearing",
+                       slate: "TODO the second character naming themselves",
+                       line: "TODO their second spoken beat",
+                       voice: "TODO how the second character sounds",
+                       seed: 100002),
+        ]
+
+        document.staging.projectName = projectName
+        document.staging.outputBasename = projectName
+        document.staging.fixtureBasename = folderName.lowercased()
+            .replacingOccurrences(of: " ", with: "-")
+        document.staging.anchorsDirectory = "\(folderName)/anchors/"
+        document.staging.anchorFilename = "\(folderName)/anchors/anchor.png"
+
+        // Spacing here is not a style choice — it is the FRAGMENT_SPEC contract, and getting it
+        // wrong glues two words together in the prompt with nothing to report it.
+        document.staging.fragments = [
+            "A_OPEN":  "A casting-room headshot, medium shot, of ",
+            "WEARING": ", wearing ",
+            "A_CLOSE": ", seated against a plain wall under flat even light, facing the lens, "
+                     + "mouth closed, neutral expression. Sharp focus, 50mm.",
+            "B_OPEN":  "A locked-off medium shot of ",
+            "B_SAYS":  ", seated in the same room. They look into the lens and say, ",
+            "B_BEAT":  " After a beat they add, ",
+            "B_IN":    " in ",
+            "B_CLOSE": ". The camera holds perfectly still on a tripod, no reframing and no zoom. "
+                     + "Faint room tone fills the space between lines. Single continuous shot, "
+                     + "natural motion blur.",
+        ]
+
+        document.staging.negativePrompt =
+            "blurry, low resolution, jpeg artifacts, watermark, on-screen text, subtitles, "
+          + "warped face, malformed hands, extra fingers, duplicated limbs, camera shake, "
+          + "handheld wobble, zoom, dolly move, rack focus, cut to another shot"
+
+        document.staging.stillsSize = CanvasSize(width: 1024, height: 576)
+        document.staging.videoSize = CanvasSize(width: 1024, height: 576)
+        document.staging.wps = 2.6
+        // 48, not the StoryFlow Editor's default of 49 — see CastStaging.padding.
+        document.staging.padding = 48
+        document.staging.framesDialogGenerate = false
+
+        document.staging.configShortcuts = configShortcuts.isEmpty
+            ? Self.placeholderConfigShortcuts
+            : configShortcuts
+
+        document.bibleKeyOrder = ["_schema", "characters"]
+        document.biblePreserved["_schema"] = Self.starterBibleSchema
+        document.configsKeyOrder = ["_schema", "configShortcuts", "sizes", "framesDialog",
+                                    "fragments", "negativePrompt", "project",
+                                    "anchorsDirectory", "anchorFilename"]
+        document.configsPreserved["_schema"] = Self.starterConfigsSchema
+        return document
+    }
+
+    /// The two phases' config slots, empty and obviously so. A config is read off a real render;
+    /// there is nothing sensible to invent here, and inventing something plausible would be
+    /// worse than an obvious blank — it would run, and run wrong.
+    static let placeholderConfigShortcuts: [OrderedJSONMember] = [
+        .init(key: StoryFlowCastEmitter.stillsConfigShortcut,
+              value: .object([.init(key: "model", value: .string("TODO pick a saved config"))])),
+        .init(key: StoryFlowCastEmitter.videoConfigShortcut,
+              value: .object([.init(key: "model", value: .string("TODO pick a saved config"))])),
+    ]
+
+    private static let starterBibleSchema = OrderedJSONValue.object([
+        .init(key: "_1_what_this_is", value: .array([
+            .string("The character bible. This file is the single source of truth for the project."),
+            .string("Tanque Studio's Cast & Staging pane reads and writes it, and emits every"),
+            .string("per-character card list from these rows — so the identity and wardrobe lists"),
+            .string("that appear in BOTH phases cannot drift apart."),
+            .string("Never hand-edit the emitted project .json. Edit this."),
+        ])),
+        .init(key: "_2_hard_rules", value: .array([
+            .string("NO double-quote characters (\") anywhere in any field. framesDialog sizes the"),
+            .string("clip by counting words inside \"...\" spans, and the emitter owns those spans."),
+            .string("A stray quote splits a span and silently changes the frame count."),
+            .string("Keep slate + line to 26 spoken words or fewer if you want Tanque Studio and"),
+            .string("Draw Things to render the same length — past that they diverge, and the pane"),
+            .string("shows both numbers on the row."),
+        ])),
+        .init(key: "_3_row_count", value: .array([
+            .string("The number of rows here sets the loop count in both phases. Add or remove"),
+            .string("whole rows; do not leave a row half-filled."),
+        ])),
+    ])
+
+    private static let starterConfigsSchema = OrderedJSONValue.object([
+        .init(key: "_1_config_shortcuts", value: .array([
+            .string("The two Draw Things configs, one per phase: #krea2_stills renders the character"),
+            .string("stills, #ltx2_video renders the spoken clips. Both are read off a REAL render —"),
+            .string("render one still and one clip in Draw Things, then import the configs."),
+            .string("Assign them from the pane's Config shortcuts section, or paste them here."),
+            .string("Numbers must not be quoted: the pipeline applies a config with Object.assign"),
+            .string("and coerces nothing, so \"seedMode\": \"2\" hands Draw Things the string."),
+        ])),
+        .init(key: "_2_fragments", value: .array([
+            .string("The shared prose. concat appends with NO separator, so the leading and trailing"),
+            .string("spaces are load-bearing — the pane shows a marker for the ones each fragment"),
+            .string("needs. Keep 'mouth closed' in A_CLOSE: phase A's still is phase B's first frame,"),
+            .string("and LTX-2 handles dialogue badly starting mid-word."),
+        ])),
+        .init(key: "_3_pacing", value: .array([
+            .string("padding must be a multiple of 8. framesDialog returns 8k+1 and the executor adds"),
+            .string("padding raw, so the StoryFlow Editor's own default of 49 is one of the bad ones."),
+        ])),
+    ])
+}
+
 // MARK: - Loading
 
 enum StoryFlowCastDocumentError: Error, LocalizedError {
     case missingFile(String)
     case malformed(file: String, detail: String)
+    case folderNotEmpty(String)
 
     var errorDescription: String? {
         switch self {
+        case .folderNotEmpty(let name):
+            return "“\(name)” already exists and is not empty. Pick a different name, or open it "
+                 + "with Open Project Folder… if it already holds a project."
         case .missingFile(let name):
-            return "\(name) is not in that folder. Pick the folder that holds bible.json and configs.json."
+            return "\(name) is not in that folder, so it is not a Cast & Staging project. Pick a "
+                 + "folder that holds both bible.json and configs.json — or use New Project… to "
+                 + "create one."
         case .malformed(let file, let detail):
             return "\(file): \(detail)"
         }

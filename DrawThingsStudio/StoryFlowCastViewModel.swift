@@ -64,6 +64,101 @@ final class StoryFlowCastViewModel {
         open(folder: url, bookmark: bookmark, announceFailure: false)
     }
 
+    /// Create a new project folder with a seeded `bible.json` + `configs.json`, then open it.
+    ///
+    /// Uses a save panel rather than a bare folder picker so the user gets Finder's own
+    /// navigation, its New Folder button, and a name field in one dialog — the same shape as
+    /// "save a document somewhere", which is what this is.
+    func createProject() {
+        let panel = NSSavePanel()
+        panel.title = "New Cast & Staging Project"
+        panel.message = "Choose where to create the project folder"
+        panel.prompt = "Create"
+        panel.nameFieldLabel = "Project name:"
+        panel.nameFieldStringValue = "New Auditions"
+        panel.canCreateDirectories = true
+        if let folderURL { panel.directoryURL = folderURL.deletingLastPathComponent() }
+
+        guard panel.runModal() == .OK, let target = panel.url else { return }
+
+        let folderName = target.lastPathComponent
+        // The save panel offers to "replace" an existing item. Replacing a folder that already
+        // holds someone's bible would be unrecoverable, so refuse rather than trust the prompt.
+        var isDirectory: ObjCBool = false
+        if FileManager.default.fileExists(atPath: target.path, isDirectory: &isDirectory) {
+            let contents = (try? FileManager.default.contentsOfDirectory(atPath: target.path)) ?? []
+            let meaningful = contents.filter { $0 != ".DS_Store" }
+            guard isDirectory.boolValue, meaningful.isEmpty else {
+                errorMessage = StoryFlowCastDocumentError.folderNotEmpty(folderName).localizedDescription
+                return
+            }
+        }
+
+        // The panel's own grant covers the folder we are about to write, so take the bookmark
+        // from it — there is nothing to resolve yet.
+        let bookmark = try? target.deletingLastPathComponent().bookmarkData(
+            options: .withSecurityScope, includingResourceValuesForKeys: nil, relativeTo: nil)
+
+        let document = StoryFlowCastDocument.starter(
+            projectName: folderName,
+            folderName: folderName,
+            configShortcuts: Self.savedConfigShortcuts()
+        )
+
+        do {
+            try FileManager.default.createDirectory(at: target, withIntermediateDirectories: true)
+            try document.save(toFolder: target)
+        } catch {
+            errorMessage = "Could not create the project: \(error.localizedDescription)"
+            return
+        }
+
+        open(folder: target, bookmark: bookmark, announceFailure: true)
+        status = "Created \(folderName). Assign both config shortcuts, then rewrite the cast."
+    }
+
+    /// Seed the two config slots from the user's own saved `#config` variables when the names
+    /// make the intent unambiguous. A wrong guess here is worse than no guess — a still config
+    /// on the video phase renders one frame — so anything less than an obvious match is left as
+    /// a placeholder for the user to assign.
+    static func savedConfigShortcuts() -> [OrderedJSONMember] {
+        let configs = StoryFlowStorage.shared.loadVariables()
+            .filter { $0.type == .config && !($0.configJSON ?? "").isEmpty }
+
+        func match(_ keywords: [String]) -> OrderedJSONValue? {
+            guard let hit = configs.first(where: { variable in
+                let name = variable.name.lowercased()
+                return keywords.contains { name.contains($0) }
+            }) else { return nil }
+            return (try? OrderedJSONValue.parse(hit.configJSON ?? ""))
+        }
+
+        let stills = match(["krea", "still", "image"])
+        let video = match(["ltx", "video", "clip"])
+        guard stills != nil || video != nil else { return [] }
+
+        return [
+            .init(key: StoryFlowCastEmitter.stillsConfigShortcut,
+                  value: stills ?? StoryFlowCastDocument.placeholderConfigShortcuts[0].value),
+            .init(key: StoryFlowCastEmitter.videoConfigShortcut,
+                  value: video ?? StoryFlowCastDocument.placeholderConfigShortcuts[1].value),
+        ]
+    }
+
+    /// Assign a saved `#config` variable's JSON to one of the two phase slots.
+    func assignConfig(_ json: String, to shortcutKey: String) {
+        guard let parsed = try? OrderedJSONValue.parse(json), parsed.members != nil else {
+            errorMessage = "That saved config is not a JSON object."
+            return
+        }
+        if let index = document.staging.configShortcuts.firstIndex(where: { $0.key == shortcutKey }) {
+            document.staging.configShortcuts[index] = .init(key: shortcutKey, value: parsed)
+        } else {
+            document.staging.configShortcuts.append(.init(key: shortcutKey, value: parsed))
+        }
+        documentChanged()
+    }
+
     func chooseFolder() {
         let panel = NSOpenPanel()
         panel.canChooseFiles = false

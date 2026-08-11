@@ -467,6 +467,94 @@ final class StoryFlowCastEmitterTests: XCTestCase {
                      "frames8 is Editor-only; the Editor rewrites it to frames on export")
     }
 
+    // MARK: - Starting a new project
+
+    private func starter() -> StoryFlowCastDocument {
+        StoryFlowCastDocument.starter(projectName: "New Auditions", folderName: "New Auditions")
+    }
+
+    /// A new project must be wrong in exactly one way — no configs — and right in every other.
+    /// The spacing especially: `concat` appends with no separator, and a seeded fragment that
+    /// lost a space would ship the format's worst failure mode as the default state.
+    func testANewProjectValidatesApartFromItsUnassignedConfigs() {
+        let document = starter()
+        let issues = StoryFlowCastValidator.validate(cast: document.cast, staging: document.staging)
+
+        let configFailures = issues.failures.filter { $0.anchor == .staging("configs") }
+        XCTAssertEqual(configFailures.count, 2, "one per phase, and nothing else")
+        XCTAssertEqual(issues.failures.count, configFailures.count,
+                       "unexpected: \(issues.failures.map(\.message))")
+    }
+
+    func testEverySeededFragmentHasTheSpacingItsSpecDemands() {
+        let document = starter()
+        for spec in StoryFlowFragmentSpec.all {
+            let text = document.staging.fragmentText(spec.name)
+            XCTAssertFalse(text.isEmpty, "\(spec.name) is empty")
+            XCTAssertNil(spec.spacingProblem(in: text), "\(spec.name): \(text.debugDescription)")
+        }
+        XCTAssertTrue(document.staging.fragmentText("A_CLOSE").contains("mouth closed"),
+                      "phase A's still is phase B's first frame, and LTX-2 handles dialogue "
+                      + "badly starting mid-word")
+    }
+
+    func testANewProjectUsesPadding48NotTheEditorsDefault49() {
+        XCTAssertEqual(starter().staging.padding, 48)
+        XCTAssertEqual(starter().staging.padding % 8, 0)
+    }
+
+    /// The seeded document has to survive the same write/read cycle a real one does, including
+    /// the `_schema` prose blocks it seeds for whoever opens the files by hand.
+    func testANewProjectRoundTripsThroughDisk() throws {
+        let document = starter()
+        let scratch = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("cast-new-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: scratch, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: scratch) }
+
+        try document.save(toFolder: scratch)
+        let reloaded = try StoryFlowCastDocument.load(fromFolder: scratch)
+
+        XCTAssertEqual(reloaded.cast.map(\.name), document.cast.map(\.name))
+        XCTAssertEqual(reloaded.staging, document.staging)
+        XCTAssertNotNil(reloaded.biblePreserved["_schema"], "the bible's own manual was dropped")
+        XCTAssertNotNil(reloaded.configsPreserved["_schema"])
+    }
+
+    /// Once configs are assigned, a brand-new project emits a structurally valid project with no
+    /// further editing — which is the whole claim of the New Project button.
+    func testANewProjectEmitsCleanlyOnceItsConfigsAreAssigned() throws {
+        var document = starter()
+        let realConfig = OrderedJSONValue.object([
+            .init(key: "model", value: .string("some_model_q8p.ckpt")),
+            .init(key: "steps", value: .int(8)),
+            .init(key: "seedMode", value: .int(2)),
+        ])
+        document.staging.configShortcuts = [
+            .init(key: StoryFlowCastEmitter.stillsConfigShortcut, value: realConfig),
+            .init(key: StoryFlowCastEmitter.videoConfigShortcut, value: realConfig),
+        ]
+
+        let issues = StoryFlowCastValidator.validate(cast: document.cast, staging: document.staging)
+        XCTAssertTrue(issues.failures.isEmpty, "\(issues.failures.map(\.message))")
+
+        // And the emitted project is the real thing, not a stub.
+        let project = StoryFlowCastEmitter.project(cast: document.cast, staging: document.staging)
+        XCTAssertEqual(StoryFlowCastValidator.loopBlocks(project.items).count, 2)
+        XCTAssertTrue(project.items.contains { $0.type == "loopSave" })
+        XCTAssertTrue(project.items.contains { $0.type == "loopLoad" })
+        XCTAssertTrue(StoryFlowCastValidator.validate(project: project).failures.isEmpty)
+    }
+
+    func testAPlaceholderConfigBlocksEmission() {
+        let document = starter()
+        let issues = StoryFlowCastValidator.validate(cast: document.cast, staging: document.staging)
+        XCTAssertTrue(issues.hasFailures,
+                      "a project whose configs are still placeholders must not be emittable — "
+                      + "it would name a model that does not exist and fail inside Draw Things")
+        XCTAssertTrue(issues.failures.contains { $0.message.contains("no config assigned") })
+    }
+
     // MARK: - Ordered JSON
 
     func testNumbersKeepTheirSourceLiteral() throws {

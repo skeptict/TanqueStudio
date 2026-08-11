@@ -49,6 +49,19 @@ struct StoryFlowCastPane: View {
     private var toolbar: some View {
         HStack(spacing: 8) {
             Button {
+                vm.createProject()
+            } label: {
+                Label("New Project…", systemImage: "folder.badge.plus")
+                    .font(TanqueDS.Font.monoSemiBold(11.5))
+            }
+            .buttonStyle(.plain)
+            .padding(.horizontal, 12).padding(.vertical, 6)
+            .background(DashboardDS.surf1, in: RoundedRectangle(cornerRadius: 7))
+            .overlay(RoundedRectangle(cornerRadius: 7).strokeBorder(DashboardDS.border2, lineWidth: 1))
+            .foregroundStyle(DashboardDS.muted2)
+            .help("Create a folder with a seeded bible.json and configs.json, and open it")
+
+            Button {
                 vm.chooseFolder()
             } label: {
                 Label(vm.isOpen ? "Open Another…" : "Open Project Folder…", systemImage: "folder")
@@ -267,39 +280,39 @@ private struct CastStagingPanel: View {
         }
     }
 
-    /// Read-only. The two config blobs are read off a real Draw Things render — sampler and
-    /// seedMode are integer enums whose meaning changes between builds — and a form that
-    /// re-typed them through a text field is exactly how an integer becomes the string "10".
-    /// Editing them stays a `configs.json` job.
+    /// Assignable from the app's saved `#config` variables, but never editable field by field.
+    ///
+    /// A config is read off a real Draw Things render, and `sampler`/`seedMode` are integer
+    /// enums — a form that re-typed them through a text field is exactly how an integer becomes
+    /// the string `"10"`, which the pipeline hands to Draw Things verbatim because it applies a
+    /// config with `Object.assign` and coerces nothing. Assigning a whole saved config wholesale
+    /// has no such failure mode, and it is the only way a project created in-app becomes
+    /// runnable without hand-editing `configs.json`.
     private var configSection: some View {
         CastSection(title: "Config shortcuts") {
-            if vm.document.staging.configShortcuts.isEmpty {
-                Text("None. Both phases reference #krea2_stills and #ltx2_video.")
-                    .font(TanqueDS.Font.mono(10.5))
-                    .foregroundStyle(DashboardDS.red)
-            } else {
-                ForEach(vm.document.staging.configShortcuts, id: \.key) { shortcut in
-                    HStack(alignment: .firstTextBaseline, spacing: 6) {
-                        Text(shortcut.key)
-                            .font(TanqueDS.Font.monoSemiBold(11))
-                            .foregroundStyle(DashboardDS.brass)
-                        Text(shortcut.value["model"]?.stringValue ?? "—")
-                            .font(TanqueDS.Font.mono(10.5))
-                            .foregroundStyle(DashboardDS.muted2)
-                            .lineLimit(1)
-                            .truncationMode(.middle)
-                    }
-                }
+            ForEach(Self.configSlots, id: \.key) { slot in
+                CastConfigSlotRow(
+                    key: slot.key,
+                    phase: slot.phase,
+                    value: vm.document.staging.configShortcuts.first { $0.key == slot.key }?.value,
+                    assign: { vm.assignConfig($0, to: slot.key) }
+                )
             }
-            Text("Read-only here — sampler and seedMode are integer enums read off a real "
-                 + "render, and a text field is how one becomes the string \"10\". Edit them in "
-                 + "configs.json.")
+            Text("Assign a whole saved config, or paste one into configs.json. Never retyped "
+                 + "field by field — sampler and seedMode are integer enums, and a quoted number "
+                 + "is handed to Draw Things as text.")
                 .font(TanqueDS.Font.mono(10))
                 .foregroundStyle(DashboardDS.muted)
                 .fixedSize(horizontal: false, vertical: true)
             CastIssueList(issues: vm.issues(forStaging: "configs"))
         }
     }
+
+    /// The two phases, in the order the project runs them.
+    private static let configSlots: [(key: String, phase: String)] = [
+        (StoryFlowCastEmitter.stillsConfigShortcut, "Phase A · stills"),
+        (StoryFlowCastEmitter.videoConfigShortcut, "Phase B · video"),
+    ]
 }
 
 // MARK: - Cast table
@@ -729,6 +742,66 @@ private struct CastFragmentField: View {
                       ? "Has the \(edge) space this fragment needs"
                       : "MISSING the \(edge) space — concat appends with no separator")
         }
+    }
+}
+
+/// One phase's config slot: which config is in it, and a menu to replace it from the app's
+/// saved `#config` variables — the same mechanism Story Studio's "Use a saved config…" uses.
+private struct CastConfigSlotRow: View {
+    let key: String
+    let phase: String
+    let value: OrderedJSONValue?
+    let assign: (String) -> Void
+
+    /// A slot is unset when it holds the seeded placeholder or no model at all. Shown as a
+    /// state rather than a validation failure: a project mid-authoring legitimately has one,
+    /// and a red row for a slot you have not reached yet is noise.
+    private var model: String? {
+        guard let name = value?["model"]?.stringValue, !name.isEmpty,
+              !name.hasPrefix("TODO") else { return nil }
+        return name
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(spacing: 6) {
+                Text(key)
+                    .font(TanqueDS.Font.monoSemiBold(11))
+                    .foregroundStyle(DashboardDS.brass)
+                Text(phase)
+                    .font(TanqueDS.Font.mono(9.5))
+                    .foregroundStyle(DashboardDS.muted)
+                Spacer(minLength: 0)
+                configMenu
+            }
+            Text(model ?? "not assigned")
+                .font(TanqueDS.Font.mono(10.5))
+                .foregroundStyle(model == nil ? DashboardDS.orange : DashboardDS.muted2)
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .help(model ?? "Assign a saved config, or paste one into configs.json")
+        }
+    }
+
+    private var configMenu: some View {
+        Menu {
+            let configs = StoryFlowStorage.shared.loadVariables()
+                .filter { $0.type == .config && !($0.configJSON ?? "").isEmpty }
+                .sorted { $0.name < $1.name }
+            if configs.isEmpty {
+                Text("No saved configs yet — import one from Draw Things first")
+            } else {
+                ForEach(configs) { variable in
+                    Button(variable.name) { assign(variable.configJSON ?? "") }
+                }
+            }
+        } label: {
+            Text("Assign…")
+                .font(TanqueDS.Font.mono(10))
+                .foregroundStyle(DashboardDS.brass)
+        }
+        .menuStyle(.borderlessButton)
+        .fixedSize()
     }
 }
 

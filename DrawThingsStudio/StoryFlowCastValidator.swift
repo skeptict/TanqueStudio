@@ -439,6 +439,19 @@ enum StoryFlowCastValidator {
                                         + "JSON object."))
                 continue
             }
+            // A freshly created project carries placeholder configs, and a placeholder renders
+            // nothing. Blocking emission is right: the emitted file's whole purpose is to be
+            // handed to Draw Things, and one naming a model that does not exist fails there
+            // rather than here.
+            if let model = value["model"]?.stringValue, model.hasPrefix("TODO") || model.isEmpty {
+                issues.append(.init(
+                    severity: .fail, anchor: .staging("configs"),
+                    message: "\(reference) has no config assigned yet. Assign a saved config in "
+                        + "the Config shortcuts section — it is read off a real Draw Things "
+                        + "render, so there is nothing sensible to default it to."))
+                continue
+            }
+
             for member in members {
                 guard let text = member.value.stringValue, isQuotedScalar(text) else { continue }
                 issues.append(.init(
