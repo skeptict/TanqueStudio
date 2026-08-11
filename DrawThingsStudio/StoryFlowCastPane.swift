@@ -148,7 +148,7 @@ private struct CastStagingPanel: View {
                     identitySection
                     canvasSection
                     pacingSection
-                    fragmentsSection
+                    phasesSection
                     negativePromptSection
                     configSection
                 }
@@ -246,24 +246,82 @@ private struct CastStagingPanel: View {
         }
     }
 
-    private var fragmentsSection: some View {
-        CastSection(title: "Fragments") {
-            Text("concat appends with NO separator, so every space between a fragment and the "
-                 + "card beside it is one you supply here.")
-                .font(TanqueDS.Font.mono(10))
-                .foregroundStyle(DashboardDS.muted)
-                .fixedSize(horizontal: false, vertical: true)
+    /// Each phase's prompt as an ordered list of prose and columns.
+    ///
+    /// This is the one editor: adding a column here is what puts a field on every cast card,
+    /// and reordering here is what reorders both the prompt and the table. There is no separate
+    /// palette of "categories" to keep in step with the prompt, because there is nothing to
+    /// keep in step — the prompt *is* the declaration.
+    private var phasesSection: some View {
+        ForEach(CastPhase.allCases) { phase in
+            CastSection(title: phase.title) {
+                Text(phase.summary)
+                    .font(TanqueDS.Font.mono(10))
+                    .foregroundStyle(DashboardDS.muted)
+                    .fixedSize(horizontal: false, vertical: true)
 
-            ForEach(StoryFlowFragmentSpec.all) { spec in
-                CastFragmentField(
-                    spec: spec,
-                    text: Binding(
-                        get: { vm.document.staging.fragmentText(spec.name) },
-                        set: { vm.document.staging.fragments[spec.name] = $0 }
-                    ),
-                    issues: vm.issues(forFragment: spec.name)
-                )
+                ForEach(vm.document.staging.slots(phase)) { slot in
+                    CastSlotRow(
+                        slot: slot,
+                        phase: phase,
+                        column: slot.columnID.flatMap { vm.document.staging.column($0) },
+                        prose: Binding(
+                            get: { slot.proseText ?? "" },
+                            set: { vm.setProse($0, slotID: slot.id, in: phase) }
+                        ),
+                        onCommitProse: { vm.documentChanged() },
+                        onRename: { vm.renameColumn($0, to: $1) },
+                        onToggleSpoken: { vm.setColumn($0, spoken: $1) },
+                        onDelete: {
+                            if let id = slot.columnID {
+                                vm.deleteColumn(id)
+                            } else {
+                                vm.deleteSlot(slot.id, from: phase)
+                            }
+                        }
+                    )
+                }
+
+                HStack(spacing: 6) {
+                    Button("+ Prose") { vm.addProse(to: phase) }
+                        .buttonStyle(.plain)
+                        .font(TanqueDS.Font.mono(10))
+                        .foregroundStyle(DashboardDS.brass)
+                    Button("+ Column") { vm.addColumn(named: "column", to: phase) }
+                        .buttonStyle(.plain)
+                        .font(TanqueDS.Font.mono(10))
+                        .foregroundStyle(DashboardDS.brass)
+                    reuseColumnMenu(phase)
+                    Spacer(minLength: 0)
+                }
+                .padding(.top, 2)
+
+                CastIssueList(issues: vm.issues(forPhase: phase))
             }
+        }
+    }
+
+    /// Putting an existing column into the other phase — the mechanism behind a column that
+    /// appears in both, which is the whole reason `loop` mode and lockstep matter.
+    @ViewBuilder
+    private func reuseColumnMenu(_ phase: CastPhase) -> some View {
+        let available = vm.document.staging.columns.filter { column in
+            vm.document.staging.slots(phase).allSatisfy { $0.columnID != column.id }
+        }
+        if !available.isEmpty {
+            Menu {
+                ForEach(available) { column in
+                    Button(column.name) { vm.addExistingColumn(column.id, to: phase) }
+                }
+            } label: {
+                Text("+ Reuse…")
+                    .font(TanqueDS.Font.mono(10))
+                    .foregroundStyle(DashboardDS.brass)
+            }
+            .menuStyle(.borderlessButton)
+            .fixedSize()
+            .help("Use a column this phase doesn't have yet. A column in both phases returns the "
+                  + "same card on the same pass.")
         }
     }
 
@@ -407,19 +465,18 @@ private struct CastMemberCard: View {
     private var readout: StoryFlowFrameBudget.Readout { vm.frameReadout(for: member) }
     private var rowIssues: [StoryFlowCastIssue] { vm.issues(forRow: index) }
 
+    @State private var showingPreview = false
+
     var body: some View {
         VStack(alignment: .leading, spacing: 7) {
             header
-            field("identity", text: $member.identity, lines: 1...3,
-                  hint: "Reads after the phase-A opener. One clause, no trailing period.")
-            field("wardrobe", text: $member.wardrobe, lines: 1...2,
-                  hint: "Reads after “, wearing ”.")
-            field("slate", text: $member.slate, lines: 1...3,
-                  hint: "SPOKEN. The emitter adds the quotation marks — do not type any.")
-            field("line", text: $member.line, lines: 1...3,
-                  hint: "SPOKEN. The second beat.")
-            field("voice", text: $member.voice, lines: 1...2,
-                  hint: "Reads after “ in ”. Delivery, not content.")
+            ForEach(vm.document.staging.columns) { column in
+                field(column,
+                      text: Binding(
+                        get: { member.values[column.id] ?? "" },
+                        set: { member.values[column.id] = $0 }
+                      ))
+            }
 
             HStack(spacing: 8) {
                 Text("seed")
@@ -436,6 +493,8 @@ private struct CastMemberCard: View {
                     .lineLimit(1)
                 Spacer(minLength: 0)
             }
+
+            promptPreview
 
             CastIssueList(issues: rowIssues)
         }
@@ -521,20 +580,75 @@ private struct CastMemberCard: View {
               : "\(readout.words) spoken words → \(readout.tanqueStudioFrames) frames in both engines")
     }
 
-    private func field(_ label: String,
-                       text: Binding<String>,
-                       lines: ClosedRange<Int>,
-                       hint: String) -> some View {
+    /// One column's field. The label is the column's own name, so renaming a column in Staging
+    /// relabels every row here — there is no second list of field names to keep in step.
+    private func field(_ column: CastColumn, text: Binding<String>) -> some View {
         HStack(alignment: .top, spacing: 8) {
-            Text(label)
-                .font(TanqueDS.Font.mono(10.5))
-                .foregroundStyle(DashboardDS.muted)
-                .frame(width: 54, alignment: .leading)
-                .padding(.top, 5)
-                .help(hint)
-            TextField(label, text: text, axis: .vertical)
-                .lineLimit(lines)
+            HStack(spacing: 3) {
+                Text(column.name)
+                    .font(TanqueDS.Font.mono(10.5))
+                    .foregroundStyle(DashboardDS.muted)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                if column.isSpoken {
+                    Text("“”")
+                        .font(TanqueDS.Font.mono(9))
+                        .foregroundStyle(DashboardDS.brass)
+                        .help("Spoken — the emitter adds the quotation marks. Do not type any.")
+                }
+            }
+            .frame(width: 62, alignment: .leading)
+            .padding(.top, 5)
+            .help(column.isSpoken
+                  ? "Spoken. Counts toward the frame budget; the emitter adds the quotes."
+                  : "Stage direction. Costs no frames.")
+
+            TextField(column.name, text: text, axis: .vertical)
+                .lineLimit(1...3)
                 .storyFlowFieldChrome()
+        }
+    }
+
+    /// What this row actually assembles to, per phase.
+    ///
+    /// This is what replaced eight per-fragment space markers. A marker told you a rule had been
+    /// satisfied; the preview shows the string the model will read, which is the thing the rule
+    /// was standing in for — and it works for any arrangement, including ones nobody anticipated.
+    @ViewBuilder
+    private var promptPreview: some View {
+        Button {
+            showingPreview.toggle()
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: showingPreview ? "chevron.down" : "chevron.right")
+                    .font(.system(size: 8))
+                Text("assembled prompt")
+                    .font(TanqueDS.Font.mono(9.5))
+            }
+            .foregroundStyle(DashboardDS.muted)
+        }
+        .buttonStyle(.plain)
+
+        if showingPreview {
+            VStack(alignment: .leading, spacing: 5) {
+                ForEach(CastPhase.allCases) { phase in
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(phase.title)
+                            .font(TanqueDS.Font.mono(9))
+                            .foregroundStyle(DashboardDS.brass)
+                        Text(vm.assembledPrompt(for: member, phase: phase))
+                            .font(TanqueDS.Font.mono(10))
+                            .foregroundStyle(DashboardDS.muted2)
+                            .textSelection(.enabled)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+            }
+            .padding(8)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(DashboardDS.bg, in: RoundedRectangle(cornerRadius: 5))
+            .overlay(RoundedRectangle(cornerRadius: 5)
+                .strokeBorder(DashboardDS.border, lineWidth: 1))
         }
     }
 }
@@ -696,51 +810,101 @@ private struct CastSizeField: View {
     }
 }
 
-/// A fragment field plus its spacing contract.
+/// One entry in a phase's sequence: shared prose, or a per-character column.
 ///
-/// The leading/trailing space a fragment needs is invisible in a text field and load-bearing
-/// in the prompt, so the requirement is shown as a `␣` marker on the side that needs one and
-/// the state of that marker is filled when the space is actually there. Typing the space away
-/// changes the marker in the same keystroke that breaks the prompt.
-private struct CastFragmentField: View {
-    let spec: StoryFlowFragmentSpec
-    @Binding var text: String
-    let issues: [StoryFlowCastIssue]
+/// Prose shows leading/trailing spaces as `␣` markers because they are invisible in a text
+/// field and load-bearing in the prompt — but they are shown as *information*, not as a
+/// contract. Whether a given space is required depends on what sits beside it, so the
+/// requirement is checked on the assembled prompt (which the preview shows) rather than
+/// declared per fragment the way it had to be when the eight names were hardcoded.
+private struct CastSlotRow: View {
+    let slot: PhaseSlot
+    let phase: CastPhase
+    let column: CastColumn?
+    @Binding var prose: String
+    let onCommitProse: () -> Void
+    let onRename: (CastColumn.ID, String) -> Void
+    let onToggleSpoken: (CastColumn.ID, Bool) -> Void
+    let onDelete: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 3) {
-            HStack(spacing: 6) {
-                Text(spec.name)
-                    .font(TanqueDS.Font.monoSemiBold(10.5))
-                    .foregroundStyle(DashboardDS.brass)
-                spaceMarker(required: spec.lead, present: text.hasPrefix(" "), edge: "leading")
-                spaceMarker(required: spec.trail, present: text.hasSuffix(" "), edge: "trailing")
-                Spacer(minLength: 0)
+        HStack(alignment: .top, spacing: 6) {
+            Rectangle()
+                .fill(column == nil ? DashboardDS.muted.opacity(0.35) : DashboardDS.brass)
+                .frame(width: 2)
+                .padding(.vertical, 2)
+
+            if let column {
+                columnBody(column)
+            } else {
+                proseBody
             }
-            .help(spec.role)
 
-            TextField(spec.name, text: $text, axis: .vertical)
-                .lineLimit(1...5)
-                .storyFlowFieldChrome()
-
-            Text(spec.role)
-                .font(TanqueDS.Font.mono(9.5))
-                .foregroundStyle(DashboardDS.muted)
-                .fixedSize(horizontal: false, vertical: true)
-
-            CastIssueList(issues: issues)
+            Button(action: onDelete) {
+                Image(systemName: "xmark")
+                    .font(.system(size: 8, weight: .bold))
+                    .foregroundStyle(DashboardDS.muted2)
+                    .frame(width: 18, height: 18)
+            }
+            .buttonStyle(.plain)
+            .help(column == nil
+                  ? "Remove this prose"
+                  : "Remove this column from the project — both phases and every cast row")
         }
     }
 
-    @ViewBuilder
-    private func spaceMarker(required: Bool, present: Bool, edge: String) -> some View {
-        if required {
-            Text(edge == "leading" ? "␣…" : "…␣")
-                .font(TanqueDS.Font.mono(10))
-                .foregroundStyle(present ? DashboardDS.green : DashboardDS.red)
-                .help(present
-                      ? "Has the \(edge) space this fragment needs"
-                      : "MISSING the \(edge) space — concat appends with no separator")
+    private var proseBody: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(spacing: 5) {
+                Text("prose")
+                    .font(TanqueDS.Font.mono(9.5))
+                    .foregroundStyle(DashboardDS.muted)
+                if prose.hasPrefix(" ") {
+                    Text("␣…").font(TanqueDS.Font.mono(9.5)).foregroundStyle(DashboardDS.muted2)
+                        .help("Starts with a space")
+                }
+                if prose.hasSuffix(" ") {
+                    Text("…␣").font(TanqueDS.Font.mono(9.5)).foregroundStyle(DashboardDS.muted2)
+                        .help("Ends with a space")
+                }
+                Spacer(minLength: 0)
+            }
+            TextField("shared text", text: $prose, axis: .vertical)
+                .lineLimit(1...5)
+                .storyFlowFieldChrome()
+                .onSubmit(onCommitProse)
+        }
+    }
+
+    private func columnBody(_ column: CastColumn) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(spacing: 5) {
+                Text("column")
+                    .font(TanqueDS.Font.mono(9.5))
+                    .foregroundStyle(DashboardDS.brass)
+                Spacer(minLength: 0)
+                // DashboardCheckboxToggleStyle draws the box and discards `configuration.label`
+                // entirely, so a bare Toggle here rendered as an unlabelled square with no way
+                // to know what it meant. Labelled beside it rather than by changing the shared
+                // style, which every other checkbox in the app is drawn with.
+                Text("spoken")
+                    .font(TanqueDS.Font.mono(9.5))
+                    .foregroundStyle(column.isSpoken ? DashboardDS.brass : DashboardDS.muted)
+                Toggle("", isOn: Binding(
+                    get: { column.isSpoken },
+                    set: { onToggleSpoken(column.id, $0) }
+                ))
+                .labelsHidden()
+                .toggleStyle(.dashboardCheckbox)
+                .help("Spoken columns are wrapped in quotes and are the only words framesDialog "
+                      + "counts. Everything else is stage direction and costs no frames.")
+            }
+            TextField("name", text: Binding(
+                get: { column.name },
+                set: { onRename(column.id, $0) }
+            ))
+            .storyFlowFieldChrome()
+            .onSubmit(onCommitProse)
         }
     }
 }

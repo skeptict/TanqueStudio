@@ -270,6 +270,101 @@ final class StoryFlowCastViewModel {
         documentChanged()
     }
 
+    // MARK: - Columns and phases
+
+    /// Add a column and place it in a phase in one action.
+    ///
+    /// Deliberately not separable. A column with no place in a prompt is text nobody reads, and
+    /// a slot referencing a column that doesn't exist is dropped at load — the two halves are
+    /// only meaningful together, so the UI never offers one without the other.
+    func addColumn(named name: String, to phase: CastPhase, spoken: Bool = false) {
+        let column = CastColumn(name: uniqueColumnName(from: name), isSpoken: spoken)
+        document.staging.columns.append(column)
+        document.staging.phases[phase, default: []].append(.column(column.id))
+        // A new column starts empty on every row rather than absent, so the cast table shows a
+        // field to fill rather than a field that silently isn't there.
+        for index in document.cast.indices { document.cast[index].values[column.id] = "" }
+        documentChanged()
+    }
+
+    func renameColumn(_ id: CastColumn.ID, to name: String) {
+        guard let index = document.staging.columns.firstIndex(where: { $0.id == id }) else { return }
+        // Rows are keyed by id, so a rename moves no text — which is exactly why they are keyed
+        // by id and not by name.
+        document.staging.columns[index].name = name
+        documentChanged()
+    }
+
+    func setColumn(_ id: CastColumn.ID, spoken: Bool) {
+        guard let index = document.staging.columns.firstIndex(where: { $0.id == id }) else { return }
+        document.staging.columns[index].isSpoken = spoken
+        documentChanged()
+    }
+
+    /// Remove a column from the project entirely — both phases and every row.
+    func deleteColumn(_ id: CastColumn.ID) {
+        document.staging.columns.removeAll { $0.id == id }
+        for phase in CastPhase.allCases {
+            document.staging.phases[phase]?.removeAll { $0.columnID == id }
+        }
+        for index in document.cast.indices { document.cast[index].values[id] = nil }
+        documentChanged()
+    }
+
+    /// Put an existing column into a phase that doesn't use it yet — the mechanism behind a
+    /// column appearing in both phases, which is what makes lockstep matter.
+    func addExistingColumn(_ id: CastColumn.ID, to phase: CastPhase) {
+        guard document.staging.slots(phase).allSatisfy({ $0.columnID != id }) else { return }
+        document.staging.phases[phase, default: []].append(.column(id))
+        documentChanged()
+    }
+
+    func addProse(to phase: CastPhase) {
+        document.staging.phases[phase, default: []].append(.prose(" "))
+        documentChanged()
+    }
+
+    func deleteSlot(_ slotID: PhaseSlot.ID, from phase: CastPhase) {
+        document.staging.phases[phase]?.removeAll { $0.id == slotID }
+        documentChanged()
+    }
+
+    func moveSlots(in phase: CastPhase, from offsets: IndexSet, to destination: Int) {
+        document.staging.phases[phase]?.move(fromOffsets: offsets, toOffset: destination)
+        documentChanged()
+    }
+
+    func setProse(_ text: String, slotID: PhaseSlot.ID, in phase: CastPhase) {
+        guard let index = document.staging.phases[phase]?.firstIndex(where: { $0.id == slotID })
+        else { return }
+        document.staging.phases[phase]?[index].kind = .prose(text)
+    }
+
+    private func uniqueColumnName(from proposed: String) -> String {
+        let base = proposed.trimmingCharacters(in: .whitespaces).isEmpty
+            ? "column" : proposed.trimmingCharacters(in: .whitespaces)
+        let taken = Set(document.staging.columns.map(\.name))
+        guard taken.contains(base) else { return base }
+        var suffix = 2
+        while taken.contains("\(base) \(suffix)") { suffix += 1 }
+        return "\(base) \(suffix)"
+    }
+
+    /// The prompt one cast row assembles to in a phase — the preview that replaced eight
+    /// per-fragment space markers with the thing they were standing in for.
+    func assembledPrompt(for member: CastMember, phase: CastPhase) -> String {
+        document.staging.slots(phase).reduce(into: "") { result, slot in
+            switch slot.kind {
+            case .prose(let text):
+                result += text
+            case .column(let id):
+                guard let column = document.staging.column(id) else { return }
+                let raw = member.value(column)
+                result += column.isSpoken ? StoryFlowCastEmitter.quoted(raw) : raw
+            }
+        }
+    }
+
     // MARK: - Saving the source files
 
     func save() {
@@ -363,8 +458,8 @@ final class StoryFlowCastViewModel {
         issues.filter { $0.anchor == .castRow(index) }
     }
 
-    func issues(forFragment name: String) -> [StoryFlowCastIssue] {
-        issues.filter { $0.anchor == .fragment(name) }
+    func issues(forPhase phase: CastPhase) -> [StoryFlowCastIssue] {
+        issues.filter { $0.anchor == .phase(phase) }
     }
 
     func issues(forStaging key: String) -> [StoryFlowCastIssue] {

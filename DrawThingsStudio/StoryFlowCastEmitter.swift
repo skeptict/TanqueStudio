@@ -51,15 +51,28 @@ enum StoryFlowCastEmitter {
     static func items(cast: [CastMember], staging: CastStaging) -> [StoryFlowItem] {
         let count = cast.count
 
-        let identityCards = cast.map(\.identity)
-        let wardrobeCards = cast.map(\.wardrobe)
-        let voiceCards = cast.map(\.voice)
-        let slateCards = cast.map { quoted($0.slate) }
-        let lineCards = cast.map { quoted($0.line) }
         // Sweep cards are stored as strings in Editor-authored projects and coerced to real
         // JSON numbers on export (`StoryFlowProjectCodec`'s sweep branch). Matching that
         // convention keeps the file byte-shaped like one the Editor would have written.
         let seedCards = cast.map { String($0.seed) }
+
+        /// One phase's authored sequence, flattened to items. Prose becomes `concat`, a column
+        /// becomes a `wildcard` whose cards are that column read down the cast table — quoted
+        /// when the column is spoken, because those quotes are what `framesDialog` counts.
+        func slotItems(_ phase: CastPhase) -> [StoryFlowItem] {
+            staging.slots(phase).compactMap { slot -> StoryFlowItem? in
+                switch slot.kind {
+                case .prose(let text):
+                    return .init(type: "concat", value: .string(text))
+                case .column(let id):
+                    guard let column = staging.column(id) else { return nil }
+                    let cards = cast.map { member in
+                        column.isSpoken ? quoted(member.value(column)) : member.value(column)
+                    }
+                    return wildcardItem(cards)
+                }
+            }
+        }
 
         // `start` must be present and must be 0. `loopSave` computes `_loopCounter +
         // _startCount` (`:1279`) and `loopLoad` does not (`:1258`), so a non-zero start makes
@@ -71,11 +84,7 @@ enum StoryFlowCastEmitter {
             .init(key: "start", value: .int(0)),
         ])
 
-        func fragment(_ name: String) -> StoryFlowItem {
-            .init(type: "concat", value: .string(staging.fragmentText(name)))
-        }
-
-        return [
+        var items: [StoryFlowItem] = [
             .init(type: "note", value: .string(setupNote(staging: staging, count: count))),
             .init(type: "canvasClear", value: .bool(true)),
             // `negPrompt` is persistent and does not render (`StoryflowPipeline.js:1000`).
@@ -102,11 +111,9 @@ enum StoryFlowCastEmitter {
                 .init(key: "wild",      value: .string("loop")),
                 .init(key: "cards",     value: .array(seedCards.map { .string($0) })),
             ]).compactJSON)),
-            fragment("A_OPEN"),
-            wildcardItem(identityCards),
-            fragment("WEARING"),
-            wildcardItem(wardrobeCards),
-            fragment("A_CLOSE"),
+        ]
+        items += slotItems(.stills)
+        items += [
             // `prompt` IS the render trigger: `concat += value; generate(); concat = ""`
             // (`:959`). There is no separate generate instruction in this format.
             .init(type: "prompt", value: .string("")),
@@ -121,17 +128,9 @@ enum StoryFlowCastEmitter {
 
             .init(type: "loop", value: .string(loopValue.compactJSON)),
             .init(type: "loopLoad", value: .string(staging.anchorsDirectory)),
-            fragment("B_OPEN"),
-            wildcardItem(identityCards),
-            fragment("WEARING"),
-            wildcardItem(wardrobeCards),
-            fragment("B_SAYS"),
-            wildcardItem(slateCards),
-            fragment("B_BEAT"),
-            wildcardItem(lineCards),
-            fragment("B_IN"),
-            wildcardItem(voiceCards),
-            fragment("B_CLOSE"),
+        ]
+        items += slotItems(.video)
+        items += [
             .init(type: "framesDialog", value: .string(OrderedJSONValue.object([
                 .init(key: "wps",      value: .double(staging.wps)),
                 .init(key: "padding",  value: .int(staging.padding)),
@@ -140,6 +139,7 @@ enum StoryFlowCastEmitter {
             .init(type: "prompt", value: .string("")),
             .init(type: "loopEnd", value: .bool(true)),
         ]
+        return items
     }
 
     // MARK: - Pieces
@@ -350,11 +350,12 @@ enum StoryFlowFrameBudget {
     /// Tanque Studio's ceiling on the spoken count — applied *before* padding.
     static let spokenFrameCap = 257
 
-    /// Words in `slate` + `line`. These are the spoken fields, and the emitter is what puts
-    /// them inside `"…"` spans — so counting them directly is the same count `framesDialog`
-    /// arrives at by regex, without needing the assembled prompt.
-    static func spokenWordCount(_ member: CastMember) -> Int {
-        wordCount(member.slate) + wordCount(member.line)
+    /// Words across every **spoken** column. Those are the ones the emitter wraps in `"…"`, so
+    /// counting them directly is the same count `framesDialog` arrives at by regex, without
+    /// needing the assembled prompt. Unquoted columns are stage direction and cost no frames —
+    /// which is the whole reason a shot description can be as long as it needs to be.
+    static func spokenWordCount(_ member: CastMember, staging: CastStaging) -> Int {
+        staging.spokenColumns.reduce(0) { $0 + max(1, wordCount(member.value($1))) }
     }
 
     static func wordCount(_ text: String) -> Int {
@@ -393,7 +394,8 @@ enum StoryFlowFrameBudget {
     }
 
     static func readout(for member: CastMember, staging: CastStaging) -> Readout {
-        readout(words: spokenWordCount(member), wps: staging.wps, padding: staging.padding)
+        readout(words: spokenWordCount(member, staging: staging),
+                wps: staging.wps, padding: staging.padding)
     }
 
     static func readout(words: Int, wps: Double, padding: Int) -> Readout {

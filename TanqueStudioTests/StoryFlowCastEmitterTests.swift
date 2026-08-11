@@ -137,9 +137,15 @@ final class StoryFlowCastEmitterTests: XCTestCase {
         }
     }
 
-    /// The document's own write path, not just the JSON layer: loading a project and saving it
-    /// straight back must not change a single value, key or key order in either file.
-    func testSavingAnUntouchedDocumentChangesNothing() throws {
+    /// Saving an untouched project must not change `bible.json` at all, and must not change what
+    /// `configs.json` *means*.
+    ///
+    /// `configs.json` does change shape for a project authored before phases were editable: its
+    /// eight named `fragments` are rewritten as `columns` + `phases`. That is the migration, and
+    /// it is deliberate — leaving the old block beside the new one would put two descriptions of
+    /// one prompt in a single file. What must not change is the artifact, so that is what is
+    /// asserted: save, reload, and emit must produce the identical project.
+    func testSavingAnUntouchedDocumentPreservesTheBibleAndTheArtifact() throws {
         for name in Self.projectFolders {
             let source = try folder(name)
             let document = try document(name)
@@ -151,10 +157,44 @@ final class StoryFlowCastEmitterTests: XCTestCase {
 
             try document.save(toFolder: scratch)
 
+            let before = try OrderedJSONValue.parse(
+                contentsOf: source.appendingPathComponent(StoryFlowCastDocument.bibleFilename))
+            let after = try OrderedJSONValue.parse(
+                contentsOf: scratch.appendingPathComponent(StoryFlowCastDocument.bibleFilename))
+            XCTAssertEqual(before, after, "\(name)/bible.json changed on a no-op save")
+
+            let reloaded = try StoryFlowCastDocument.load(fromFolder: scratch)
+            XCTAssertEqual(
+                StoryFlowCastEmitter.projectJSON(cast: reloaded.cast,
+                                                 staging: reloaded.staging).prettyJSON,
+                StoryFlowCastEmitter.projectJSON(cast: document.cast,
+                                                 staging: document.staging).prettyJSON,
+                "\(name): the migrated configs.json emits a different project")
+        }
+    }
+
+    /// The migration must survive a second trip: once written in the new shape, loading and
+    /// saving again is a genuine fixed point with nothing left to migrate.
+    func testTheMigratedShapeIsAFixedPoint() throws {
+        for name in Self.projectFolders {
+            let document = try document(name)
+            let first = URL(fileURLWithPath: NSTemporaryDirectory())
+                .appendingPathComponent("cast-fp1-\(UUID().uuidString)")
+            let second = URL(fileURLWithPath: NSTemporaryDirectory())
+                .appendingPathComponent("cast-fp2-\(UUID().uuidString)")
+            for url in [first, second] {
+                try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+            }
+            defer { [first, second].forEach { try? FileManager.default.removeItem(at: $0) } }
+
+            try document.save(toFolder: first)
+            try StoryFlowCastDocument.load(fromFolder: first).save(toFolder: second)
+
             for file in [StoryFlowCastDocument.bibleFilename, StoryFlowCastDocument.configsFilename] {
-                let before = try OrderedJSONValue.parse(contentsOf: source.appendingPathComponent(file))
-                let after = try OrderedJSONValue.parse(contentsOf: scratch.appendingPathComponent(file))
-                XCTAssertEqual(before, after, "\(name)/\(file) changed on a no-op save")
+                XCTAssertEqual(
+                    try OrderedJSONValue.parse(contentsOf: first.appendingPathComponent(file)),
+                    try OrderedJSONValue.parse(contentsOf: second.appendingPathComponent(file)),
+                    "\(name)/\(file) is not stable across a second save")
             }
         }
     }
@@ -374,19 +414,48 @@ final class StoryFlowCastEmitterTests: XCTestCase {
 
     func testAQuoteInABibleFieldFails() throws {
         var document = try cleanFixture()
-        document.cast[0].line = "He said \"hello\" and left"
+        let spoken = try XCTUnwrap(document.staging.spokenColumns.first)
+        document.cast[0].values[spoken.id] = "He said \"hello\" and left"
         let issues = StoryFlowCastValidator.validate(cast: document.cast, staging: document.staging)
         XCTAssertTrue(issues.failures.contains { $0.message.contains("quote character") },
                       "a stray quote re-pairs framesDialog's spans and changes the clip length")
     }
 
-    func testAFragmentThatLostItsTrailingSpaceFails() throws {
+    /// The spacing check moved from a per-fragment declaration to the assembled result, so this
+    /// asserts the failure mode rather than the old contract: prose that lost its trailing space
+    /// runs straight into the card beside it.
+    func testProseThatLostItsTrailingSpaceFails() throws {
         var document = try cleanFixture()
-        document.staging.fragments["WEARING"] = ", wearing"
+        let slots = try XCTUnwrap(document.staging.phases[.video])
+        let index = try XCTUnwrap(slots.firstIndex { $0.proseText == ", wearing " })
+        document.staging.phases[.video]?[index].kind = .prose(", wearing")
+
         let issues = StoryFlowCastValidator.validate(cast: document.cast, staging: document.staging)
         XCTAssertTrue(issues.failures.contains {
-            $0.anchor == .fragment("WEARING") && $0.message.contains("trailing space")
-        })
+            $0.anchor == .phase(.video) && $0.message.contains("no separator")
+        }, "got: \(issues.failures.map(\.message))")
+    }
+
+    /// The reverse, which the old per-fragment table also caught: a space that should not be
+    /// there. Checked on the assembled prompt now, so it needs no declaration.
+    func testASpaceBeforePunctuationFails() throws {
+        var document = try cleanFixture()
+        let slots = try XCTUnwrap(document.staging.phases[.video])
+        let index = try XCTUnwrap(slots.firstIndex { $0.proseText == ", wearing " })
+        document.staging.phases[.video]?[index].kind = .prose(" , wearing ")
+
+        let issues = StoryFlowCastValidator.validate(cast: document.cast, staging: document.staging)
+        XCTAssertTrue(issues.failures.contains { $0.message.contains("space before") },
+                      "got: \(issues.failures.map(\.message))")
+    }
+
+    /// The check that made the old lowercase→uppercase heuristic unusable: a real character
+    /// line containing `Krea LoRAs` must not be mistaken for a glued seam.
+    func testCamelCaseInsideACardIsNotAGluedSeam() throws {
+        let document = try cleanFixture()
+        let issues = StoryFlowCastValidator.checkPieceSeams(cast: document.cast,
+                                                            staging: document.staging)
+        XCTAssertTrue(issues.isEmpty, "got: \(issues.map(\.message))")
     }
 
     func testTheEditorsDefaultPaddingOf49Fails() throws {
@@ -467,6 +536,104 @@ final class StoryFlowCastEmitterTests: XCTestCase {
                      "frames8 is Editor-only; the Editor rewrites it to frames on export")
     }
 
+    // MARK: - Columns and phases
+
+    /// Migration, asserted on the shape rather than only on the emitted bytes: a project
+    /// authored before phases were editable must arrive as the arrangement its emitter used to
+    /// hardcode.
+    func testAPreSlotProjectMigratesToTheArrangementItsEmitterHardcoded() throws {
+        let document = try document("PodcastAuditions")
+
+        XCTAssertEqual(document.staging.columns.map(\.name),
+                       ["identity", "wardrobe", "slate", "line", "voice"])
+        XCTAssertEqual(document.staging.spokenColumns.map(\.name), ["slate", "line"])
+
+        XCTAssertEqual(document.staging.columns(in: .stills).map(\.name),
+                       ["identity", "wardrobe"])
+        XCTAssertEqual(document.staging.columns(in: .video).map(\.name),
+                       ["identity", "wardrobe", "slate", "line", "voice"])
+
+        // identity and wardrobe are ONE column used by both phases, not two that happen to
+        // match — which is what makes lockstep a property rather than a coincidence.
+        let stillsIDs = Set(document.staging.slots(.stills).compactMap(\.columnID))
+        let videoIDs = Set(document.staging.slots(.video).compactMap(\.columnID))
+        XCTAssertEqual(stillsIDs.intersection(videoIDs).count, 2)
+
+        // And the rows carry their text under those columns.
+        let identity = try XCTUnwrap(document.staging.columns.first { $0.name == "identity" })
+        XCTAssertTrue(document.cast[1].value(identity).contains("labradoodle"))
+    }
+
+    /// Renaming a column must not move a single character of anyone's text — the reason rows
+    /// are keyed by column id rather than by name.
+    func testRenamingAColumnLeavesEveryRowsTextWhereItWas() throws {
+        var document = try document("PodcastAuditions")
+        let identity = try XCTUnwrap(document.staging.columns.first { $0.name == "identity" })
+        let before = document.cast.map { $0.value(identity) }
+
+        let index = try XCTUnwrap(document.staging.columns.firstIndex { $0.id == identity.id })
+        document.staging.columns[index].name = "appearance"
+
+        let renamed = document.staging.columns[index]
+        XCTAssertEqual(document.cast.map { $0.value(renamed) }, before)
+
+        // And the rename reaches the emitted prompt's card lists unchanged.
+        let issues = StoryFlowCastValidator.validate(cast: document.cast, staging: document.staging)
+        XCTAssertTrue(issues.failures.isEmpty, "\(issues.failures.map(\.message))")
+    }
+
+    func testTwoColumnsWithTheSameNameFail() throws {
+        var document = try document("PodcastAuditions")
+        document.staging.columns.append(CastColumn(name: "identity"))
+        let issues = StoryFlowCastValidator.validate(cast: document.cast, staging: document.staging)
+        XCTAssertTrue(issues.failures.contains { $0.message.contains("both called") },
+                      "they would share one key in every bible row")
+    }
+
+    func testAColumnUsedByNeitherPhaseWarns() throws {
+        var document = try document("PodcastAuditions")
+        document.staging.columns.append(CastColumn(name: "props"))
+        let issues = StoryFlowCastValidator.validate(cast: document.cast, staging: document.staging)
+        XCTAssertTrue(issues.warnings.contains { $0.message.contains("neither") })
+    }
+
+    func testAProjectWithNoSpokenColumnFails() throws {
+        var document = try document("PodcastAuditions")
+        for index in document.staging.columns.indices {
+            document.staging.columns[index].isSpoken = false
+        }
+        let issues = StoryFlowCastValidator.validate(cast: document.cast, staging: document.staging)
+        XCTAssertTrue(issues.failures.contains { $0.message.contains("no \"…\" spans") },
+                      "every clip would render at exactly the padding length")
+    }
+
+    /// A column added to a phase must appear on every cast row *and* in the emitted prompt, in
+    /// the place the phase puts it. This is the property the whole refactor exists to give.
+    func testAddingAColumnReachesBothTheCastTableAndThePrompt() throws {
+        var document = try document("PodcastAuditions")
+        let column = CastColumn(name: "props")
+        document.staging.columns.append(column)
+        document.staging.phases[.video]?.append(.prose(", holding "))
+        document.staging.phases[.video]?.append(.column(column.id))
+        for index in document.cast.indices {
+            document.cast[index].values[column.id] = "a chipped mug"
+        }
+
+        let items = StoryFlowCastEmitter.items(cast: document.cast, staging: document.staging)
+        let wildcards = try items.filter { $0.type == "wildcard" }
+            .map { try OrderedJSONValue.parse(try XCTUnwrap($0.value.stringValue)) }
+
+        // Six in phase B now, two in phase A.
+        XCTAssertEqual(wildcards.count, 8)
+        XCTAssertTrue(items.contains { $0.value.stringValue == ", holding " })
+        XCTAssertTrue(wildcards.contains {
+            $0["cards"]?.elements?.first?.stringValue == "a chipped mug"
+        })
+        // Card counts stay uniform, so the lists remain in lockstep.
+        XCTAssertEqual(Set(wildcards.compactMap { $0["cards"]?.elements?.count }),
+                       [document.cast.count])
+    }
+
     // MARK: - Starting a new project
 
     private func starter() -> StoryFlowCastDocument {
@@ -486,16 +653,25 @@ final class StoryFlowCastEmitterTests: XCTestCase {
                        "unexpected: \(issues.failures.map(\.message))")
     }
 
-    func testEverySeededFragmentHasTheSpacingItsSpecDemands() {
+    /// The seeded arrangement must assemble cleanly — that is the one thing a new project
+    /// cannot be expected to get right by typing, so it has to arrive right.
+    func testANewProjectsSeededProseAssemblesWithoutASeamProblem() {
         let document = starter()
-        for spec in StoryFlowFragmentSpec.all {
-            let text = document.staging.fragmentText(spec.name)
-            XCTAssertFalse(text.isEmpty, "\(spec.name) is empty")
-            XCTAssertNil(spec.spacingProblem(in: text), "\(spec.name): \(text.debugDescription)")
+        let seams = StoryFlowCastValidator.checkPieceSeams(cast: document.cast,
+                                                           staging: document.staging)
+        XCTAssertTrue(seams.isEmpty, "got: \(seams.map(\.message))")
+
+        for phase in CastPhase.allCases {
+            XCTAssertFalse(document.staging.slots(phase).isEmpty, "\(phase) has no prompt")
+            XCTAssertTrue(document.staging.slots(phase).contains { $0.columnID != nil },
+                          "\(phase) uses no columns")
         }
-        XCTAssertTrue(document.staging.fragmentText("A_CLOSE").contains("mouth closed"),
+        let stillsProse = document.staging.slots(.stills).compactMap(\.proseText).joined()
+        XCTAssertTrue(stillsProse.contains("mouth closed"),
                       "phase A's still is phase B's first frame, and LTX-2 handles dialogue "
                       + "badly starting mid-word")
+        XCTAssertFalse(document.staging.spokenColumns.isEmpty,
+                       "with no spoken column the prompt has no quoted spans at all")
     }
 
     func testANewProjectUsesPadding48NotTheEditorsDefault49() {
@@ -516,9 +692,31 @@ final class StoryFlowCastEmitterTests: XCTestCase {
         let reloaded = try StoryFlowCastDocument.load(fromFolder: scratch)
 
         XCTAssertEqual(reloaded.cast.map(\.name), document.cast.map(\.name))
-        XCTAssertEqual(reloaded.staging, document.staging)
+        // Compared on content, not on identity: column ids are in-memory handles and are
+        // deliberately re-minted on load, which is exactly what lets a rename move no text.
+        XCTAssertEqual(reloaded.staging.columns.map(\.name), document.staging.columns.map(\.name))
+        XCTAssertEqual(reloaded.staging.columns.map(\.isSpoken),
+                       document.staging.columns.map(\.isSpoken))
+        for phase in CastPhase.allCases {
+            XCTAssertEqual(reloaded.staging.slots(phase).map(\.proseText),
+                           document.staging.slots(phase).map(\.proseText), "\(phase) prose")
+            XCTAssertEqual(reloaded.staging.columns(in: phase).map(\.name),
+                           document.staging.columns(in: phase).map(\.name), "\(phase) columns")
+        }
+        XCTAssertEqual(reloaded.staging.padding, document.staging.padding)
+        XCTAssertEqual(reloaded.staging.negativePrompt, document.staging.negativePrompt)
         XCTAssertNotNil(reloaded.biblePreserved["_schema"], "the bible's own manual was dropped")
         XCTAssertNotNil(reloaded.configsPreserved["_schema"])
+
+        // And every row's text came back under the right column.
+        for (index, row) in reloaded.cast.enumerated() {
+            for column in reloaded.staging.columns {
+                let original = document.staging.columns.first { $0.name == column.name }
+                XCTAssertEqual(row.value(column),
+                               original.map { document.cast[index].value($0) },
+                               "row \(index) \(column.name)")
+            }
+        }
     }
 
     /// Once configs are assigned, a brand-new project emits a structurally valid project with no

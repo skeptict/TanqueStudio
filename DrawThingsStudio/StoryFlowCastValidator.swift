@@ -37,7 +37,7 @@ struct StoryFlowCastIssue: Identifiable, Equatable {
     enum Anchor: Equatable {
         case project
         case castRow(Int)
-        case fragment(String)
+        case phase(CastPhase)
         case staging(String)
     }
 
@@ -119,17 +119,19 @@ enum StoryFlowCastValidator {
 
         for (index, member) in cast.enumerated() {
             let label = member.name.isEmpty ? "Row \(index + 1)" : member.name
-            for (field, value) in member.proseFields + member.spokenFields {
+            for column in staging.columns {
+                let value = member.value(column)
                 if value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                     issues.append(.init(severity: .fail, anchor: .castRow(index),
-                                        message: "\(label): \(field) is empty."))
+                                        message: "\(label): \(column.name) is empty."))
                 }
                 if value.contains("\"") {
                     issues.append(.init(
                         severity: .fail, anchor: .castRow(index),
-                        message: "\(label): \(field) contains a quote character. framesDialog "
-                            + "counts words inside \"…\" spans and the emitter owns those quotes, "
-                            + "so this one would split a span and change the clip's length."))
+                        message: "\(label): \(column.name) contains a quote character. "
+                            + "framesDialog counts words inside \"…\" spans and the emitter owns "
+                            + "those quotes, so this one would split a span and change the "
+                            + "clip's length."))
                 }
             }
             if member.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -139,33 +141,9 @@ enum StoryFlowCastValidator {
             }
         }
 
-        // Fragment spacing is structural: `concat` appends with no separator, so a fragment
-        // that loses a space glues two words together in the prompt.
-        for spec in StoryFlowFragmentSpec.all {
-            let text = staging.fragmentText(spec.name)
-            if text.isEmpty {
-                issues.append(.init(severity: .fail, anchor: .fragment(spec.name),
-                                    message: "\(spec.name) is empty."))
-                continue
-            }
-            if let problem = spec.spacingProblem(in: text) {
-                issues.append(.init(severity: .fail, anchor: .fragment(spec.name),
-                                    message: "\(spec.name) \(problem) — concat appends with no separator."))
-            }
-            if text.contains("\"") {
-                issues.append(.init(
-                    severity: .fail, anchor: .fragment(spec.name),
-                    message: "\(spec.name) contains a quote character. It would create a spurious "
-                        + "framesDialog span and shift every clip's frame count."))
-            }
-        }
-
-        if !staging.fragmentText("A_CLOSE").contains("mouth closed") {
-            issues.append(.init(
-                severity: .warn, anchor: .fragment("A_CLOSE"),
-                message: "A_CLOSE no longer says “mouth closed”. Phase A's still is phase B's "
-                    + "first frame, and LTX-2 handles dialogue badly starting mid-word."))
-        }
+        issues += checkColumns(cast: cast, staging: staging)
+        issues += checkPhases(cast: cast, staging: staging)
+        issues += checkPieceSeams(cast: cast, staging: staging)
 
         if staging.projectName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             issues.append(.init(severity: .fail, anchor: .staging("project"),
@@ -185,6 +163,109 @@ enum StoryFlowCastValidator {
                                 message: "configs.json declares no configShortcuts, so both "
                                     + "phases reference a config that does not exist."))
         }
+        return issues
+    }
+
+    // MARK: - Columns and phases
+
+    private static func checkColumns(cast: [CastMember], staging: CastStaging) -> [StoryFlowCastIssue] {
+        var issues: [StoryFlowCastIssue] = []
+
+        if staging.columns.isEmpty {
+            issues.append(.init(severity: .fail, anchor: .staging("columns"),
+                                message: "The project has no columns, so there is nothing "
+                                    + "per-character in the prompt at all."))
+        }
+
+        var seen: [String: Int] = [:]
+        for column in staging.columns {
+            let trimmed = column.name.trimmingCharacters(in: .whitespaces)
+            if trimmed.isEmpty {
+                issues.append(.init(severity: .fail, anchor: .staging("columns"),
+                                    message: "A column has no name. The name is both the cast "
+                                        + "table's label and the key its text is stored under in "
+                                        + "bible.json."))
+                continue
+            }
+            if CastMember.reservedKeys.contains(trimmed) {
+                issues.append(.init(severity: .fail, anchor: .staging("columns"),
+                                    message: "“\(trimmed)” is reserved — every bible row already "
+                                        + "has one, and a column of that name would overwrite it."))
+            }
+            seen[trimmed, default: 0] += 1
+        }
+        for (name, count) in seen.sorted(by: { $0.key < $1.key }) where count > 1 {
+            issues.append(.init(severity: .fail, anchor: .staging("columns"),
+                                message: "Two columns are both called “\(name)”. They would share "
+                                    + "one key in every bible row and one would silently win."))
+        }
+
+        // A column with no place in a prompt is text nobody will ever read — and the reverse
+        // (a slot naming a column that isn't declared) is dropped at load rather than guessed.
+        let used = Set(CastPhase.allCases.flatMap { staging.slots($0).compactMap(\.columnID) })
+        for column in staging.columns where !used.contains(column.id) {
+            issues.append(.init(severity: .warn, anchor: .staging("columns"),
+                                message: "“\(column.name)” is in the cast table but in neither "
+                                    + "phase's prompt, so nothing you type in it reaches a render."))
+        }
+
+        if staging.spokenColumns.isEmpty {
+            issues.append(.init(
+                severity: .fail, anchor: .staging("columns"),
+                message: "No column is marked spoken, so the assembled prompt has no \"…\" spans. "
+                    + "framesDialog would count zero words and every clip would render at exactly "
+                    + "the padding length — the failure that looks like a working run."))
+        }
+        _ = cast
+        return issues
+    }
+
+    private static func checkPhases(cast: [CastMember], staging: CastStaging) -> [StoryFlowCastIssue] {
+        var issues: [StoryFlowCastIssue] = []
+
+        for phase in CastPhase.allCases {
+            let slots = staging.slots(phase)
+            if slots.isEmpty {
+                issues.append(.init(severity: .fail, anchor: .phase(phase),
+                                    message: "\(phase.title) has no prompt at all."))
+                continue
+            }
+            if !slots.contains(where: { $0.columnID != nil }) {
+                issues.append(.init(
+                    severity: .fail, anchor: .phase(phase),
+                    message: "\(phase.title) uses no columns, so every character would render "
+                        + "the same identical prompt."))
+            }
+            var used = Set<CastColumn.ID>()
+            for slot in slots {
+                guard let id = slot.columnID else { continue }
+                if !used.insert(id).inserted, let column = staging.column(id) {
+                    issues.append(.init(
+                        severity: .fail, anchor: .phase(phase),
+                        message: "\(phase.title) uses “\(column.name)” twice. The two would be "
+                            + "separate wildcards over the same cards, and the prompt would say "
+                            + "the same thing twice."))
+                }
+            }
+            for slot in slots where slot.proseText?.contains("\"") == true {
+                issues.append(.init(
+                    severity: .fail, anchor: .phase(phase),
+                    message: "\(phase.title) has prose containing a quote character. It would "
+                        + "create a spurious framesDialog span and shift every clip's frame count."))
+            }
+        }
+
+        // The still is phase B's first frame, and LTX-2 handles dialogue badly starting
+        // mid-word. Checked over the whole phase rather than one named fragment, because there
+        // is no longer a fragment guaranteed to be the one that closes it.
+        let stillsProse = staging.slots(.stills).compactMap(\.proseText).joined(separator: " ")
+        if !stillsProse.isEmpty, !stillsProse.contains("mouth closed") {
+            issues.append(.init(
+                severity: .warn, anchor: .phase(.stills),
+                message: "Phase A's prompt no longer says “mouth closed”. Its still is phase B's "
+                    + "first frame, and LTX-2 handles dialogue badly starting mid-word."))
+        }
+        _ = cast
         return issues
     }
 
@@ -501,6 +582,7 @@ enum StoryFlowCastValidator {
                             + "exactly \(padding) frames — the failure that looks like a working run."))
                     continue
                 }
+                issues += checkSeams(in: concat, pass: pass)
                 let words = spans.reduce(0) { $0 + max(1, StoryFlowFrameBudget.wordCount($1)) }
                 let readout = StoryFlowFrameBudget.readout(words: words, wps: wps, padding: padding)
                 if readout.diverges {
@@ -517,6 +599,101 @@ enum StoryFlowCastValidator {
             }
         }
         return issues
+    }
+
+    /// Spacing, checked on the **assembled prompt** rather than declared per fragment.
+    ///
+    /// `concat` appends with no separator, so every space is the author's to supply. This used
+    /// to be a hand-maintained table of which of eight named fragments needed a leading or
+    /// trailing space — which only worked because the eight names were hardcoded. Three
+    /// content-derived rules cover any arrangement and need no declarations at all:
+    ///
+    ///   - a letter butted straight against a letter (`wearinga corduroy blazer`)
+    ///   - a space before punctuation (`a beard , wearing`)
+    ///   - a double space
+    ///
+    /// Honestly a *different* guarantee rather than a strictly stronger one: it validates the
+    /// result instead of each fragment's contract. That is the better trade, because the result
+    /// is what the model reads.
+    static func checkSeams(in prompt: String, pass: Int) -> [StoryFlowCastIssue] {
+        var issues: [StoryFlowCastIssue] = []
+        let characters = Array(prompt)
+
+        for index in characters.indices.dropLast() {
+            let left = characters[index]
+            let right = characters[index + 1]
+
+            if left.isLetter, right.isLetter { continue }  // ordinary text
+            if left == " ", right == " " {
+                issues.append(.init(severity: .fail, anchor: .castRow(pass),
+                                    message: "Pass \(pass + 1): double space in the assembled "
+                                        + "prompt near “\(context(characters, at: index))”."))
+            }
+            if left == " ", ",.;:!?".contains(right) {
+                issues.append(.init(severity: .fail, anchor: .castRow(pass),
+                                    message: "Pass \(pass + 1): a space before “\(right)” in the "
+                                        + "assembled prompt near “\(context(characters, at: index))” "
+                                        + "— the prose has a leading space it does not need."))
+            }
+        }
+
+        // Word-against-word can only happen where two pieces meet, but the assembled string has
+        // lost the seams, so it is checked as a property of the whole: a lowercase run followed
+        // immediately by an uppercase one is not evidence (Krea LoRAs is a real line), whereas a
+        // missing space shows up as a boundary the prose was supposed to supply. Detecting it
+        // reliably needs the pieces, so `StoryFlowCastEmitter.seamProblems` does that job and
+        // this function covers what the assembled string alone can prove.
+        return issues
+    }
+
+    private static func context(_ characters: [Character], at index: Int) -> String {
+        let start = max(characters.startIndex, index - 12)
+        let end = min(characters.endIndex, index + 12)
+        return String(characters[start..<end]).trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// The word-against-word check, which needs the *pieces* rather than the assembled string.
+    /// Run over every card in a column, not just the one a given pass picks, so a bad seam is
+    /// caught even when it only shows up for the fourth character.
+    static func checkPieceSeams(cast: [CastMember], staging: CastStaging) -> [StoryFlowCastIssue] {
+        var issues: [StoryFlowCastIssue] = []
+
+        for phase in CastPhase.allCases {
+            let slots = staging.slots(phase)
+            for (index, slot) in slots.enumerated().dropLast() {
+                let next = slots[index + 1]
+                for left in pieces(of: slot, cast: cast, staging: staging) {
+                    for right in pieces(of: next, cast: cast, staging: staging) {
+                        guard let a = left.text.last, let b = right.text.first,
+                              a.isLetter, b.isLetter else { continue }
+                        issues.append(.init(
+                            severity: .fail, anchor: .phase(phase),
+                            message: "\(phase.title): “…\(left.text.suffix(10))” runs straight into "
+                                + "“\(right.text.prefix(10))…” with no separator. concat appends "
+                                + "with no space of its own."))
+                    }
+                }
+            }
+        }
+        return issues
+    }
+
+    private static func pieces(of slot: PhaseSlot,
+                               cast: [CastMember],
+                               staging: CastStaging) -> [(text: String, label: String)] {
+        switch slot.kind {
+        case .prose(let text):
+            return text.isEmpty ? [] : [(text, "prose")]
+        case .column(let id):
+            guard let column = staging.column(id) else { return [] }
+            return cast.compactMap { member in
+                let raw = member.value(column)
+                guard !raw.isEmpty else { return nil }
+                // A spoken column arrives quoted, and a quote is not a letter — so the seam
+                // beside it can never glue. Reflect what the emitter will actually write.
+                return (column.isSpoken ? StoryFlowCastEmitter.quoted(raw) : raw, column.name)
+            }
+        }
     }
 
     struct LoopBlock {

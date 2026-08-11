@@ -9,10 +9,40 @@ A new Labs pane for authoring a **two-phase StoryFlow project**: one that render
 a cast of character stills, then uses each still as the first frame of that
 character's spoken video clip.
 
-You edit two things — a **cast table** (name, identity, wardrobe, slate, line,
-voice, pinned seed) and a **staging** panel (the eight shared prose fragments,
-the negative prompt, the two canvas sizes, the dialogue pacing) — and the app
-emits the StoryFlow project and its Draw Things instruction array from them.
+You edit two things — a **cast table** and a **staging** panel — and the app emits
+the StoryFlow project and its Draw Things instruction array from them.
+
+### The fields are yours
+
+A phase's prompt is an alternating sequence: prose, card, prose, card, … prose.
+So that is what you edit — each phase is an ordered list of **prose** (shared by
+every character) and **columns** (one per-character field), and the cast table's
+fields are a *view* of the columns rather than a separate list.
+
+Add a column to a phase and a field appears on every cast card. Rename one and
+every row is relabelled without a character of text moving. Reorder and the
+prompt and the table reorder together. Delete and it's gone from both. There is
+no separate palette of field names to keep in step with the prompt, because there
+is nothing to keep in step — the prompt *is* the declaration. A column used by
+both phases is one column, which is exactly what makes the two phases stay in
+lockstep instead of merely happening to agree.
+
+Mark a column **spoken** and the emitter wraps it in quotes. Spoken words are the
+only ones `framesDialog` counts, which is why the stage direction around them can
+be as long as the shot needs.
+
+This replaced a pair of hardcoded parallel lists — eight named fragments and five
+fixed row properties — that were one list split in half. It also *removed* a
+hand-maintained table: which fragments needed a leading or trailing space could
+only be declared while the eight names were fixed, and three checks over the
+assembled prompt now cover any arrangement instead. Each cast row previews that
+assembled prompt per phase, which is the thing the spacing rules were standing in
+for all along.
+
+Projects authored before this migrate on open, and the emitted project is
+unchanged — asserted byte for byte against the independent Python generator,
+which is what makes the migration provably behaviour-preserving rather than
+merely tested.
 
 ### Starting one
 
