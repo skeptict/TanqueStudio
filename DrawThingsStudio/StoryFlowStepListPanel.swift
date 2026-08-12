@@ -502,6 +502,12 @@ private struct StoryFlowStepCard: View {
     let onDelete: () -> Void
     let onChange: () -> Void
 
+    /// The loop count field will not reliably take first responder from a click on its own.
+    /// The click lands on it — a hit test at its centre returns the text field, enabled — but
+    /// focus stays on the enclosing List, so the field ignores typing until you happen to win
+    /// the race. Driving focus explicitly is the fix; see `countFieldFocused` below.
+    @FocusState private var countFieldFocused: Bool
+
     /// A passthrough card is titled by the instruction it carries, not by the
     /// word "Passthrough" — the instruction is the useful information, and Phase 2
     /// promotes many of these to first-class steps under exactly these names.
@@ -618,6 +624,13 @@ private struct StoryFlowStepCard: View {
                 .multilineTextAlignment(.trailing)
                 .frame(width: 44)
                 .storyFlowFieldChrome()
+                // The chrome's padding sits outside the field's own frame, so without this
+                // the outer band of the control it paints is not even hit-testable.
+                .contentShape(Rectangle())
+                .focused($countFieldFocused)
+                // Simultaneous, not `.onTapGesture` — a plain tap gesture consumes the click
+                // and you lose caret placement inside the text.
+                .simultaneousGesture(TapGesture().onEnded { countFieldFocused = true })
                 .onSubmit { onChange() }
                 Text("times")
                     .font(TanqueDS.Font.mono(10.5))
