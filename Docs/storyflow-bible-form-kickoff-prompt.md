@@ -24,7 +24,7 @@ An editor that lets a user touch either of those directly reintroduces both. So:
 | | |
 |---|---|
 | `Projects/PodcastAuditions/` | the reference project — `bible.json`, `configs.json`, the generator, the verifier, a README |
-| `Projects/PodcastEpisodes-beta/` | a second project. Its `build_project.py` and `verify_project.py` are **byte-identical** to the first; everything project-specific lives in `configs.json` |
+| `TestProjects/PodcastEpisodes-beta/` | a second project, kept out of `Projects/` so the repo ships one demo — but kept in the tree, because the emitter pinning test covers it and would silently *skip* if it vanished. Its `build_project.py` and `verify_project.py` are **byte-identical** to the first; everything project-specific lives in `configs.json` |
 | `DrawThingsStudio/StoryFlowProjectCodec.swift` | already writes and reads the Editor project format, and exports the pipeline instruction array |
 | `DrawThingsStudio/StoryFlowItemSchema.swift` | a declarative table of instruction types and their value shapes; already drives generic forms |
 | `DrawThingsStudio/StoryFlowSchemaCard.swift` | the generic form renderer built on that table — the closest UI precedent |

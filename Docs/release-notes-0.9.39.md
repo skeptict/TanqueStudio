@@ -176,11 +176,36 @@ live stage is shown while a render runs.
 
 ## Known gaps
 
-- **The two-phase project has not been rendered end to end.** The emitted file is
-  byte-verified against an independent generator, and the pane has been driven by
-  hand, but no complete run — seven stills, then seven clips — has been recorded
-  in either engine. `Docs/podcast-auditions-run-procedure.md` is the staged
-  procedure for doing it.
+- **The two-phase project has been rendered for one character, not for the full
+  cast.** On 2026-08-12 a single pass with both loops set to 1 completed end to
+  end: phase A rendered the still and wrote `anchor_000.png`, phase B loaded that
+  anchor back as the clip's first frame, and the run produced a 217-frame,
+  8.680 s `.mp4` alongside its poster and frame folder. `framesDialog` reported
+  `169 + 48 pad = 217 frames`, matching the cast row's badge, which is the check
+  that catches the escaping bug. So `loopSave`, `loopLoad`, the video save path
+  and the frame count are all verified on a real render.
+
+  What remains unverified is **pairing across the cast**: no run has produced all
+  seven anchors, so nothing yet proves that `anchor_001` is the labradoodle rather
+  than the previous character — the failure the loop-counter fix in `fc177d8`
+  addresses. Nor has the project been run in Draw Things for comparison, so
+  "renders in either engine" is still a claim about the file rather than about a
+  render. Stages 3, 4 and 6 of `Docs/podcast-auditions-run-procedure.md` are the
+  procedure for closing that.
+
+- **The Loop step's `repeat N times` field is easier to click, but the underlying
+  cause is not fully understood.** It used to take several attempts to focus. Two
+  things were measured: its hit area was 44×15 points inside a control painting
+  roughly 58×23, so the outer band was not hit-testable at all; and a hit test at
+  its centre returns the text field, enabled, while focus stays on the enclosing
+  list — a first-responder handoff that does not happen, not a mis-aimed click. The
+  field now claims its full painted area and asks for focus explicitly. Two other
+  hypotheses were tested and ruled out: enlarging the hit area alone did not restore
+  focus, and the list's drag-to-reorder gesture is not the cause.
+
+  Reported as better by hand; not otherwise verified, because the automation used to
+  probe it cannot focus this particular field in any build, before or after. If it
+  still takes more than one click, that is worth reporting.
 - **Save Source normalizes the source files' hand formatting.** `bible.json` and
   `configs.json` are hand-authored documents with long `_schema` prose blocks;
   writing them back through a structured serializer keeps every value, key and
