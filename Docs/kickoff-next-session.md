@@ -5,17 +5,23 @@
 
 ---
 
-**0.9.39 shipped on 2026-08-12.** There is no release in flight and no half-finished work to
-unwind. This session starts from a clean slate, which the last four did not.
+**0.9.39 shipped on 2026-08-12, followed by the 0.9.40 patch the same afternoon.** There is no
+release in flight and no half-finished work to unwind. This session starts from a clean slate,
+which the last four did not.
 
-Read `Docs/release-notes-0.9.39.md` for what just went out, and
+Read `Docs/release-notes-0.9.39.md` for the feature release and
+`Docs/release-notes-0.9.40.md` for the patch, then
 `Docs/podcast-auditions-run-procedure.md` for the staged test plan — its status header is accurate.
 
 ## State you are inheriting
 
-- **v0.9.39 released**: build 32, tag `v0.9.39` on `1f96166`, notarized + stapled, confirmed Latest
-  via `gh api repos/skeptict/TanqueStudio/releases/latest --jq '.tag_name'`.
-- **Suite: 330 passed, 6 skipped, 0 failures.** Run it with
+- **v0.9.40 released**: build 33, tag `v0.9.40` on `a9a6db5`, notarized + stapled, confirmed Latest
+  via `gh api repos/skeptict/TanqueStudio/releases/latest --jq '.tag_name'`. It is a one-fix patch
+  over 0.9.39 — removing a LoRA crashed the app, because the drawer's rows were bound by array
+  position and a captured index outlived the row. **If you touch any `ForEach` over a mutable
+  array in this codebase, bind by identity, not by index.** There are now three places that get
+  this right and a comment in `StoryFlowStepListPanel` explaining why.
+- **Suite: 335 passed, 6 skipped, 0 failures.** Run it with
   `xcodebuild test -project TanqueStudio.xcodeproj -scheme TanqueStudio -only-testing:TanqueStudioTests -derivedDataPath .build -parallel-testing-enabled NO`
   and read the `Executed …` line. It stalls in teardown maybe half the time — the results are
   already written when it does, so read the log rather than diagnosing the hang. The six skips are
