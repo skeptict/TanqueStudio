@@ -5,7 +5,7 @@ stills, then a spoken video clip per character with the right face on it — in 
 Draw Things. Nothing in the app or the test suite proves this. They prove the file is correct; only
 a run proves the pipeline is.
 
-**Status as of 2026-08-12: stages 1 and 2 pass; stages 3–6 have not been attempted.**
+**Status as of 2026-08-12: stages 1, 2 and 3 pass; stages 4 and 6 have not been attempted.**
 
 A single pass with both loops at 1 completed both phases in Tanque Studio: phase A wrote
 `anchor_000.png` (1024×576), phase B loaded it back as the clip's first frame, and the run produced
@@ -14,9 +14,16 @@ a 217-frame, 8.680 s `.mp4` at 25 fps with its poster and frame folder. The log 
 `✓ framesDialog → 169 + 48 pad = 217 frames`, `✓ Completed`. Phase A took 18 s; phase B took
 19.3 minutes, of which `imageEncoding` alone was 15.3 — see the timing note in stage 4.
 
-So video production through StoryFlow, the loop-file instructions and the frame count are no longer
-open questions. **What remains unverified is pairing across the full cast** (stage 3), the complete
-seven-clip pass (stage 4), and the Draw Things cross-check (stage 6).
+Stage 3 then passed on its own run: seven passes of phase A wrote `anchor_000` … `anchor_006`, each
+one the character in the matching bible row — `anchor_001` is the labradoodle in its yellow bandana
+— with identity and wardrobe advancing in lockstep at every index. Seven renders, seven images, no
+empty returns and no stalls, in about 3.5 minutes against `krea_2_turbo_q8p`. The seed sweep is
+visible in the request log as `811001`…`811006`, `811006`, which is the duplicate-seed warning of
+stage 5 showing up in the artifact rather than only in validation.
+
+So video production through StoryFlow, the loop-file instructions, the frame count and cast pairing
+are no longer open questions. **What remains unverified is the complete seven-clip pass** (stage 4)
+and the Draw Things cross-check (stage 6).
 
 Work top to bottom. Each stage is cheap and rules out the failure the next stage would otherwise
 hide. Do **not** start at stage 4: a full pass is seven clips of 80–450 frames each.

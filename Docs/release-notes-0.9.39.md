@@ -185,13 +185,18 @@ live stage is shown while a render runs.
   that catches the escaping bug. So `loopSave`, `loopLoad`, the video save path
   and the frame count are all verified on a real render.
 
-  What remains unverified is **pairing across the cast**: no run has produced all
-  seven anchors, so nothing yet proves that `anchor_001` is the labradoodle rather
-  than the previous character — the failure the loop-counter fix in `fc177d8`
-  addresses. Nor has the project been run in Draw Things for comparison, so
-  "renders in either engine" is still a claim about the file rather than about a
-  render. Stages 3, 4 and 6 of `Docs/podcast-auditions-run-procedure.md` are the
-  procedure for closing that.
+  **Pairing across the full cast is also verified.** A seven-pass run of phase A
+  produced `anchor_000` … `anchor_006`, and each one is the character in the
+  matching bible row: `anchor_001` is the labradoodle in its yellow bandana, not
+  the previous character's card. Both wildcards advance together — identity *and*
+  wardrobe — at every index, which is the regression check for the loop-counter
+  fix in `fc177d8`. Seven renders, seven images, no empty returns and no stalls.
+
+  What is still unverified is the **full seven-clip pass** — phase B has only been
+  run once, for one character — and the **Draw Things cross-check**, so "renders in
+  either engine" remains a claim about the file rather than about a render. Stages
+  4 and 6 of `Docs/podcast-auditions-run-procedure.md` are the procedure for
+  closing those.
 
 - **The Loop step's `repeat N times` field is easier to click, but the underlying
   cause is not fully understood.** It used to take several attempts to focus. Two
