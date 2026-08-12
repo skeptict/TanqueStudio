@@ -1,0 +1,103 @@
+{
+  "_schema": {
+    "_1_what_this_is": [
+      "The character bible. This file is the single source of truth for the project.",
+      "build_project.py reads it and emits every per-character card list from these rows,",
+      "so the IDENTITY and WARDROBE lists that appear in BOTH phases cannot drift apart.",
+      "Never hand-edit 'Podcast Auditions.json'. Edit this, then re-run build_project.py."
+    ],
+    "_2_todo_ned": [
+      "EVERY 'characters' row below is PLACEHOLDER. All of it must be replaced.",
+      "The placeholders are deliberately ugly so nobody mistakes them for finished copy.",
+      "'seed' is the one field that does NOT need replacing — see the field notes."
+    ],
+    "_3_row_count": [
+      "The number of rows here sets the loop count in both phases. Six is the design,",
+      "but any count works as long as every row is complete. Add or remove whole rows;",
+      "do not leave a row half-filled."
+    ],
+    "_4_fields": {
+      "name": "Internal label only. Never reaches the model. Used in verify_project.py's report.",
+      "identity": "One clause. Build, age, face, hair. Reads after 'a headshot ... of '. No trailing period, no leading space.",
+      "wardrobe": "One clause. Reads after ', wearing '. No trailing period, no leading space.",
+      "slate": "SPOKEN. The character naming themselves and the role. Written WITHOUT quotation marks — build_project.py adds them.",
+      "line": "SPOKEN. The second beat. Also written WITHOUT quotation marks.",
+      "voice": "One clause. Reads after ' in '. Describes delivery, not content. No trailing period.",
+      "seed": "Integer, pinned so a rejected anchor can be regenerated identically. Arbitrary values are fine; these ship usable. Not a TODO."
+    },
+    "_5_hard_rules": [
+      "NO double-quote characters (\") anywhere in any field. framesDialog sizes the clip by counting",
+      "words inside \"...\" spans, and build_project.py owns those spans. A stray quote in your text",
+      "splits a span and silently changes the frame count. verify_project.py fails on this.",
+      "slate + line together must be 20 SPOKEN WORDS OR FEWER. At wps 2.6 / padding 48, 20 words is",
+      "249 frames; 22 words is 265, which is past Tanque Studio's 257-frame cap while StoryflowPipeline.js",
+      "has no cap at all — so past 20 words the two engines silently render different lengths.",
+      "verify_project.py prints the per-character frame count and flags anything over 257."
+    ]
+  },
+  "characters": [
+    {
+      "name": "Skep",
+      "identity": "A striking bald man in his fifties with a salt-and-pepper beard",
+      "wardrobe": "a corduroy blazer and a yellow cravat",
+      "slate": "Today we are talking saved configurations",
+      "line": "They are the fastest way to repeat a look you liked",
+      "voice": "Warm, friendly tone",
+      "seed": 811001
+    },
+    {
+      "name": "Button",
+      "identity": "an adorable labradoodle puppy",
+      "wardrobe": "a yellow bandana",
+      "slate": "Ruff, ruff",
+      "line": "Bow-wow",
+      "voice": "soft barking",
+      "seed": 811002
+    },
+    {
+      "name": "Kira",
+      "identity": "A playful, attractive middle-aged woman with thick shaggy blonde hair pulled up in a loose bun, dark eyes",
+      "wardrobe": "loose colorful sundress",
+      "slate": "A config is every slider, saved together",
+      "line": "Model, steps, guidance, all of it, under one name",
+      "voice": "soft voice, vocal fry, playful tone",
+      "seed": 811003
+    },
+    {
+      "name": "Tiger",
+      "identity": "A powerful young jungle princess warrior",
+      "wardrobe": "leather studded armor over flowing linen robes",
+      "slate": "Get your settings right, then open the config menu",
+      "line": "Save as new, and name it something you will remember",
+      "voice": "husky, bold tone, confident and amused",
+      "seed": 811004
+    },
+    {
+      "name": "Cindy",
+      "identity": "Playful young woman with shaggy pixie rainbow hair, dark eye-liner",
+      "wardrobe": "Punk rock t-shirt, denim cut-off shorts, studded leather jewelry, tattoos",
+      "slate": "Getting it back is one tap",
+      "line": "Open the config list, pick your preset, everything snaps back",
+      "voice": "Soft Scottish accent, playful, enthusiastic tone",
+      "seed": 811005
+    },
+    {
+      "name": "Bunny",
+      "identity": "Young brunette woman in her 20s, Playful young woman with long dark wavy hair, dark eye-liner, freckles",
+      "wardrobe": "A loose-fitting pink bunny suit with long floppy ears on the hood.",
+      "slate": "One catch, and it gets everyone",
+      "line": "Saving a config does not save your prompt. Separate things",
+      "voice": "Soft Cockney British accent, playful, enthusiastic tone",
+      "seed": 811007
+    },
+    {
+      "name": "Abby",
+      "identity": "Young woman in her 20s, platinum blonde long wavy hair, full glossy lips, dark black eyes, freckles, the tip of her nose is painted black and she has whiskers drawn on her cheeks.",
+      "wardrobe": "a loose-fitting brown furry dog costume over her curvy figure, yellow bandana around her neck, exposed shoulder and bra strap, floppy dog ears",
+      "slate": "So make one config per model, once",
+      "line": "Then you never lose a good setup again",
+      "voice": "Soft British accent, giggling, playful",
+      "seed": 811006
+    }
+  ]
+}

@@ -1217,7 +1217,10 @@ final class GenerateViewModel {
         if models.isEmpty || !lastConnectionSucceeded {
             return "Draw Things returned no image — you may not be connected. Check the server address and shared secret in Settings → Draw Things, then hit refresh next to the model picker."
         }
-        return "Draw Things accepted the request but returned no image. With Bridge Mode on, renders go through your Draw Things+ account, and a stale session fails exactly this way — signing out of Draw Things+ and back in clears it. Otherwise the model may not be usable on that server, or the sampler may not suit it. Draw Things' own window shows what it actually did."
+        // Shared with StoryFlow via DrawThingsDiagnostics: this text was private here, so the
+        // engine logged a bare "No image returned" for the identical failure and the explanation
+        // never reached the surface that needed it most.
+        return "Draw Things accepted the request but returned no image. \(DrawThingsDiagnostics.noImageReturned)"
     }
 
     // MARK: — Dropped image handling

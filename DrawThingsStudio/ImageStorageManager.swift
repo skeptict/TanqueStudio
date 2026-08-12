@@ -296,6 +296,13 @@ enum ImageStorageManager {
     /// TS PNG is indistinguishable in shape from a DT one. DT's "v2" blob is
     /// deliberately NOT written — DT's reader never consumes it. TS-only fields
     /// ride in a namespaced "tanque" object DT ignores.
+    /// The DT-compatible metadata JSON for a config, for embedding in containers that are not
+    /// PNGs — currently the StoryFlow clip `.mp4`. Exactly the string the PNG writer embeds, so
+    /// a clip and its poster frame carry identical metadata and `exiftool` reads both the same.
+    static func dtMetadataJSON(config: DrawThingsGenerationConfig, prompt: String?) -> String? {
+        buildDTMetadataJSON(config: config, prompt: prompt)
+    }
+
     private static func buildDTMetadataJSON(config: DrawThingsGenerationConfig,
                                             prompt: String?) -> String? {
         var json: [String: Any] = [:]

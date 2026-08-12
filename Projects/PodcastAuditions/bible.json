@@ -1,0 +1,107 @@
+{
+  "_schema": {
+    "_1_what_this_is": [
+      "The character bible. This file is the single source of truth for the project.",
+      "build_project.py reads it and emits every per-character card list from these rows,",
+      "so the IDENTITY and WARDROBE lists that appear in BOTH phases cannot drift apart.",
+      "Never hand-edit 'Podcast Auditions.json'. Edit this, then re-run build_project.py."
+    ],
+    "_2_todo_ned": [
+      "EVERY 'characters' row below is PLACEHOLDER. All of it must be replaced.",
+      "The placeholders are deliberately ugly so nobody mistakes them for finished copy.",
+      "'seed' is the one field that does NOT need replacing — see the field notes."
+    ],
+    "_3_row_count": [
+      "The number of rows here sets the loop count in both phases. Six is the design,",
+      "but any count works as long as every row is complete. Add or remove whole rows;",
+      "do not leave a row half-filled."
+    ],
+    "_4_fields": {
+      "name": "Internal label only. Never reaches the model. Used in verify_project.py's report.",
+      "identity": "One clause. Build, age, face, hair. Reads after 'a headshot ... of '. No trailing period, no leading space.",
+      "wardrobe": "One clause. Reads after ', wearing '. No trailing period, no leading space.",
+      "slate": "SPOKEN. The character naming themselves and the role. Written WITHOUT quotation marks — build_project.py adds them.",
+      "line": "SPOKEN. The second beat. Also written WITHOUT quotation marks.",
+      "voice": "One clause. Reads after ' in '. Describes delivery, not content. No trailing period.",
+      "seed": "Integer, pinned so a rejected anchor can be regenerated identically. Arbitrary values are fine; these ship usable. Not a TODO."
+    },
+    "_5_hard_rules": [
+      "NO double-quote characters (\") anywhere in any field. framesDialog sizes the clip by counting",
+      "words inside \"...\" spans, and build_project.py owns those spans. A stray quote in your text",
+      "splits a span and silently changes the frame count. verify_project.py fails on this.",
+      "There is NO frame cap, in either engine (2026-08-11). Spoken words set the clip length and",
+      "that is all: a 41-word character is 449 frames, 18 seconds, in both Tanque Studio and Draw",
+      "Things. Tanque Studio used to clamp at 257 and Draw Things never did, which made one project",
+      "render two different lengths; the clamp is gone. The real limit is what a given model at a",
+      "given canvas size will render, which no number here can anticipate.",
+      "verify_project.py and the Cast & Staging pane both print the per-character frame count and",
+      "duration — the judgement about what is too long is yours."
+    ]
+  },
+
+  "characters": [
+    {
+      "name": "Skep",
+      "identity": "A striking bald man in his fifties with a salt-and-pepper beard",
+      "wardrobe": "a corduroy blazer and a yellow cravat",
+      "slate": "Hi there. I'm here for the audition",
+      "line": "Hello, welcome back, be sure to hit like and subscribe",
+      "voice": "Warm, friendly tone",
+      "seed": 811001
+    },
+    {
+      "name": "Button",
+      "identity": "an adorable labradoodle puppy",
+      "wardrobe": "a yellow bandana",
+      "slate": "Ruff, ruff",
+      "line": "Bow-wow",
+      "voice": "soft barking",
+      "seed": 811002
+    },
+    {
+      "name": "Kira",
+      "identity": "A playful, attractive woman with thick shaggy blonde hair pulled up in a loose bun, dark eyes",
+      "wardrobe": "loose colorful sundress",
+      "slate": "So, um, yeah, I'm here for the audition. Name's Kira",
+      "line": "This just in, puppies released, film at eleven",
+      "voice": "soft voice, vocal fry, playful tone",
+      "seed": 811003
+    },
+    {
+      "name": "Tiger",
+      "identity": "A powerful young jungle princess warrior",
+      "wardrobe": "leather studded armor over flowing linen robes",
+      "slate": "I think I'm what you're looking for. Name's Tiger",
+      "line": "Are the frontier models even important anymore? We'll find out!",
+      "voice": "husky, bold tone, confident and amused",
+      "seed": 811004
+    },
+    {
+      "name": "Cindy",
+      "identity": "Playful young woman with shaggy pixie rainbow hair, dark eye-liner",
+      "wardrobe": "Punk rock t-shirt, denim cut-off shorts, studded leather jewelry, tattoos",
+      "slate": "I'm Cindy. I think I'll be perfect for this",
+      "line": "This week in Krea LoRAs, we'll dig deep to find the best new models!",
+      "voice": "Soft Scottish accent, playful, enthusiastic tone",
+      "seed": 811005
+    },
+    {
+      "name": "Bunny",
+      "identity": "Young brunette woman in her 20s, Playful young woman with long dark wavy hair, dark eye-liner, freckles",
+      "wardrobe": "A loose-fitting pink bunny suit with long floppy ears on the hood.",
+      "slate": "My friends call me Bunny. And I'll tell you up front, if I can't do this with Abby, then I don't want to do it.",
+      "line": "Once you've gotten the hang of a model like Z Image Turbo, your whole world changes.",
+      "voice": "Soft Cockney British accent, playful, enthusiastic tone",
+      "seed": 811006
+    },
+    {
+      "name": "Abby",
+      "identity": "Young woman in her 20s, platinum blonde long wavy hair, full glossy lips, dark black eyes, freckles, the tip of her nose is painted black and she has whiskers drawn on her cheeks.",
+      "wardrobe": "a loose-fitting brown furry dog costume over her curvy figure, yellow bandana around her neck, exposed shoulder and bra strap, floppy dog ears",
+      "slate": "So, this is for the podcast, right? This is rolling?",
+      "line": "I just love to see people Draw Things",
+      "voice": "Soft British accent, giggling, playful",
+      "seed": 811006
+    }
+  ]
+}

@@ -172,6 +172,58 @@ final class DrawThingsGRPCClient: DrawThingsProvider {
         return .seconds(overrideMinutes * 60)
     }
 
+    // MARK: - Progress heartbeat
+
+    /// Last time Draw Things reported *different* progress.
+    ///
+    /// The watchdog used to budget total elapsed time, which forces one number to cover two
+    /// unrelated things: how long the work legitimately takes, and how long silence should be
+    /// tolerated. Those have nothing to do with each other — a 233-frame clip is hours of
+    /// legitimate work, and thirty seconds of total silence from a server that already said
+    /// "sampling step 4" is still fine.
+    ///
+    /// Keyed on the FULL stage description, not the collapsed name `StageTrace` records:
+    /// `sampling(step: 3)` → `sampling(step: 4)` is progress, and that is the only signal a long
+    /// sampling run emits. Collapsing it to "sampling" would make an hour of healthy work look
+    /// identical to an hour of nothing.
+    final class ProgressHeartbeat: @unchecked Sendable {
+        private let lock = NSLock()
+        private var lastChange = Date()
+        private var lastDescription = ""
+        private var currentStage = ""
+
+        /// Record a stage observation. Only a *change* counts as progress.
+        func observe(_ description: String) {
+            lock.lock()
+            defer { lock.unlock() }
+            guard description != lastDescription else { return }
+            lastDescription = description
+            currentStage = String(description.prefix { $0 != "(" })
+            lastChange = Date()
+        }
+
+        /// Seconds since progress last changed, and the stage it has been sitting in.
+        func idle() -> (seconds: Double, stage: String) {
+            lock.lock()
+            defer { lock.unlock() }
+            return (Date().timeIntervalSince(lastChange), currentStage.isEmpty ? "no stage reported" : currentStage)
+        }
+    }
+
+    /// How long Draw Things may report nothing new before the render is called dead.
+    ///
+    /// Deliberately the same derived budget as before, now measured from the last progress event
+    /// rather than from the start. That makes the change strictly more permissive: every render
+    /// that survives today still survives, and one that keeps reporting progress can now run
+    /// arbitrarily long without being killed for it. The previous behaviour is the special case
+    /// where a render reports nothing at all.
+    ///
+    /// It does NOT make a genuinely silent render wait longer — the still that stalled in
+    /// `imageEncoding` for 284s and never reached `sampling` still fires at the same 300s floor,
+    /// because it really had made no progress. Raise `generateTimeoutOverrideKey` for a server
+    /// that queues (DT+ cloud), which is a different problem from a hung one.
+    static let heartbeatCheckInterval: Duration = .seconds(2)
+
     /// Carries a non-Sendable payload ([NSImage]) out of the task group below.
     /// Nothing actually crosses an isolation domain — the producing child task and
     /// the consuming caller are both on the main actor — so this only exists to
@@ -190,16 +242,38 @@ final class DrawThingsGRPCClient: DrawThingsProvider {
     /// Internal rather than private so the race itself can be exercised against a
     /// deliberately hanging operation — a budget that is correct on paper proves
     /// nothing about whether the group actually unblocks. See `GenerateTimeoutTests`.
+    /// - Parameter heartbeat: when supplied, `timeout` is the allowance for *silence* rather than
+    ///   for the whole render, and the clock restarts every time Draw Things reports something
+    ///   new. Omit it to keep the old total-elapsed behaviour.
     func withGenerateTimeout<T>(
         _ timeout: Duration,
+        heartbeat: ProgressHeartbeat? = nil,
+        checkInterval: Duration = DrawThingsGRPCClient.heartbeatCheckInterval,
         operation: @escaping @MainActor () async throws -> T
     ) async throws -> T {
         let seconds = Int(timeout.components.seconds)
         return try await withThrowingTaskGroup(of: MainActorBox<T>.self) { group in
             group.addTask { @MainActor in MainActorBox(value: try await operation()) }
             group.addTask {
-                try await Task.sleep(for: timeout)
-                throw DrawThingsError.generationTimedOut(seconds: seconds)
+                guard let heartbeat else {
+                    try await Task.sleep(for: timeout)
+                    throw DrawThingsError.generationTimedOut(seconds: seconds)
+                }
+                // Poll rather than sleep-to-deadline: the deadline moves every time progress
+                // arrives, so there is nothing fixed to sleep until.
+                // Fractional, not `components.seconds`: that truncates, so any sub-second
+                // allowance becomes 0 and the watchdog fires on its first check. Production
+                // allowances are minutes and would never have shown it — the tests did.
+                let parts = timeout.components
+                let allowance = Double(parts.seconds) + Double(parts.attoseconds) / 1e18
+                while true {
+                    try await Task.sleep(for: checkInterval)
+                    let (idle, stage) = heartbeat.idle()
+                    if idle >= allowance {
+                        RequestLogger.shared.logGRPCStall(stage: stage, seconds: Int(idle))
+                        throw DrawThingsError.generationTimedOut(seconds: seconds)
+                    }
+                }
             }
             defer { group.cancelAll() }
             guard let first = try await group.next() else {
@@ -217,6 +291,24 @@ final class DrawThingsGRPCClient: DrawThingsProvider {
         mask: NSImage?,
         config: DrawThingsGenerationConfig,
         onProgress: ((GenerationProgress) -> Void)?
+    ) async throws -> [NSImage] {
+        // `DrawThingsProvider` fixes this signature and Swift does not match default arguments
+        // against a protocol requirement, so the stage-reporting variant is an overload rather
+        // than an extra defaulted parameter.
+        try await generateImage(prompt: prompt, sourceImage: sourceImage, mask: mask,
+                                config: config, onProgress: onProgress, onStage: nil)
+    }
+
+    /// As above, plus `onStage`: the raw Draw Things stage name on every change, including the
+    /// encoding stages `mapStage` drops. Callers that want to show *what* a long render is doing
+    /// — rather than only how far a mapped stage has got — use this one.
+    func generateImage(
+        prompt: String,
+        sourceImage: NSImage?,
+        mask: NSImage?,
+        config: DrawThingsGenerationConfig,
+        onProgress: ((GenerationProgress) -> Void)?,
+        onStage: ((String) -> Void)?
     ) async throws -> [NSImage] {
 
         // Ensure we have a connected client
@@ -258,11 +350,20 @@ final class DrawThingsGRPCClient: DrawThingsProvider {
         // that returns no image is diagnosed by *where it stopped*, and the
         // unmapped stages are the informative ones. See `logGRPCStages`.
         let stageTrace = StageTrace()
+        // Feeds the watchdog. Distinct from stageTrace, which collapses `sampling(step:)`
+        // down to `sampling` for readability — exactly the detail the watchdog needs.
+        let heartbeat = ProgressHeartbeat()
         let progressPoller = Task { [weak self] in
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: 150_000_000)
                 guard let stage = self?.client?.currentProgress?.stage else { continue }
-                stageTrace.record(String(describing: stage))
+                let description = String(describing: stage)
+                stageTrace.record(description)
+                heartbeat.observe(description)
+                // Surface the raw stage name even for stages `mapStage` drops. Those are
+                // precisely the ones a stall sits in — the render that hung sat in
+                // `imageEncoding`, which carries no step count and so reported nothing at all.
+                onStage?(String(description.prefix { $0 != "(" }))
                 guard let mapped = Self.mapStage(stage, totalSteps: totalSteps) else { continue }
                 onProgress?(mapped)
             }
@@ -297,7 +398,7 @@ final class DrawThingsGRPCClient: DrawThingsProvider {
                 let configData = try grpcConfig.toFlatBufferData()
                 let imageData = try ImageHelpers.imageToDTTensor(source, forceRGB: true)
                 let maskData = try ImageHelpers.createMaskFromAlpha(mask)
-                let resultData = try await withGenerateTimeout(timeout) {
+                let resultData = try await withGenerateTimeout(timeout, heartbeat: heartbeat) {
                     try await service.generateImage(
                         prompt: prompt,
                         negativePrompt: config.negativePrompt,
@@ -309,7 +410,11 @@ final class DrawThingsGRPCClient: DrawThingsProvider {
                         progressHandler: { signpost in
                             // Raw signposts, straight off the wire on this path.
                             if let raw = signpost?.signpost {
-                                stageTrace.record(String(describing: raw))
+                                let description = String(describing: raw)
+                                stageTrace.record(description)
+                                heartbeat.observe(description)
+                                let name = String(description.prefix { $0 != "(" })
+                                await MainActor.run { onStage?(name) }
                             }
                             guard let mapped = Self.mapSignpost(signpost, totalSteps: totalSteps) else { return }
                             await MainActor.run { onProgress?(mapped) }
@@ -321,7 +426,7 @@ final class DrawThingsGRPCClient: DrawThingsProvider {
                 return try resultData.map { try ImageHelpers.dtTensorToImage($0) }
             }
 
-            let images = try await withGenerateTimeout(timeout) {
+            let images = try await withGenerateTimeout(timeout, heartbeat: heartbeat) {
                 try await client.generateImage(
                     prompt: prompt,
                     negativePrompt: config.negativePrompt,

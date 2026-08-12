@@ -35,8 +35,31 @@ final class StoryFlowEngine {
     var stepLog: [String] = []
     var currentStepIndex: Int = 0
     var outputFolder: URL?
+
+    /// Set to 25 when `framesDialog` computed the current frame count, cleared when a bare
+    /// `frames` item overwrites it. See `clipFPS(for:framesDialogFPS:)`.
+    private var framesDialogFPS: Int32?
     var totalSteps: Int = 0
     var stepProgress: GenerationProgress = .complete
+
+    /// The raw stage Draw Things last reported, and when it entered it.
+    ///
+    /// `stepProgress` covers sampling and decoding only — `mapStage` returns nil for the encoding
+    /// stages, so the bar deliberately holds its last value rather than snapping to zero. That is
+    /// right for a progress bar and wrong for diagnosis: a render that hangs hangs in exactly
+    /// those unmapped stages. The clip that stalled sat in `imageEncoding` for 284 seconds while
+    /// the UI showed nothing changing at all.
+    var currentStage: String = ""
+    var currentStageSince: Date?
+
+    /// e.g. "imageEncoding · 4m12s". Empty when no stage has been reported.
+    var currentStageLabel: String {
+        guard !currentStage.isEmpty, let since = currentStageSince else { return "" }
+        let elapsed = Int(Date().timeIntervalSince(since))
+        let clock = elapsed >= 60 ? "\(elapsed / 60)m\(String(format: "%02d", elapsed % 60))s"
+                                  : "\(elapsed)s"
+        return "\(currentStage) · \(clock)"
+    }
 
     private var runTask: Task<Void, Never>?
 
@@ -59,6 +82,10 @@ final class StoryFlowEngine {
 
     /// One-shot guard for the "resolved loop folder" log line.
     private var didLogLoopRoot = false
+
+    /// Renders in this run that Draw Things answered with an empty image list. Counted so the
+    /// completion line can say so — a run that produced nothing must not report a clean "✓".
+    private var emptyRenderCount = 0
 
     /// Set by the endLoop handler to cause the run loop to jump to a specific index.
     private var jumpToIndex: Int? = nil
@@ -163,6 +190,7 @@ final class StoryFlowEngine {
         wildcards = StoryFlowWildcardRegistry()
         globalLoopCounter = 0
         loopStartCount = 0
+        framesDialogFPS = nil
         didLogLoopRoot = false
         jumpToIndex = nil
 
@@ -195,6 +223,13 @@ final class StoryFlowEngine {
                 if Task.isCancelled {
                     runState = .cancelled
                     log("⏹ Cancelled")
+                } else if emptyRenderCount > 0 {
+                    // Every step ran, so this is not a failure — but "✓ Completed" over a run
+                    // that rendered nothing is the kind of green light this whole project exists
+                    // to stop giving.
+                    runState = .completed
+                    log("⚠ Completed, but \(emptyRenderCount) render\(emptyRenderCount == 1 ? "" : "s") "
+                      + "produced no image. \(DrawThingsDiagnostics.noImageReturned)")
                 } else {
                     runState = .completed
                     log("✓ Completed")
@@ -466,6 +501,10 @@ final class StoryFlowEngine {
                 return
             }
             currentConfig.numFrames = Int(n)
+            // A bare `frames` count carries no rate of its own, so fall back to the model family.
+            // (The Editor's `frames` vs `frames8` split encodes 16fps Wan vs 25fps LTX, but that
+            // distinction is erased on export — both become `frames` — so it cannot be read here.)
+            framesDialogFPS = nil
             log("  ✓ frames → \(Int(n))")
 
         case .passthrough where step.parameters["itemType"] == "negPrompt":
@@ -560,6 +599,10 @@ final class StoryFlowEngine {
             let padding = Int(Self.numberValue(obj["padding"]) ?? 0)
             let spoken = Self.spokenFrameCount(in: currentPrompt, wordsPerSecond: wps)
             currentConfig.numFrames = spoken + padding
+            // framesDialog's formula is `words / wps * 25` — 25fps by construction, whatever the
+            // model. Recording it here is what lets clip assembly use the rate the frame count
+            // was actually derived from instead of guessing from the model name.
+            framesDialogFPS = 25
             log("  ✓ framesDialog → \(spoken) + \(padding) pad = \(currentConfig.numFrames) frames")
             // `if (value.generate) { generate(); concat = ""; }` — the only
             // instruction besides `prompt` that DT counts as a render, which is
@@ -727,17 +770,55 @@ final class StoryFlowEngine {
 
     /// Frame count derived from the words spoken in the accumulated prompt.
     ///
+    /// Playback rate for an assembled clip.
+    ///
+    /// **Deliberately does not read `config.fps`.** That field is Draw Things' `fps_id`
+    /// (`config.fbs:139`, default 5), and it is not a frame rate at all — it is a conditioning
+    /// input consumed by exactly one model branch, `case .svdI2v` in `UNetFixedEncoder.swift:186`,
+    /// where it becomes a time-embedding beside `motionBucketId` and `condAug`. LTX, Wan and
+    /// Hunyuan never read it. Assembling an LTX clip at `config.fps` would use DT's default of 5
+    /// and produce a movie five times too slow.
+    ///
+    /// So the rate comes from where the frame COUNT came from: `framesDialog` derives it at 25fps
+    /// by construction, and otherwise the model family decides.
+    ///
+    /// LTX is 25 here, matching the StoryFlow Editor's own label for `frames8`
+    /// ("25fps (LTX2)") and `framesDialog`'s ×25. Note `GenerateViewModel.seriesFPS` says 24 for
+    /// the same family and prefers `meta.fps` over any default — both worth revisiting, and
+    /// deliberately left alone here rather than changed in a StoryFlow commit.
+    static func clipFPS(for config: DrawThingsGenerationConfig, framesDialogFPS: Int32?) -> Int32 {
+        if let fps = framesDialogFPS { return fps }
+        switch config.modelFamily {
+        case .ltx:                            return 25
+        case .wan, .hunyuan, .cogVideo, .mochi, .animateDiff: return 16
+        default:                              return 16
+        }
+    }
+
     /// `framesDialog(pacing)` in the pipeline: count whitespace-separated tokens
     /// inside every `"…"` span of the accumulator, divide by words-per-second,
     /// multiply by 25 fps, round **up** to a multiple of 8, then add one. Only
     /// quoted spans count — unquoted stage direction is not spoken.
     ///
-    /// Capped at 257 — Draw Things' own generation UI does not accept more frames
-    /// than that. Unlike Generate's free-form numFrames field and its JSON-paste
-    /// path (both deliberately uncapped, so a power user can hand-author past DT's
-    /// UI limit), nothing about a word count derived from spoken dialogue implies a
-    /// render that large is ever wanted — a long monologue in a StoryFlow prompt
-    /// would otherwise silently request an enormous, unbounded render.
+    /// **Uncapped, deliberately** (2026-08-11, Ned's call). This used to clamp at 257 on the
+    /// grounds that Draw Things' own generation UI does not offer more. The clamp cost more
+    /// than it bought:
+    ///
+    /// - It made Tanque Studio and `StoryflowPipeline.js` render **different lengths** from one
+    ///   project, silently, past 27 spoken words. That is the exact class of divergence the rest
+    ///   of this code goes out of its way to eliminate, and it was the only place the two
+    ///   engines were deliberately made to disagree.
+    /// - It landed on the spoken count and padding was added afterwards, so the number it
+    ///   actually produced was `257 + padding`, not 257. A ceiling that is not the ceiling it
+    ///   advertises is worse than none.
+    /// - The real limit is what a given model at a given canvas size will render — for Draw
+    ///   Things+, what it renders without extra cost — which varies by both and cannot be
+    ///   anticipated by a constant here.
+    ///
+    /// What replaces it is visibility rather than a different number: this step logs its frame
+    /// count on every run, and Cast & Staging shows each character's frame count and duration
+    /// live, before anything renders. Generate's own `numFrames` field and its JSON-paste path
+    /// have always been uncapped for the same reason.
     static func spokenFrameCount(in text: String, wordsPerSecond: Double) -> Int {
         guard wordsPerSecond > 0,
               let regex = try? NSRegularExpression(pattern: "\"([^\"]+)\"") else { return 1 }
@@ -752,8 +833,7 @@ final class StoryFlowEngine {
             wordCount += span.isEmpty ? 1 : span.split(whereSeparator: \.isWhitespace).count
         }
         let rawFrames = (Double(wordCount) / wordsPerSecond) * 25.0
-        let frames = Int((rawFrames / 8).rounded(.up)) * 8 + 1
-        return min(frames, 257)
+        return Int((rawFrames / 8).rounded(.up)) * 8 + 1
     }
 
     /// Suspends the run until the approval sheet hands back an edited prompt.
@@ -1012,12 +1092,28 @@ final class StoryFlowEngine {
             config: cfg,
             onProgress: { [weak self] p in
                 Task { @MainActor [weak self] in self?.stepProgress = p }
+            },
+            onStage: { [weak self] stage in
+                Task { @MainActor [weak self] in
+                    guard let self, self.currentStage != stage else { return }
+                    self.currentStage = stage
+                    self.currentStageSince = Date()
+                }
             }
         )
         stepProgress = .complete
+        currentStage = ""
+        currentStageSince = nil
 
         guard let img = images.first else {
-            log("  ⚠ No image returned from generate step")
+            // Draw Things answered successfully with an empty image list. This used to log a
+            // bare "No image returned", which is true and useless: the run carried on, reported
+            // "✓ Completed", and left the user looking at a still where a clip should be with
+            // nothing to explain it. It cost an afternoon on 2026-08-11 — twice over, because
+            // the app already had the real explanation in GenerateViewModel and StoryFlow could
+            // not reach it.
+            emptyRenderCount += 1
+            log("  ⚠ Draw Things returned NO image for this render. \(DrawThingsDiagnostics.noImageReturned)")
             return
         }
 
@@ -1036,16 +1132,46 @@ final class StoryFlowEngine {
         }
 
         // Save to output folder and fire gallery callback
+        //
+        // A video render returns EVERY frame. This used to keep `images.first` and drop the rest
+        // on the floor: the full clip was rendered and paid for, one frame was written, and
+        // nothing said so — the log line read "✓ Generated image" either way. StoryFlow predates
+        // video (every project in `misc/` is stills-only), so nothing exercised it until the
+        // Podcast Auditions project did.
         var savedURL: URL?
         if let folder = outputFolder {
-            savedURL = try? StoryFlowStorage.shared.saveOutputImage(
-                img,
-                stepLabel: step.displayLabel,
-                to: folder,
-                config: cfg,
-                prompt: prompt
-            )
-            if let url = savedURL { log("  💾 Saved to \(url.lastPathComponent)") }
+            if images.count > 1 {
+                let fps = Self.clipFPS(for: cfg, framesDialogFPS: framesDialogFPS)
+                do {
+                    let clip = try await StoryFlowStorage.shared.saveOutputClip(
+                        images,
+                        stepLabel: step.displayLabel,
+                        to: folder,
+                        fps: fps,
+                        config: cfg,
+                        prompt: prompt
+                    )
+                    savedURL = clip.posterURL
+                    log("  🎬 Saved \(images.count) frames at \(fps) fps → "
+                      + "\(clip.movieURL.lastPathComponent) (frames in "
+                      + "\(clip.movieURL.deletingPathExtension().lastPathComponent)/)")
+                } catch {
+                    // Never lose the render to a muxing problem: fall back to the poster frame.
+                    log("  ⚠ Clip assembly failed (\(error.localizedDescription)) — saving frame 0 only")
+                    savedURL = try? StoryFlowStorage.shared.saveOutputImage(
+                        img, stepLabel: step.displayLabel, to: folder, config: cfg, prompt: prompt
+                    )
+                }
+            } else {
+                savedURL = try? StoryFlowStorage.shared.saveOutputImage(
+                    img,
+                    stepLabel: step.displayLabel,
+                    to: folder,
+                    config: cfg,
+                    prompt: prompt
+                )
+                if let url = savedURL { log("  💾 Saved to \(url.lastPathComponent)") }
+            }
         }
         // Notify gallery so the image appears with metadata
         onImageGenerated?(img, cfg, prompt, savedURL)

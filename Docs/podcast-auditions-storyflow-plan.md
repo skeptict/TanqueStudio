@@ -243,9 +243,30 @@ If the card-count groups aren't all `6`, the lockstep is broken and characters w
 | 14 | 185 | 7.4 s |
 | 18 | 225 | 9.0 s |
 | 20 | 249 | 10.0 s |
-| 22 | 265 | **over Tanque Studio's cap** |
+| 22 | 265 | 10.6 s |
+| 41 | 449 | 18.0 s |
 
-**Write every character to 20 spoken words or fewer.** Tanque Studio caps `spokenFrameCount` at 257 deliberately; `StoryflowPipeline.js` has no cap. Past 20 words the two engines silently render different lengths.
+**There is no frame cap, in either engine** (2026-08-11). Write a character as long as the shot
+wants to be; the number is what the words imply.
+
+> ⚠️ **This section has been wrong twice, in opposite directions. Both corrections are here.**
+>
+> **First it said 20 words.** That compared the *padded total* against 257 and flagged characters
+> both engines rendered identically. Tanque Studio's clamp landed on the `8k+1` spoken count
+> *before* padding was added, so the real divergence point was 27 words, and a clamped character
+> rendered at `257 + padding` — never at 257 flat.
+>
+> **Then the clamp itself went.** It made Tanque Studio and `StoryflowPipeline.js` render
+> different lengths from one project, silently — the only place the two engines were deliberately
+> made to disagree — and a ceiling that isn't the ceiling it advertises is worse than none. The
+> real limit is what a given model at a given canvas size will actually render, which for Draw
+> Things+ is also a question of what renders without extra cost; it varies by both and no constant
+> in the code can anticipate it.
+>
+> What replaces it is visibility: the run log states the frame count on every `framesDialog` step,
+> and Cast & Staging shows each character's frame count and duration live, before anything renders.
+> `StoryFlowCastEmitterTests.testTheBudgetAgreesWithTheEnginesOwnSpokenFrameCount` pins the pane's
+> helper to the engine's own function — including well past 257, which is where they last drifted.
 
 ---
 

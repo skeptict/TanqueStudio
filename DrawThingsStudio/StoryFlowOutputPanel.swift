@@ -111,6 +111,17 @@ struct StoryFlowOutputPanel: View {
             ProgressView(value: vm.engine.stepProgress.fraction)
                 .progressViewStyle(.linear)
                 .tint(DashboardDS.brass)
+            // What Draw Things is actually doing, including the stages the progress bar
+            // deliberately ignores. A render sitting in `imageEncoding` for four minutes now
+            // says so, instead of looking identical to a dead connection.
+            if !vm.engine.currentStage.isEmpty {
+                TimelineView(.periodic(from: .now, by: 1)) { _ in
+                    Text(vm.engine.currentStageLabel)
+                        .font(TanqueDS.Font.mono(10))
+                        .foregroundStyle(DashboardDS.muted)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
             ProgressView(value: Double(vm.engine.currentStepIndex),
                          total: Double(max(vm.engine.totalSteps, 1)))
                 .progressViewStyle(.linear)

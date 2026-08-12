@@ -7,9 +7,13 @@ import SwiftUI
 struct DashboardLabsPage: View {
     let storyFlowVM: StoryFlowViewModel
     @State private var selectedTab: LabsTab = .storyFlow
+    /// Owned here rather than passed in, so the open project folder and any unsaved cast edits
+    /// survive a switch to another Labs tab and back.
+    @State private var castVM = StoryFlowCastViewModel()
 
     private enum LabsTab: String, CaseIterable {
         case storyFlow = "StoryFlow"
+        case castStaging = "Cast & Staging"
         case storyStudio = "Story Studio"
         case renderQueue = "Render Queue"
     }
@@ -36,6 +40,8 @@ struct DashboardLabsPage: View {
                 switch selectedTab {
                 case .storyFlow:
                     StoryFlowView(vm: storyFlowVM)
+                case .castStaging:
+                    StoryFlowCastPane(vm: castVM)
                 case .storyStudio:
                     // Story Studio needs a real GenerateViewModel + navigate-away
                     // closure it can call after "Send to Generate" — the Labs
