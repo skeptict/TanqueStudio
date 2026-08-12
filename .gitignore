@@ -36,3 +36,9 @@ Tests/
 # Release archives
 Archives/
 .build-universal/
+
+# Cast & Staging projects. The repo ships exactly one demo project; New Project… defaults to
+# whichever folder you last opened one from, which is usually this one, so anything else that
+# lands here is scratch and must not ride along in a release.
+Projects/*
+!Projects/PodcastAuditions/

@@ -27,10 +27,23 @@ final class StoryFlowCastEmitterTests: XCTestCase {
 
     private static let projectFolders = ["PodcastAuditions", "PodcastEpisodes-beta"]
 
+    /// `Projects/` holds the single demo project that ships with the repo. Everything else the
+    /// pinning test covers lives in `TestProjects/`, which keeps it out of the demo surface
+    /// without dropping it from the comparison — deleting it instead would make this test
+    /// *skip*, silently halving the coverage that the two-emitter claim rests on.
+    ///
+    /// Both directories sit exactly two levels below the repo root because the Python
+    /// generators derive the repo from their own location (`REPO = HERE.parent.parent`) in
+    /// order to write `TanqueStudioTests/Fixtures/`. Moving either one deeper breaks that.
+    private static func parentDirectory(for name: String) -> String {
+        name == "PodcastAuditions" ? "Projects" : "TestProjects"
+    }
+
     private func folder(_ name: String) throws -> URL {
-        let url = Self.repoRoot.appendingPathComponent("Projects").appendingPathComponent(name)
+        let parent = Self.parentDirectory(for: name)
+        let url = Self.repoRoot.appendingPathComponent(parent).appendingPathComponent(name)
         try XCTSkipUnless(FileManager.default.fileExists(atPath: url.path),
-                          "Projects/\(name) is not in this checkout")
+                          "\(parent)/\(name) is not in this checkout")
         return url
     }
 
