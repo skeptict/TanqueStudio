@@ -1068,18 +1068,27 @@ struct LoRAsSection: View {
             if vm.config.loras.isEmpty {
                 Text("No LoRAs applied").font(TanqueDS.Font.mono(11)).foregroundStyle(DashboardDS.muted)
             }
-            ForEach(Array(vm.config.loras.enumerated()), id: \.offset) { index, lora in
+            // Identified and bound by `file`, never by array position. `addLoRA` refuses a
+            // duplicate file, so it is a real identity. An index captured in a row's Binding
+            // goes stale the instant a removal shrinks the array, and SwiftUI still evaluates
+            // that Binding during the same update pass — which crashed on deselect in 0.9.39.
+            ForEach(vm.config.loras, id: \.file) { lora in
+                let file = lora.file
                 HStack(spacing: 8) {
-                    Text(displayName(for: lora.file))
+                    Text(displayName(for: file))
                         .font(TanqueDS.Font.mono(11)).foregroundStyle(DashboardDS.muted2)
                         .lineLimit(1).truncationMode(.middle)
-                    Slider(value: Binding(get: { vm.config.loras[index].weight },
-                                           set: { vm.config.loras[index].weight = $0 }), in: 0...1.5, step: 0.05)
+                    Slider(value: Binding(
+                        get: { vm.config.loras.first(where: { $0.file == file })?.weight ?? lora.weight },
+                        set: { newValue in
+                            guard let i = vm.config.loras.firstIndex(where: { $0.file == file }) else { return }
+                            vm.config.loras[i].weight = newValue
+                        }), in: 0...1.5, step: 0.05)
                         .tint(DashboardDS.brass)
                         .frame(width: 70)
                     Text(String(format: "%.2f", lora.weight))
                         .font(TanqueDS.Font.mono(10.5)).foregroundStyle(DashboardDS.brass).frame(width: 32, alignment: .trailing)
-                    Button { vm.removeLoRA(at: IndexSet(integer: index)) } label: {
+                    Button { vm.removeLoRA(file: file) } label: {
                         Image(systemName: "xmark.circle.fill").foregroundStyle(DashboardDS.muted)
                     }
                     .buttonStyle(.plain)

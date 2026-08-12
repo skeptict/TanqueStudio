@@ -1246,8 +1246,12 @@ final class GenerateViewModel {
         config.loras.append(.init(file: lora.filename, weight: lora.defaultWeight))
     }
 
-    func removeLoRA(at offsets: IndexSet) {
-        config.loras.remove(atOffsets: offsets)
+    /// Remove by identity, not by position. A row's captured index is already stale by the
+    /// time the removal is applied, and the surviving rows' bindings are re-evaluated in the
+    /// same update pass — so an index-based remove can subscript past the end and trap.
+    /// `addLoRA` rejects a duplicate file, so `file` identifies a row uniquely.
+    func removeLoRA(file: String) {
+        config.loras.removeAll { $0.file == file }
     }
 
     // MARK: — Aspect ratio
