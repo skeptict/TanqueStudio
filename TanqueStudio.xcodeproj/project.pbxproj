@@ -44,6 +44,7 @@
 				"Resources/LLMOperations/03-cinematic-style.md",
 				"Resources/LLMOperations/04-simplify-focus.md",
 				"Resources/LLMOperations/05-generate-from-concept.md",
+				"Resources/LLMOperations/06-describe-image.md",
 			);
 			target = FD31E3D72F184A4D003E0C4C /* TanqueStudio */;
 		};

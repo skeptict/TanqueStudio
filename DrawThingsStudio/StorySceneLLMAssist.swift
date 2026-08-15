@@ -22,11 +22,22 @@ final class StorySceneLLMAssistant {
     var busyField: String?
     var errorText: String?
     private(set) var operations: [LLMOperation] = []
+    /// Tracked separately from `operations.isEmpty`: once vision operations are
+    /// filtered out, a folder holding only those would leave the array empty and
+    /// reload the whole folder on every menu open.
+    private var didLoadOperations = false
 
     var isBusy: Bool { busyField != nil }
 
     func loadOperationsIfNeeded() {
-        if operations.isEmpty { operations = LLMOperationLoader.loadAll() }
+        guard !didLoadOperations else { return }
+        didLoadOperations = true
+        // Text operations only. Story Studio enhances a text field — it has no
+        // canvas or moodboard to draw a picture from, and `enhance` sends text.
+        // A vision operation offered here would fire its "you will be shown one
+        // or more images" system prompt with no image attached and return
+        // nonsense, so it must not appear in the wand menu at all.
+        operations = LLMOperationLoader.loadAll().filter { !$0.usesImage }
     }
 
     // MARK: Per-field enhance

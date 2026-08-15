@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 
 // MARK: - LLM Provider
@@ -31,6 +32,9 @@ enum LLMError: LocalizedError {
     case emptyResponse
     case invalidURL
     case decodingFailed
+    case imageEncodingFailed
+    case noImageAvailable
+    case modelRejectedImage(String)
 
     var errorDescription: String? {
         switch self {
@@ -38,6 +42,10 @@ enum LLMError: LocalizedError {
         case .emptyResponse:       return "LLM returned an empty response"
         case .invalidURL:          return "Invalid base URL"
         case .decodingFailed:      return "Failed to decode LLM response"
+        case .imageEncodingFailed: return "Couldn't encode the image for the LLM"
+        case .noImageAvailable:    return "No image to describe — generate one, or pick another source"
+        case .modelRejectedImage(let model):
+            return "\(model) rejected the image — it's most likely a text-only model. Pick a vision model (llava, qwen2.5-vl) in MODEL above."
         }
     }
 }
@@ -48,13 +56,18 @@ struct LLMService {
 
     /// Run an arbitrary LLM operation defined by a system prompt.
     /// Used by AssistTabView with the selected LLMOperation's systemPrompt.
+    ///
+    /// Passing `images` sends a multimodal request — the user message becomes a
+    /// content-part array instead of a bare string. This requires a vision-capable
+    /// model on the other end; see `chat` for what a text-only model does with it.
     static func runOperation(
         systemPrompt: String,
         input: String,
         model: String,
         baseURL: String,
         provider: LLMProvider,
-        apiKey: String = ""
+        apiKey: String = "",
+        images: [NSImage] = []
     ) async throws -> String {
         return try await chat(
             system: systemPrompt,
@@ -62,7 +75,8 @@ struct LLMService {
             model: model,
             baseURL: baseURL,
             provider: provider,
-            apiKey: apiKey
+            apiKey: apiKey,
+            images: images
         )
     }
 
@@ -129,7 +143,7 @@ struct LLMService {
 
     // MARK: - Private
 
-    private static func chat(system: String, user: String, model: String, baseURL: String, provider: LLMProvider, apiKey: String = "") async throws -> String {
+    private static func chat(system: String, user: String, model: String, baseURL: String, provider: LLMProvider, apiKey: String = "", images: [NSImage] = []) async throws -> String {
         let urlString = normalizedURL(baseURL, path: "v1/chat/completions", provider: provider)
         guard let url = URL(string: urlString) else { throw LLMError.invalidURL }
 
@@ -137,7 +151,7 @@ struct LLMService {
             "model": model,
             "messages": [
                 ["role": "system", "content": system],
-                ["role": "user",   "content": user]
+                ["role": "user",   "content": try userContent(text: user, images: images)]
             ],
             "stream": false
         ]
@@ -151,7 +165,13 @@ struct LLMService {
 
         let (data, response) = try await URLSession.shared.data(for: request)
         let code = (response as? HTTPURLResponse)?.statusCode ?? 0
-        guard (200..<300).contains(code) else { throw LLMError.httpError(code) }
+        guard (200..<300).contains(code) else {
+            // A text-only model given an image content-part answers 400 rather than
+            // anything self-explanatory (measured against a text-only MLX build on
+            // Ollama), and a bare "HTTP 400" sends the user looking at their network.
+            if code == 400, !images.isEmpty { throw LLMError.modelRejectedImage(model) }
+            throw LLMError.httpError(code)
+        }
 
         guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let choices = json["choices"] as? [[String: Any]],
@@ -161,6 +181,32 @@ struct LLMService {
         else { throw LLMError.emptyResponse }
 
         return content.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// Builds the `content` value for the user message.
+    ///
+    /// With no images this stays a plain string — the shape every text-only
+    /// endpoint has always accepted, so nothing about the existing operations
+    /// changes. With images it becomes the OpenAI content-part array, which
+    /// Ollama and LM Studio both accept on `/v1/chat/completions` when the model
+    /// is vision-capable. A text-only model does not error on this; it either
+    /// ignores the image part or answers from the text alone, which is why the
+    /// Assist tab warns rather than relying on a failure here.
+    private static func userContent(text: String, images: [NSImage]) throws -> Any {
+        guard !images.isEmpty else { return text }
+
+        var parts: [[String: Any]] = []
+        if !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            parts.append(["type": "text", "text": text])
+        }
+        for image in images {
+            guard let uri = LLMImageEncoder.dataURI(for: image) else {
+                throw LLMError.imageEncodingFailed
+            }
+            parts.append(["type": "image_url", "image_url": ["url": uri]])
+        }
+        guard !parts.isEmpty else { throw LLMError.imageEncodingFailed }
+        return parts
     }
 
     private static func normalizedURL(_ base: String, path: String, provider: LLMProvider) -> String {

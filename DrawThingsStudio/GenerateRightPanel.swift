@@ -401,8 +401,48 @@ struct AssistTabView: View {
     @State private var availableModels: [String] = []
     @State private var isFetchingModels: Bool = false
     @State private var modelFetchHint: String? = nil
+    /// User's override of the operation's default image source. Reset whenever the
+    /// operation changes so each one opens on the source its author intended.
+    @State private var imageSourceOverride: LLMImageSource? = nil
 
     private var currentOp: LLMOperation? { selectedOperation ?? operations.first }
+
+    // MARK: — Image source
+
+    private var activeImageSource: LLMImageSource {
+        imageSourceOverride ?? currentOp?.imageSource ?? .canvas
+    }
+
+    /// The images the current source resolves to, in the order they'd be sent.
+    private func images(for source: LLMImageSource) -> [NSImage] {
+        switch source {
+        case .canvas:      return [vm.generatedImage].compactMap { $0 }
+        case .sourceImage: return [vm.sourceImage].compactMap { $0 }
+        case .moodboard:   return vm.moodboardEntries.map(\.image)
+        }
+    }
+
+    /// What Run will actually send. Falls back through the other sources when the
+    /// chosen one is empty — on a cold start the canvas is nil, and silently
+    /// disabling Run with no explanation is worse than quietly using the image
+    /// the user does have. The thumbnail label shows which one won.
+    private var resolvedImages: [NSImage] {
+        let chosen = images(for: activeImageSource)
+        if !chosen.isEmpty { return chosen }
+        for fallback in [LLMImageSource.canvas, .sourceImage, .moodboard]
+        where fallback != activeImageSource {
+            let images = images(for: fallback)
+            if !images.isEmpty { return images }
+        }
+        return []
+    }
+
+    /// The source `resolvedImages` actually came from, for labelling.
+    private var effectiveImageSource: LLMImageSource? {
+        if !images(for: activeImageSource).isEmpty { return activeImageSource }
+        return [LLMImageSource.canvas, .sourceImage, .moodboard]
+            .first { $0 != activeImageSource && !images(for: $0).isEmpty }
+    }
 
     var body: some View {
         ScrollView {
@@ -410,6 +450,11 @@ struct AssistTabView: View {
 
                 // — Operation picker
                 operationPicker
+
+                // — Image source (image operations only)
+                if currentOp?.usesImage == true {
+                    imageSection
+                }
 
                 // — Input field
                 inputSection
@@ -473,6 +518,9 @@ struct AssistTabView: View {
         }
         .onChange(of: selectedOperation?.id) { _, _ in
             refreshInput()
+            // Drop the override so the new operation opens on its own default
+            // source rather than inheriting the last one's.
+            imageSourceOverride = nil
             resultText = nil
             errorText = nil
         }
@@ -547,11 +595,98 @@ struct AssistTabView: View {
         }
     }
 
+    // MARK: — Image source
+
+    private var imageSection: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("IMAGE")
+                .font(.system(size: 9, weight: .semibold))
+                .foregroundStyle(.secondary)
+
+            HStack(spacing: 8) {
+                imageThumbnail
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Picker("", selection: Binding(
+                        get: { activeImageSource },
+                        set: { imageSourceOverride = $0 }
+                    )) {
+                        ForEach(LLMImageSource.allCases, id: \.self) { source in
+                            Text(source.displayName).tag(source)
+                        }
+                    }
+                    .labelsHidden()
+                    .pickerStyle(.menu)
+
+                    Text(imageStatusText)
+                        .font(.system(size: 9))
+                        .foregroundStyle(resolvedImages.isEmpty ? .orange : .secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+
+            Text("Needs a vision-capable model (llava, qwen2.5-vl, gemma3…). A text-only model will answer without looking at the image.")
+                .font(.system(size: 9))
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    @ViewBuilder
+    private var imageThumbnail: some View {
+        let size: CGFloat = 52
+        ZStack {
+            RoundedRectangle(cornerRadius: 6)
+                .fill(Color.secondary.opacity(0.08))
+            if let first = resolvedImages.first {
+                Image(nsImage: first)
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+            } else {
+                Image(systemName: "photo")
+                    .font(.system(size: 16))
+                    .foregroundStyle(.tertiary)
+            }
+        }
+        .frame(width: size, height: size)
+        .clipShape(RoundedRectangle(cornerRadius: 6))
+        .overlay(
+            RoundedRectangle(cornerRadius: 6)
+                .strokeBorder(Color.secondary.opacity(0.2), lineWidth: 1)
+        )
+        // Count badge for a multi-image send, so "Moodboard (all)" doesn't look
+        // like it is only sending the one picture in the thumbnail.
+        .overlay(alignment: .bottomTrailing) {
+            if resolvedImages.count > 1 {
+                Text("\(resolvedImages.count)")
+                    .font(.system(size: 8, weight: .bold))
+                    .padding(.horizontal, 4)
+                    .padding(.vertical, 1)
+                    .background(Color.black.opacity(0.65))
+                    .foregroundStyle(.white)
+                    .clipShape(Capsule())
+                    .padding(3)
+            }
+        }
+    }
+
+    private var imageStatusText: String {
+        guard let effective = effectiveImageSource else {
+            return "No image available — generate one, load one, or add to the moodboard."
+        }
+        let count = resolvedImages.count
+        let noun = count == 1 ? "1 image" : "\(count) images"
+        return effective == activeImageSource
+            ? "Sending \(noun)."
+            : "\(activeImageSource.displayName) is empty — sending \(noun) from \(effective.displayName)."
+    }
+
     // MARK: — Input
 
     private var inputSection: some View {
         VStack(alignment: .leading, spacing: 3) {
-            Text(currentOp?.usesCurrentPrompt == false ? "CONCEPT" : "INPUT")
+            Text(currentOp?.usesImage == true ? "NOTES (OPTIONAL)"
+                 : currentOp?.usesCurrentPrompt == false ? "CONCEPT" : "INPUT")
                 .font(.system(size: 9, weight: .semibold))
                 .foregroundStyle(.secondary)
             TextEditor(text: $inputText)
@@ -709,10 +844,16 @@ struct AssistTabView: View {
             .padding(.vertical, 7)
         }
         .buttonStyle(.borderedProminent)
-        .disabled(isProcessing
-                  || inputText.trimmingCharacters(in: .whitespaces).isEmpty
-                  || localModelName.trimmingCharacters(in: .whitespaces).isEmpty
-                  || currentOp == nil)
+        .disabled(isProcessing || !canRun)
+    }
+
+    /// An image operation runs on the picture alone — its text input is optional
+    /// notes, so the usual non-empty-input requirement would wrongly block it.
+    private var canRun: Bool {
+        guard let op = currentOp,
+              !localModelName.trimmingCharacters(in: .whitespaces).isEmpty else { return false }
+        if op.usesImage { return !resolvedImages.isEmpty }
+        return !inputText.trimmingCharacters(in: .whitespaces).isEmpty
     }
 
     // MARK: — Model row
@@ -826,9 +967,9 @@ struct AssistTabView: View {
     }
 
     private func runCurrentOperation() {
-        guard let op = currentOp else { return }
+        guard let op = currentOp, canRun else { return }
         let input = inputText.trimmingCharacters(in: .whitespaces)
-        guard !input.isEmpty else { return }
+        let images = op.usesImage ? resolvedImages : []
         let model   = localModelName.trimmingCharacters(in: .whitespaces)
         let baseURL = AppSettings.shared.llmEffectiveBaseURL
         let provider = AppSettings.shared.llmProvider
@@ -845,7 +986,8 @@ struct AssistTabView: View {
                     model: model,
                     baseURL: baseURL,
                     provider: provider,
-                    apiKey: AppSettings.shared.llmAPIKey
+                    apiKey: AppSettings.shared.llmAPIKey,
+                    images: images
                 )
                 resultText = result
             } catch {

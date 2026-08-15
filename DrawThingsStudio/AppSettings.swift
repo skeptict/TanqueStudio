@@ -38,6 +38,16 @@ final class AppSettings {
     var llmOperationsFolderBookmark: Data? {
         didSet { UserDefaults.standard.set(llmOperationsFolderBookmark, forKey: "tanqueStudio.llmOperationsFolderBookmark") }
     }
+    /// Bundle operation filenames already copied into the user's folder at least once.
+    ///
+    /// Seeding used to be all-or-nothing — the bundle was copied only when the folder
+    /// was completely empty — so a built-in operation added in a later release never
+    /// reached anyone who had already run the app once. Recording what has been seeded
+    /// lets a new built-in arrive on upgrade while a built-in the user deliberately
+    /// deleted stays deleted.
+    var llmSeededOperationFiles: [String] {
+        didSet { UserDefaults.standard.set(llmSeededOperationFiles, forKey: "tanqueStudio.llmSeededOperationFiles") }
+    }
     /// Last cast-and-staging project folder — the one holding `bible.json` + `configs.json`.
     /// Reopened on launch so the pane comes back to the project you were authoring.
     var castProjectFolder: String {
@@ -172,6 +182,7 @@ final class AppSettings {
         dtConfigsBookmark  = d.data(forKey: "tanqueStudio.dtConfigsBookmark")
         llmOperationsFolder         = d.string(forKey: "tanqueStudio.llmOperationsFolder") ?? ""
         llmOperationsFolderBookmark = d.data(forKey: "tanqueStudio.llmOperationsFolderBookmark")
+        llmSeededOperationFiles     = d.stringArray(forKey: "tanqueStudio.llmSeededOperationFiles") ?? []
         castProjectFolder           = d.string(forKey: "tanqueStudio.castProjectFolder") ?? ""
         castProjectFolderBookmark   = d.data(forKey: "tanqueStudio.castProjectFolderBookmark")
         castProjectParentFolder     = d.string(forKey: "tanqueStudio.castProjectParentFolder") ?? ""
