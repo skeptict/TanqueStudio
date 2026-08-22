@@ -1076,70 +1076,29 @@ final class GenerateViewModel {
     /// replacement) the model survive, mirroring `applyDTConfig`. StoryFlow's
     /// deliberate merge pipeline does not go through here.
     func applyMetadataToConfig(_ meta: PNGMetadata) {
-        config = DrawThingsGenerationConfig(
-            width: config.width, height: config.height, model: config.model)
-        if meta.seed == nil {
+        let (projected, needsRandomSeed) = DrawThingsGenerationConfig.projecting(
+            metadata: meta, keepingCanvasFrom: config)
+        config = projected
+        if needsRandomSeed {
             randomizeSeed = true
             config.seed = Int(UInt32.random(in: 0...UInt32.max))
         }
-        if let model   = meta.model,    !model.isEmpty   { config.model   = model }
-        if let sampler = meta.sampler,  !sampler.isEmpty { config.sampler = sampler }
-        if let steps   = meta.steps                      { config.steps   = steps }
-        if let cfg     = meta.guidanceScale              { config.guidanceScale = cfg }
-        if let seed    = meta.seed {
-            if seed < 0 { randomizeSeed = true; config.seed = Int(UInt32.random(in: 0...UInt32.max)) }
-            else { config.seed = seed }
-        }
-        if let mode    = meta.seedMode, !mode.isEmpty {
-            config.seedMode = ImageStorageManager.tsSeedModeName(mode)
-        }
-        if let w       = meta.width                      { config.width   = w }
-        if let h       = meta.height                     { config.height  = h }
-        if let shift   = meta.shift                      { config.shift   = shift }
-        if let str     = meta.strength                   { config.strength = str }
-        if let neg     = meta.negativePrompt             { config.negativePrompt = neg }
-        if let nf       = meta.numFrames                  { config.numFrames = nf }
-        if let fps      = meta.fps                        { config.fps = fps }
-        if !meta.loras.isEmpty {
-            config.loras = meta.loras.map {
-                .init(file: $0.file, weight: $0.weight, mode: $0.mode)
-            }
-        }
-        if let rm = meta.refinerModel, !rm.isEmpty { config.refinerModel = rm }
-        if let rs = meta.refinerStart               { config.refinerStart = rs }
-        if let mb  = meta.maskBlur                  { config.maskBlur = mb }
-        if let mbo = meta.maskBlurOutset            { config.maskBlurOutset = mbo }
-        if let po  = meta.preserveOriginalAfterInpaint { config.preserveOriginalAfterInpaint = po }
-        if let hf = meta.hiresFix {
-            config.hiresFix = hf
-            if let w = meta.hiresFixWidth  { config.hiresFixWidth  = w }
-            if let h = meta.hiresFixHeight { config.hiresFixHeight = h }
-            if let s = meta.hiresFixStrength { config.hiresFixStrength = s }
-        }
-        if let td = meta.tiledDecoding {
-            config.tiledDecoding = td
-            if let w = meta.decodingTileWidth   { config.decodingTileWidth   = w }
-            if let h = meta.decodingTileHeight  { config.decodingTileHeight  = h }
-            if let o = meta.decodingTileOverlap { config.decodingTileOverlap = o }
-        }
-        if let td = meta.tiledDiffusion {
-            config.tiledDiffusion = td
-            if let w = meta.diffusionTileWidth   { config.diffusionTileWidth   = w }
-            if let h = meta.diffusionTileHeight  { config.diffusionTileHeight  = h }
-            if let o = meta.diffusionTileOverlap { config.diffusionTileOverlap = o }
-        }
-        if let w = meta.originalImageWidth  { config.originalImageWidth  = w }
-        if let h = meta.originalImageHeight { config.originalImageHeight = h }
-        if let w = meta.targetImageWidth    { config.targetImageWidth    = w }
-        if let h = meta.targetImageHeight   { config.targetImageHeight   = h }
-        if let w = meta.negativeOriginalImageWidth  { config.negativeOriginalImageWidth  = w }
-        if let h = meta.negativeOriginalImageHeight { config.negativeOriginalImageHeight = h }
-        if let g = meta.stochasticSamplingGamma { config.stochasticSamplingGamma = g }
-        if let cz = meta.cfgZeroStar             { config.cfgZeroStar = cz }
-        if let rds = meta.resolutionDependentShift { config.resolutionDependentShift = rds }
         // Warn (non-blocking) if the loaded model isn't in the local inventory —
         // common when the image was generated via DT+ bridge (cloud model).
         if let model = meta.model { warnIfModelUnknown(model) }
+    }
+
+    /// Fields where the left panel's config disagrees with the metadata of the image
+    /// currently on the canvas. Empty when nothing is displayed, when the image carries
+    /// no metadata, or when the two agree.
+    ///
+    /// Drives the Actions column's "the panel doesn't describe this image" warning. An
+    /// imported PNG writes `currentMetadata` and nothing else, so without this the two
+    /// image-scoped-sounding buttons in that column ("Copy Config for DT" and "Send
+    /// Config") quietly operate on different renders.
+    var configDivergenceFromDisplayedImage: [String] {
+        guard let meta = currentMetadata else { return [] }
+        return DTConfigClipboard.divergentFields(config: config, from: meta)
     }
 
     func loadAssets() {

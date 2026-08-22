@@ -102,7 +102,7 @@ struct PNGMetadata {
     ///
     /// Deliberately rendered from `rawText`, not from the parsed fields — the viewer
     /// exists to show what the file *carried* independent of what the applier chose
-    /// to read, which is the diagnostic the 10-of-58 import gap needed. Re-encoding
+    /// to read, which is the diagnostic the original import gap needed. Re-encoding
     /// the parsed struct would show exactly the lossy view this is meant to check.
     var displayJSON: String? {
         guard let raw = rawText, !raw.isEmpty else { return nil }
@@ -494,6 +494,15 @@ struct PNGMetadataParser {
         if let sh = json["shift"] as? Double { meta.shift = sh }
         if let sm = json["seed_mode"] as? String { meta.seedMode = sm }
 
+        // Video group. `PNGMetadata` and the applier have carried these since the video
+        // work, but nothing ever read them out of a real Draw Things PNG — so importing
+        // a DT video render silently reset frame count and fps to the model default.
+        // DT's own writer emits both at top level (ImageConverter.swift).
+        if let nf = json["num_frames"] as? Int { meta.numFrames = nf }
+        else if let nf = json["num_frames"] as? Double { meta.numFrames = Int(nf) }
+        if let f = json["fps"] as? Int { meta.fps = f }
+        else if let f = json["fps"] as? Double { meta.fps = Int(f) }
+
         // LoRAs: top-level "lora" array with "model" and "weight" keys
         if let loraArray = json["lora"] as? [[String: Any]] {
             for loraDict in loraArray {
@@ -641,6 +650,26 @@ struct PNGMetadataParser {
                 meta.negativeOriginalImageHeight = v2["negativeOriginalImageHeight"] as? Int
             }
             if meta.negativePrompt == nil { meta.negativePrompt = v2["negativePrompt"] as? String }
+
+            // v2 is Draw Things' own `JSGenerationConfiguration` verbatim — the same object
+            // its "Copy configuration" clipboard carries — so it is the authoritative source
+            // for anything the short-key layer never had a key for. `cfgZeroStar` and
+            // `resolutionDependentShift` in particular were only ever read out of TanqueStudio's
+            // own `tanque` extension object, which meant a genuine DT PNG dropped both.
+            if meta.numFrames == nil { meta.numFrames = (v2["numFrames"] as? NSNumber)?.intValue }
+            if meta.fps == nil { meta.fps = (v2["fps"] as? NSNumber)?.intValue }
+            if meta.steps == nil { meta.steps = (v2["steps"] as? NSNumber)?.intValue }
+            if meta.width == nil { meta.width = (v2["width"] as? NSNumber)?.intValue }
+            if meta.height == nil { meta.height = (v2["height"] as? NSNumber)?.intValue }
+            if meta.seed == nil { meta.seed = (v2["seed"] as? NSNumber)?.intValue }
+            if meta.strength == nil { meta.strength = (v2["strength"] as? NSNumber)?.doubleValue }
+            if meta.stochasticSamplingGamma == nil {
+                meta.stochasticSamplingGamma = (v2["stochasticSamplingGamma"] as? NSNumber)?.doubleValue
+            }
+            if meta.cfgZeroStar == nil { meta.cfgZeroStar = v2["cfgZeroStar"] as? Bool }
+            if meta.resolutionDependentShift == nil {
+                meta.resolutionDependentShift = v2["resolutionDependentShift"] as? Bool
+            }
         }
 
         if meta.hasPrompt || meta.hasConfig {

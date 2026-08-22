@@ -3,7 +3,7 @@ import SwiftData
 @testable import Tanque_Studio
 
 /// Coverage for the "Generate drops most of an imported image's settings" fix:
-/// `applyMetadataToConfig` originally restored only 10 of the ~39 fields
+/// `applyMetadataToConfig` originally restored only 10 of the ~40 fields
 /// `DrawThingsGenerationConfig` and `PNGMetadata` both model. This asserts the
 /// artifact — the resulting `config` — for every group that was added, plus
 /// that `encodeConfig`/`decodeConfigJSON` (the gallery's own round trip) carry

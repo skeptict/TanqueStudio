@@ -4,7 +4,7 @@ import XCTest
 /// Coverage for the drawer's raw-metadata viewer.
 ///
 /// The viewer's one job is to show what the file carried **independent of what the
-/// applier reads** — `applyMetadataToConfig` applies 10 of ~58 fields, and the gap
+/// applier reads** — `applyMetadataToConfig` used to apply 10 of ~40 fields, and the gap
 /// was invisible precisely because nothing displayed the rest. So the property under
 /// test must render from `rawText`, never from the parsed struct.
 final class PNGMetadataDisplayTests: XCTestCase {

@@ -1299,9 +1299,14 @@ struct Img2ImgMoodboardSection: View {
 // MARK: - Metadata (raw)
 
 /// The current image's metadata exactly as it arrived — the diagnostic for
-/// "what did Generate drop?". `applyMetadataToConfig` applies 10 of ~58 fields;
-/// this panel shows the whole record regardless, so a missing setting can be told
-/// apart from a setting that was never in the file in the first place.
+/// "what did Generate drop?". The old "10 of ~58 fields" note here is stale:
+/// `applyMetadataToConfig` now restores every field `PNGMetadata` carries. What
+/// remains dropped is upstream of it — `DrawThingsGenerationConfig` models 41 of
+/// the 83 keys in Draw Things' own configuration schema (`JSGenerationConfiguration`),
+/// so the other 42 (clipSkip, controls, sharpness, teaCache*, t5*, stage2*, upscaler,
+/// SDXL aesthetic scores, …) have nowhere to land. This panel shows the whole record
+/// regardless, so a missing setting can be told apart from a setting that was never
+/// in the file in the first place.
 struct ImportedMetadataSection: View {
     @Bindable var vm: GenerateViewModel
     @State private var copied = false
@@ -1361,7 +1366,21 @@ struct ActionsSection: View {
             }
 
             actionButton("Copy Image", enabled: vm.generatedImage != nil, action: copyImage)
-            actionButton("Copy Config for DT", enabled: true, action: copyConfigToDT)
+            actionButton("Copy Config for DT", enabled: true, action: copyPanelConfigToDT)
+
+            // The panel's config and the displayed image's metadata are the same thing
+            // right up until they aren't — importing a PNG writes `currentMetadata` and
+            // leaves `config` alone. Surface that rather than letting a button labelled
+            // like the rest of this column quietly export a different render's settings.
+            let divergence = vm.configDivergenceFromDisplayedImage
+            if let summary = DTConfigClipboard.divergenceSummary(divergence) {
+                Text(summary)
+                    .font(TanqueDS.Font.mono(9.5))
+                    .foregroundStyle(DashboardDS.orange)
+                    .fixedSize(horizontal: false, vertical: true)
+                actionButton("Copy Image's Config", enabled: true, action: copyImageConfigToDT)
+            }
+
             if let json = DTConfigExporter.encodeDTClipboard(config: vm.config) {
                 UseAsStoryStudioBaseMenu(configJSON: json, coverImage: vm.generatedImage)
                     .menuStyle(.borderlessButton)
@@ -1422,41 +1441,52 @@ struct ActionsSection: View {
         pb.setData(data, forType: .tiff)
     }
 
-    // Mirrors GenerateRightPanel.copyConfigToDT()/pasteConfigFromDT() — same
-    // real DT-clipboard exchange, not a fake action.
-    private func copyConfigToDT() {
-        guard let json = DTConfigExporter.encodeDTClipboard(config: vm.config) else {
-            vm.transientWarning = "Copy failed: could not encode config"
+    // The real DT-clipboard exchange, not a fake action. The bodies live in
+    // DTConfigClipboard so this column and GenerateRightPanel can't drift apart;
+    // only the confirmation styling differs between the two.
+    private func copyPanelConfigToDT() {
+        report(DTConfigClipboard.copyPanelConfig(vm.config))
+    }
+
+    private func copyImageConfigToDT() {
+        guard let meta = vm.currentMetadata else { return }
+        report(DTConfigClipboard.copyImageConfig(from: meta, keepingCanvasFrom: vm.config))
+    }
+
+    private func report(_ result: DTConfigClipboard.Copied) {
+        if case .failed = result {
+            vm.transientWarning = result.message
             return
         }
-        let pb = NSPasteboard.general
-        pb.clearContents()
-        pb.setString(json, forType: .string)
-        withAnimation { flashApplied = true }
-        Task {
-            try? await Task.sleep(for: .seconds(1.4))
-            withAnimation { flashApplied = false }
+        // The panel already names which config each button copies, so a bare
+        // checkmark is enough here — except when the two disagree, where the
+        // user needs to be told which one actually landed.
+        if vm.configDivergenceFromDisplayedImage.isEmpty {
+            flash()
+        } else {
+            vm.transientWarning = result.message
+            flash()
         }
     }
 
     private func pasteConfigFromDT() {
-        guard let json = NSPasteboard.general.string(forType: .string), !json.isEmpty else {
-            vm.transientWarning = "Nothing on clipboard"
-            return
-        }
-        let ok = DTConfigExporter.mergeDTClipboard(json, into: &vm.config)
-        if ok && vm.config.seed < 0 {
+        let (result, needsRandomSeed) = DTConfigClipboard.paste(into: &vm.config)
+        if needsRandomSeed {
             vm.randomizeSeed = true
             vm.config.seed = Int(UInt32.random(in: 0...UInt32.max))
         }
-        if ok {
-            withAnimation { flashApplied = true }
-            Task {
-                try? await Task.sleep(for: .seconds(1.4))
-                withAnimation { flashApplied = false }
-            }
+        if result.succeeded {
+            flash()
         } else {
-            vm.transientWarning = "Clipboard doesn't look like a DT config"
+            vm.transientWarning = result.message
+        }
+    }
+
+    private func flash() {
+        withAnimation { flashApplied = true }
+        Task {
+            try? await Task.sleep(for: .seconds(1.4))
+            withAnimation { flashApplied = false }
         }
     }
 
