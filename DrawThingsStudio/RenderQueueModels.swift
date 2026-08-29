@@ -151,6 +151,15 @@ final class RenderQueueSettings {
     var baseConfigJSON: String {
         didSet { UserDefaults.standard.set(baseConfigJSON, forKey: "tanqueStudio.renderQueue.baseConfigJSON") }
     }
+    /// Persona/style instructions for the Prompt axis's "Generate Ideas" sheet —
+    /// remembered across launches like everything else here, since a user who
+    /// tunes a good persona shouldn't have to retype it every session.
+    var ideasSystemPrompt: String {
+        didSet { UserDefaults.standard.set(ideasSystemPrompt, forKey: "tanqueStudio.renderQueue.ideasSystemPrompt") }
+    }
+    var ideasTopic: String {
+        didSet { UserDefaults.standard.set(ideasTopic, forKey: "tanqueStudio.renderQueue.ideasTopic") }
+    }
 
     private init() {
         let d = UserDefaults.standard
@@ -160,5 +169,14 @@ final class RenderQueueSettings {
         // one, and it already respects the user's Story Studio default setting.
         baseConfigJSON = d.string(forKey: "tanqueStudio.renderQueue.baseConfigJSON")
             ?? StoryProject.defaultConfigJSON
+        ideasSystemPrompt = d.string(forKey: "tanqueStudio.renderQueue.ideasSystemPrompt")
+            ?? RenderQueueSettings.defaultIdeasSystemPrompt
+        ideasTopic = d.string(forKey: "tanqueStudio.renderQueue.ideasTopic") ?? ""
     }
+
+    static let defaultIdeasSystemPrompt = """
+    You are a creative text-to-image prompt writer. You are imaginative, witty, and visually specific. \
+    Each prompt is a single, self-contained, richly descriptive image prompt on its own line — no numbering, \
+    no bullets, no commentary before or after.
+    """
 }

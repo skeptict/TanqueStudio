@@ -200,6 +200,7 @@ private struct AxisRow: View {
     /// a second value was therefore impossible: this is the fix, not a
     /// style preference.
     @State private var text: String = ""
+    @State private var showIdeasSheet = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -218,6 +219,14 @@ private struct AxisRow: View {
                     .foregroundStyle(DashboardDS.muted)
 
                 Spacer()
+                if axis.kind == .prompt {
+                    Button { showIdeasSheet = true } label: {
+                        Label("Generate Ideas", systemImage: "wand.and.stars")
+                    }
+                    .buttonStyle(.plain)
+                    .font(TanqueDS.Font.mono(10.5))
+                    .foregroundStyle(DashboardDS.brass)
+                }
                 Button(role: .destructive) { onDelete() } label: {
                     Image(systemName: "trash")
                 }
@@ -243,6 +252,102 @@ private struct AxisRow: View {
         .padding(TanqueDS.Spacing.sm)
         .background(DashboardDS.surf2, in: RoundedRectangle(cornerRadius: 8))
         .onAppear { text = axis.values.joined(separator: "\n") }
+        .sheet(isPresented: $showIdeasSheet) {
+            RenderQueuePromptIdeasSheet { ideas in
+                let joined = ideas.joined(separator: "\n")
+                text = text.isEmpty ? joined : text + "\n" + joined
+            }
+        }
+    }
+}
+
+// MARK: - Generate Ideas sheet
+
+private struct RenderQueuePromptIdeasSheet: View {
+    let onInsert: ([String]) -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var settings = RenderQueueSettings.shared
+    @State private var assistant = RenderQueuePromptIdeasAssistant()
+    @State private var count = 8
+    @State private var generatedIdeas: [String] = []
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: TanqueDS.Spacing.md) {
+            Text("Generate Prompt Ideas")
+                .font(.headline)
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Persona / Style").font(TanqueDS.Font.body).foregroundStyle(DashboardDS.muted2)
+                TextEditor(text: $settings.ideasSystemPrompt)
+                    .font(TanqueDS.Font.mono(11))
+                    .frame(minHeight: 70, maxHeight: 110)
+                    .scrollContentBackground(.hidden)
+                    .background(DashboardDS.surf1, in: RoundedRectangle(cornerRadius: 6))
+                    .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(DashboardDS.border, lineWidth: 1))
+            }
+
+            StoryLabeledTextField("Topic", placeholder: "e.g. valentine's day cards about beans",
+                                  text: $settings.ideasTopic)
+
+            Stepper("Count: \(count)", value: $count, in: 1...30)
+                .font(TanqueDS.Font.body)
+
+            if let error = assistant.errorText {
+                Text(error)
+                    .font(TanqueDS.Font.bodySmall)
+                    .foregroundStyle(DashboardDS.red)
+            }
+
+            HStack {
+                Spacer()
+                Button("Cancel") { dismiss() }
+                    .keyboardShortcut(.cancelAction)
+                Button {
+                    Task {
+                        generatedIdeas = await assistant.generate(
+                            systemPrompt: settings.ideasSystemPrompt, topic: settings.ideasTopic, count: count
+                        )
+                    }
+                } label: {
+                    if assistant.isBusy {
+                        ProgressView().controlSize(.small)
+                    } else {
+                        Text("Generate")
+                    }
+                }
+                .keyboardShortcut(.defaultAction)
+                .disabled(assistant.isBusy || settings.ideasTopic.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+
+            if !generatedIdeas.isEmpty {
+                Rectangle().fill(DashboardDS.border).frame(height: 1)
+                Text("\(generatedIdeas.count) idea\(generatedIdeas.count == 1 ? "" : "s")")
+                    .font(TanqueDS.Font.monoSemiBold(11))
+                    .foregroundStyle(DashboardDS.muted)
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 4) {
+                        ForEach(Array(generatedIdeas.enumerated()), id: \.offset) { _, idea in
+                            Text(idea)
+                                .font(TanqueDS.Font.mono(11))
+                                .foregroundStyle(DashboardDS.text)
+                        }
+                    }
+                }
+                .frame(maxHeight: 160)
+                HStack {
+                    Spacer()
+                    Button("Insert \(generatedIdeas.count) into Axis") {
+                        onInsert(generatedIdeas)
+                        dismiss()
+                    }
+                    .buttonStyle(DashboardPrimaryButtonStyle())
+                    .fixedSize()
+                }
+            }
+        }
+        .padding(TanqueDS.Spacing.lg)
+        .frame(width: 480)
     }
 }
 
