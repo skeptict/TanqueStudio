@@ -87,6 +87,15 @@ final class StoryProject {
     ///   every new project produce the identical image.
     /// - **`numFrames` is 0, not 121.** That is a video setting; 121 would ask Draw
     ///   Things for 121 frames on every still.
+    /// - **`model` is `krea_2_turbo_i8x.ckpt`, not the `krea_2_turbo_q8p.ckpt` this
+    ///   shipped with until 2026-08-28.** Krea 2 Turbo has several quantizations
+    ///   that are not interchangeable filenames — Draw Things crashed or silently
+    ///   returned zero images (`EXC_BREAKPOINT` in `TextEncoder.encodeLTX2`,
+    ///   unrelated to what it sounds like) whenever the q8p file wasn't actually
+    ///   present on the target server. i8x is what a real "Copy Config for DT"
+    ///   from a working render named. See project memory `dt_returns_zero_images`
+    ///   for the full misdiagnosis trail (DT+ session, gRPC client version, Boost
+    ///   balance — all wrong) before this was found.
     ///
     /// It carries keys TanqueStudio does not model (`teaCache*`, `causalInference`,
     /// `stage2*`, `motionScale`…). `mergeDict` ignores unknown keys, so they are
@@ -129,7 +138,7 @@ final class StoryProject {
         "loras": [],
         "maskBlur": 1.5,
         "maskBlurOutset": 0,
-        "model": "krea_2_turbo_q8p.ckpt",
+        "model": "krea_2_turbo_i8x.ckpt",
         "negativeAestheticScore": 2.5,
         "negativeOriginalImageHeight": 512,
         "negativeOriginalImageWidth": 512,
