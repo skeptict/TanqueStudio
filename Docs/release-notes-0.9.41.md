@@ -43,16 +43,10 @@ already use — nothing new to configure.
 
 ## Behind the scenes
 
-- The DT-gRPC-Swift-Client dependency is bumped to v1.6.16. It fixes a real bug
+- The DT-gRPC-Swift-Client dependency is bumped to v1.6.14, fixing a real bug
   where any config field explicitly set to `0` or `false` was silently
   dropped from the wire and the server substituted its own default —
   meaning the same seed and config as the Draw Things app could still render
-  differently (v1.6.14) — and it now sends the model's own specification with
-  every request (v1.6.16). Newer model families the server doesn't know about
-  built-in (Flux.2 Klein, Krea 2) were being read as SD v1 and came back as
-  noise or as an outright failure; the client now looks the model up in a
-  bundled copy of Draw Things' `models.json`, falls back to fetching the live
-  list from `models.drawthings.ai` for anything newer than that snapshot, and
-  sends LoRA specifications alongside it so LoRAs actually apply.
+  differently.
 - The unreachable classic Generate layout is removed. Its live code (the
   Assist tab, the canvas edit layers) was extracted first and is unaffected.

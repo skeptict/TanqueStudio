@@ -87,15 +87,25 @@ final class StoryProject {
     ///   every new project produce the identical image.
     /// - **`numFrames` is 0, not 121.** That is a video setting; 121 would ask Draw
     ///   Things for 121 frames on every still.
-    /// - **`model` is `krea_2_turbo_i8x.ckpt`, not the `krea_2_turbo_q8p.ckpt` this
-    ///   shipped with until 2026-08-28.** Krea 2 Turbo has several quantizations
-    ///   that are not interchangeable filenames — Draw Things crashed or silently
-    ///   returned zero images (`EXC_BREAKPOINT` in `TextEncoder.encodeLTX2`,
-    ///   unrelated to what it sounds like) whenever the q8p file wasn't actually
-    ///   present on the target server. i8x is what a real "Copy Config for DT"
-    ///   from a working render named. See project memory `dt_returns_zero_images`
-    ///   for the full misdiagnosis trail (DT+ session, gRPC client version, Boost
-    ///   balance — all wrong) before this was found.
+    /// - **`model` is `krea_2_turbo_q6p.ckpt`.** Krea 2 Turbo has several
+    ///   quantizations that are not interchangeable filenames, and this default has
+    ///   moved twice for two different reasons:
+    ///   - It shipped as `krea_2_turbo_q8p.ckpt` until 2026-08-28. Draw Things
+    ///     crashed or silently returned zero images (`EXC_BREAKPOINT` in
+    ///     `TextEncoder.encodeLTX2`, unrelated to what it sounds like) whenever the
+    ///     q8p file wasn't actually present on the target server. See project memory
+    ///     `dt_returns_zero_images` for the full misdiagnosis trail (DT+ session,
+    ///     gRPC client version, Boost balance — all wrong) before this was found.
+    ///   - It was `krea_2_turbo_i8x.ckpt` from 2026-08-28 until 2026-09-04, when a
+    ///     controlled A/B showed **i8x silently ignores LoRAs entirely** — same seed,
+    ///     same prompt, LoRA on vs off produced byte-identical output, while q6p
+    ///     applied the same LoRA plainly. No error is raised; the LoRA is just
+    ///     dropped. A default that silently discards a feature is worse than one that
+    ///     is merely slightly larger, hence q6p.
+    ///
+    ///   The standing rule from the q8p episode still applies: **whichever file is
+    ///   named here must actually exist on the target server.** q6p was verified
+    ///   present and LoRA-capable on both lab servers on 2026-09-04.
     ///
     /// It carries keys TanqueStudio does not model (`teaCache*`, `causalInference`,
     /// `stage2*`, `motionScale`…). `mergeDict` ignores unknown keys, so they are
@@ -138,7 +148,7 @@ final class StoryProject {
         "loras": [],
         "maskBlur": 1.5,
         "maskBlurOutset": 0,
-        "model": "krea_2_turbo_i8x.ckpt",
+        "model": "krea_2_turbo_q6p.ckpt",
         "negativeAestheticScore": 2.5,
         "negativeOriginalImageHeight": 512,
         "negativeOriginalImageWidth": 512,

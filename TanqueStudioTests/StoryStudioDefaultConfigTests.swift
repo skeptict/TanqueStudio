@@ -23,7 +23,7 @@ final class StoryStudioDefaultConfigTests: XCTestCase {
     func testTheDefaultConfigNamesAModel() throws {
         let model = try XCTUnwrap(defaultDict()["model"] as? String)
         XCTAssertFalse(model.isEmpty, "a default with no model renders noise — the bug this replaced")
-        XCTAssertEqual(model, "krea_2_turbo_i8x.ckpt")
+        XCTAssertEqual(model, "krea_2_turbo_q6p.ckpt")
     }
 
     /// ⚠️ The default is read through `mergeDict`, never `JSONDecoder`.
@@ -37,7 +37,7 @@ final class StoryStudioDefaultConfigTests: XCTestCase {
         var config = DrawThingsGenerationConfig()
         StoryFlowEngine.mergeDict(try defaultDict(), into: &config)
 
-        XCTAssertEqual(config.model, "krea_2_turbo_i8x.ckpt")
+        XCTAssertEqual(config.model, "krea_2_turbo_q6p.ckpt")
         XCTAssertEqual(config.width, 1024)
         XCTAssertEqual(config.height, 768)
         XCTAssertEqual(config.steps, 8)
@@ -73,7 +73,7 @@ final class StoryStudioDefaultConfigTests: XCTestCase {
         dict["somethingDrawThingsAddsNextYear"] = ["nested": true]
         StoryFlowEngine.mergeDict(dict, into: &config)
 
-        XCTAssertEqual(config.model, "krea_2_turbo_i8x.ckpt", "an unknown key derailed the merge")
+        XCTAssertEqual(config.model, "krea_2_turbo_q6p.ckpt", "an unknown key derailed the merge")
         XCTAssertEqual(config.steps, 8)
     }
 }
