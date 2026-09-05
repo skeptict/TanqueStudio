@@ -1,7 +1,15 @@
 # Render Queue — image inputs and video output
 
-**Status:** scoped, not built. Written 2026-09-05 against `3884c35`;
-open questions answered by Ned the same day — see §9.
+**Status:** ✅ **BUILT** 2026-09-05 in `b922c2d`, all six pieces of §8. Written against
+`3884c35`; open questions answered by Ned the same day — see §9.
+
+What changed from the plan as written: §4's `sourceImageID` became `sourceImageData`
+(bytes, per decision 1), and the base source lives in `RenderQueueSettings` as an id
+because it is UserDefaults-backed — the bytes are copied onto each job at Expand, which
+is where self-containment matters. Live verification against `192.168.1.34`: a paired
+10-prompt × 3-image matrix expanded to **3 jobs, not 30**, with the ragged warning shown;
+and one job run at `strength: 0.35` returned the source image recomposed rather than a
+fresh scene, proving the bytes reach Draw Things.
 **Goal (Ned's words):** *"a way to pull images from some place, whether they're rendered
 first in the queue or via other methods… and be able to assign certain images to each
 render, so we can batch images to animate each with its own unique prompt / config."*
