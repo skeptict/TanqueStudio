@@ -43,6 +43,40 @@ enum ImageFolderAccess {
         return try Data(contentsOf: url)
     }
 
+    /// Run `body` while holding security-scoped access to the user's configured
+    /// Generate folder, for callers that need the grant to span an `await`.
+    ///
+    /// `withScopedFolder(containing:)` is synchronous, so it cannot wrap an async
+    /// write — and an async write is exactly where this is needed: `AVAssetWriter`
+    /// creating an `.mp4` next to a series of frames, both outside the container.
+    /// Without the grant the write fails and there is no obvious error, only a
+    /// missing file. That is how the Render Queue's first LTX clip produced 25
+    /// good frames and no movie.
+    ///
+    /// `StoryFlowStorage.withSecurityScope` is the same thing, private, written
+    /// for the same reason. This is the shared home for it; prefer this over a
+    /// fifth inline copy of the bookmark preamble.
+    ///
+    /// A missing or unusable bookmark is not an error here — `body` still runs,
+    /// which is correct for the common case where output lives inside the
+    /// container and needs no scope at all.
+    static func withDefaultImageFolderAccess<T>(_ body: () async throws -> T) async rethrows -> T {
+        var scoped: URL?
+        if let bookmark = AppSettings.shared.defaultImageFolderBookmark,
+           !AppSettings.shared.defaultImageFolder.isEmpty {
+            var isStale = false
+            if let resolved = try? URL(resolvingBookmarkData: bookmark,
+                                       options: .withSecurityScope,
+                                       relativeTo: nil,
+                                       bookmarkDataIsStale: &isStale),
+               resolved.startAccessingSecurityScopedResource() {
+                scoped = resolved
+            }
+        }
+        defer { scoped?.stopAccessingSecurityScopedResource() }
+        return try await body()
+    }
+
     /// Prompts the user to reauthorize the folder containing `url` and persists the bookmark.
     /// Returns `true` if a bookmark was stored, `false` if the user cancelled or the bookmark failed.
     @discardableResult

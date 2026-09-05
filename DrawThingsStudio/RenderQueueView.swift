@@ -628,7 +628,15 @@ private struct JobRow: View {
         let model = (dict["model"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? "no model"
         let steps = (dict["steps"] as? NSNumber)?.intValue ?? 0
         let seed = (dict["seed"] as? NSNumber)?.intValue ?? 0
-        return "\(model) · \(steps) steps · seed \(seed)"
+        var line = "\(model) · \(steps) steps · seed \(seed)"
+        if let frames = job.resultFrameCount, frames > 1 {
+            // Say so when the frames landed but the movie didn't. Assembly
+            // failure is deliberately non-fatal — the frames are already safe in
+            // the gallery — but a silently missing .mp4 is how a sandbox bug hid
+            // behind a "Done" badge on the first LTX clip through this path.
+            line += job.resultMoviePath == nil ? " · frames only, no movie" : " · movie"
+        }
+        return line
     }
 
     @ViewBuilder private var thumbnail: some View {

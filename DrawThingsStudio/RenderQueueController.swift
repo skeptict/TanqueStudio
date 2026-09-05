@@ -217,12 +217,21 @@ final class RenderQueueController {
             .deletingPathExtension()
             .appendingPathExtension("mp4")
         do {
-            try await VideoAssembler.assemble(
-                frameURLs: records.map { URL(fileURLWithPath: $0.filePath) },
-                fps: clipFPS(for: config),
-                metadataComment: poster.configJSON,
-                to: movieURL
-            )
+            // ⚠️ The grant must span the whole write. Both the frames being read
+            // and the .mp4 being created live in the user's Generate folder,
+            // outside the sandbox container, and `AVAssetWriter` fails there with
+            // no obvious error — just a missing file. The first LTX clip through
+            // this path produced 25 good frames and no movie for exactly this
+            // reason. `StoryFlowStorage.saveOutputClip` has always wrapped its
+            // own assemble the same way.
+            try await ImageFolderAccess.withDefaultImageFolderAccess {
+                try await VideoAssembler.assemble(
+                    frameURLs: records.map { URL(fileURLWithPath: $0.filePath) },
+                    fps: clipFPS(for: config),
+                    metadataComment: poster.configJSON,
+                    to: movieURL
+                )
+            }
             job.resultMoviePath = movieURL.path
             try? modelContext.save()
         } catch {
