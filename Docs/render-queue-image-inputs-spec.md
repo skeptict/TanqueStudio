@@ -195,6 +195,18 @@ Stop discarding frames. All the machinery exists:
 
 The job row should show the clip's poster as its result thumbnail, with the same ▶ badge.
 
+⚠️ **The `.mp4` write needs security-scoped access, and it is not obvious.** The first
+LTX clip through this path saved 25 good frames and no movie: `AVAssetWriter` was
+creating the file in the user's Generate folder, outside the container, with no grant
+held — it fails there with no error, only a missing file. Fixed in `9556f99` with
+`ImageFolderAccess.withDefaultImageFolderAccess`, an async variant added because
+`withScopedFolder` is synchronous and cannot span an `await`. **The rule is not "reads
+need scope" — every file operation on that folder does, reads and writes, sync and async.**
+
+⚠️ **A swallowed assembly error is invisible behind a green badge.** Non-fatal is the
+right call — the frames are already safe — but the row must say which half happened. It
+now ends `· movie` or `· frames only, no movie`.
+
 ⚠️ **There is no frame cap in either engine** (the old 257 clamp was removed 2026-08-11,
 deliberately). Ten jobs at 121 frames is 1,210 PNGs on disk plus ten mp4s. Expand should
 state the frame total, not just the job count.
