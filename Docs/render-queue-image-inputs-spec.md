@@ -1,6 +1,7 @@
 # Render Queue — image inputs and video output
 
-**Status:** scoped, not built. Written 2026-09-05 against `3884c35`.
+**Status:** scoped, not built. Written 2026-09-05 against `3884c35`;
+open questions answered by Ned the same day — see §9.
 **Goal (Ned's words):** *"a way to pull images from some place, whether they're rendered
 first in the queue or via other methods… and be able to assign certain images to each
 render, so we can batch images to animate each with its own unique prompt / config."*
@@ -77,6 +78,11 @@ distinction that will confuse before it helps. A **"Add current canvas"** button
 picker — which snapshots to an imported `TSImage` at click time — gives the same
 convenience with no ambiguity.
 
+⚠️ Picking from the gallery still means **one read of a file outside the container**, so the
+picker must go through `ImageFolderAccess.readData(at:)`. Since §4 copies the bytes onto the
+job, that read happens once, at pick time, and never again at Run — which is the whole point
+of storing them.
+
 ---
 
 ## 4. What a job stores
@@ -84,34 +90,85 @@ convenience with no ambiguity.
 Existing design rule: *a job carries a full standalone config and prompt, so a row always
 describes exactly what it renders and stays reproducible after the matrix changes.*
 
-Embedding image bytes in every job honours that rule literally but costs ~1.7 MB per job in
-SwiftData; a hundred-job matrix is ~170 MB of duplicated PNG.
+**Decided (Ned, 2026-09-05): store the image bytes on the job.** The rule wins over the
+storage cost; revisit only if the store actually becomes a problem.
 
-**Proposal: `sourceImageID: UUID?` referencing a `TSImage`, plus `sourceThumbnailData: Data?`
-for the row.** Bytes are resolved at run time through `ImageFolderAccess.readData(at:)` —
-never a bare file read, which is precisely the bug just fixed in the result thumbnails.
-Every source, dropped files included, has a `TSImage`, so there is one code path.
+```swift
+var sourceImageData: Data?        // full PNG bytes, as sent to Draw Things
+var sourceThumbnailData: Data?    // 256px, for the row — same shape as resultThumbnailData
+```
 
-⚠️ **This bends the self-containment rule and needs a decision.** If the user deletes the
-source image from the gallery, the job cannot render. The mitigation is that it fails
-*loudly* — status `failed`, message `Source image no longer available` — rather than
-silently rendering text-to-image, which would look like a successful run and would not.
+No `ImageFolderAccess` read at run time, no dependency on a gallery record surviving, and a
+job stays reproducible after the source is deleted, moved, or the folder permission is lost.
+
+**Cost, measured rather than guessed.** A current queue render is ~1.7 MB of PNG; the whole
+SwiftData store is 26.8 MB today. A hundred-job matrix carrying its own sources is therefore
+~170 MB — the store's dominant term by an order of magnitude. Acceptable, but it makes two
+things matter that did not before:
+
+- **Clear All must actually reclaim the space.** Deleting the rows frees the blobs, but
+  SQLite does not shrink the file without a vacuum. Worth checking on-disk size after a
+  Clear All rather than assuming.
+- **A dedup option is available if it bites.** A cross-product axis pairs one image against
+  many prompts, so ten prompts × one image stores that image ten times. A queue-owned
+  `RenderQueueSourceImage` model holding the bytes once, referenced by jobs, keeps every
+  property Ned asked for — the queue still owns its own copy, and nothing outside it can
+  invalidate a job — while storing each distinct image once. **Not in v1**; recorded so the
+  fix is obvious if the store gets fat.
 
 ---
 
 ## 5. Chaining inside one queue
 
-"Rendered first in the queue" has two readings.
+**Decided (Ned, 2026-09-05): two-pass for v1, and reordering stays free.** The reasoning
+below is the answer to "what are the implications for reorder", which was not obvious.
 
-**v1 — two passes by hand.** Run a stills queue; its output is in the gallery; build a
-second queue picking those. Zero extra machinery once §3 exists.
+### Why reorder is free today
 
-**Later — real chaining**, where job B's input is job A's output. This needs a dependency
-graph, changes what "prune and reorder" means (reordering could put a consumer before its
-producer), and cannot be validated at Expand time because the image does not exist yet.
-Worth doing only if the two-pass workflow proves tedious in practice. If it does, the
-smallest form is a reserved axis value meaning *the previous job's output*, which keeps the
-queue linear and needs no graph.
+Every job is independent. `run(jobs:)` walks the array in order and skips anything not
+`.pending`; the order is **priority only**. Any permutation renders the same set of images.
+That is why the up/down chevrons can be a plain swap with no validation, why Retry can
+re-queue a single row in the middle, and why Delete can remove any row at all.
+
+### What chaining would cost
+
+If job B's input is job A's output, order stops being cosmetic and becomes **semantic**.
+Five things break at once, and reorder is only the first:
+
+1. **Reorder can produce an invalid queue.** Move B above A and B runs before its input
+   exists. Three ways out, all bad: grey out the chevrons on any row with a dependency
+   (feels broken — the user cannot tell why), silently topologically sort at Run (the
+   visible order stops being the run order, which is worse), or let it fail at run time
+   (a wasted render and a confusing error).
+2. **Expand can no longer validate.** Today Expand produces concrete, inspectable jobs —
+   you can see the model, the seed, and soon the source thumbnail. A chained job's input
+   does not exist yet, so its row is a promise rather than a description.
+3. **Retry becomes a cascade question.** Re-running A means B rendered from an input that
+   no longer exists. Auto-retry B? Mark it stale? Leave it, knowing the pair no longer
+   agrees? Every answer needs new state on the row.
+4. **Delete orphans.** Removing A leaves B unrunnable, so Delete needs its own dependency
+   check and a confirmation that explains the consequence.
+5. **Failure needs a new terminal state.** If A fails, B can never run — it must become
+   `skipped`, not sit `pending` forever holding up the "all done" count.
+
+That is a dependency graph and a lot of new UI, in exchange for saving one manual step.
+
+### Why two passes actually suits the batch case
+
+The workflow is: render N stills → animate each. In one chained queue those would have to
+interleave — still₁, video₁, still₂, video₂ — and the expander produces *homogeneous* jobs
+from a matrix, so building that shape by hand defeats the point of the matrix. Two queues
+is not a workaround here; it is the natural expression: one matrix that makes stills, one
+matrix that consumes them.
+
+### The middle option, if two-pass proves tedious
+
+Keep the queue **linear** and allow only one relationship: a job may consume *the output of
+the job immediately above it*. No graph, no topological sort, and **reorder stays legal and
+meaningful** — moving a row changes which image feeds it, which is a visible, understandable
+consequence rather than an error. This serves a sequential/iterative workflow (refine, then
+refine again) rather than a batch one, so it is a different feature, not a cheaper version
+of this one. Worth building only if that workflow shows up.
 
 ---
 
@@ -160,7 +217,7 @@ fixed in 0.9.40. `ForEach` over the array itself, `id: \.id`; not
 |---|---|---|
 | 1 | Frames → clip in `RenderQueueController` | Independent of everything else; ship first, it fixes a silent data loss |
 | 2 | `pair` / `cross` axis mode in `RenderQueueExpander` | Pure function, fully unit-testable with no image plumbing |
-| 3 | `sourceImageID` on `RenderQueueJob`, resolved via `ImageFolderAccess` | Additive optional field; SwiftData lightweight migration |
+| 3 | `sourceImageData` + `sourceThumbnailData` on `RenderQueueJob` | Additive optional fields; SwiftData lightweight migration |
 | 4 | Image picker + BASE source well | Drop / choose / gallery / add-canvas, all producing `TSImage` |
 | 5 | `sourceImage` axis + thumbnail strip UI | Depends on 2, 3, 4 |
 | 6 | Job row input→output display, Expand-time counts + warnings | Polish, but the warnings are what stop a wasted 20-minute run |
@@ -170,11 +227,44 @@ the second is the piece that makes the whole idea work and can be tested without
 
 ---
 
-## 9. Open questions for Ned
+## 9. Decisions
 
-1. **§4 — reference or bytes?** Reference (light, breaks if the source is deleted, fails
-   loudly) or embedded bytes (truly self-contained, ~1.7 MB per job)?
-2. **§5 — is two-pass acceptable for v1?** Real in-queue chaining is a much larger change.
-3. **§2 — is "stop at the shortest" right**, or should a shorter axis repeat to fill?
-4. **Does an i2v job need its own strength default?** A source image at `strength: 1.0` is
-   effectively ignored. Worth a warning at Expand, or a nudge in the LTX preset.
+Answered by Ned, 2026-09-05.
+
+1. **Job storage — bytes, not a reference.** Self-containment wins over store size; revisit
+   if it bites. See §4, including the dedup model to reach for if it does.
+2. **Two-pass for v1**, so reordering stays a free, unvalidated swap. §5 has the full
+   reasoning and the linear "consume the row above" middle option.
+3. **Ragged pairs stop at the shortest, with a warning at Expand.** §2.
+4. **No strength warning — the premise was wrong.** Corrected in §10.
+
+---
+
+## 10. Correction: strength 1.0 and image conditioning
+
+The original §9.4 asked whether an i2v job needs its own strength default, on the grounds
+that *"a source image at `strength: 1.0` is effectively ignored."* **That is wrong, and Ned
+was right to push back.** It carries over classic Stable Diffusion img2img semantics, where
+strength is the denoising fraction and 1.0 means "re-noise completely, keep nothing."
+
+The models in play here do not work that way. In Draw Things' own model catalogue,
+`ltx_2.3_22b_distilled` and `flux_2_klein_9b` both carry `"modifier": "kontext"` — the
+source image is a **conditioning / reference input**, not a noised initial latent. Draw
+Things' own shipped configs agree, every one of them at `strength: 1`:
+
+| Preset | strength |
+|---|---|
+| LTX-2.3 22B [distilled] 720p | 1 |
+| FLUX.2 [klein] 9B | 1 |
+| Qwen Image Edit 2509 (and both Lightning variants) | 1 |
+| FLUX.1 Fill [dev] | 1 |
+
+So **1.0 is correct for LTX i2v, Qwen Image Edit and Klein 9B**, and lowering it is the
+thing that would degrade the result.
+
+**Consequence for this spec: no strength warning.** And note that a correct warning is not
+cheap to add later — it would have to distinguish a kontext-style model from a classic
+img2img one, and TanqueStudio does not model `modifier` at all. `ModelFamily` (sd15, sdxl,
+flux, zImage, sd3, ltx, wan, hunyuan, animateDiff, cogVideo, mochi) is about architecture,
+not about how a source image is consumed, so it cannot answer the question either. If a
+warning is ever wanted, importing DT's `modifier` field is the prerequisite.
