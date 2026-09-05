@@ -103,6 +103,11 @@ struct RenderQueueView: View {
                 RenderQueueImageStrip(ids: baseSourceBinding) { showingBasePicker = true }
                     .frame(maxWidth: 200)
             }
+
+            Toggle("Fit canvas to source image", isOn: $settings.fitCanvasToSource)
+                .font(TanqueDS.Font.bodySmall)
+                .foregroundStyle(DashboardDS.muted2)
+                .help("Reshape each job's canvas to its source image's aspect ratio, keeping the config's pixel count. Draw Things stretches a source to fill the canvas, so without this a square reference in a 1280×768 config comes back squashed.")
         }
     }
 
@@ -145,12 +150,10 @@ struct RenderQueueView: View {
             // Preview before commit: pressing Expand on a matrix that produces
             // 240 video jobs should not be the moment you find that out.
             let preview = expansionPreview
-            if !preview.warnings.isEmpty {
-                ForEach(preview.warnings, id: \.self) { warning in
-                    Label(warning, systemImage: "exclamationmark.triangle.fill")
-                        .font(TanqueDS.Font.bodySmall)
-                        .foregroundStyle(DashboardDS.brass)
-                }
+            ForEach(preview.warnings + aspectNotices, id: \.self) { warning in
+                Label(warning, systemImage: "exclamationmark.triangle.fill")
+                    .font(TanqueDS.Font.bodySmall)
+                    .foregroundStyle(DashboardDS.brass)
             }
 
             Button {
@@ -161,6 +164,34 @@ struct RenderQueueView: View {
             }
             .buttonStyle(DashboardPrimaryButtonStyle())
         }
+    }
+
+    /// What fitting will do — or, when it is off, that the source will be
+    /// stretched. Either way the user is told *before* pressing Expand, which is
+    /// the whole point: a squashed clip is only obvious after the render.
+    ///
+    /// Aspects come from thumbnails (same ratio, far cheaper), and each distinct
+    /// canvas change is reported once however many jobs share it.
+    private var aspectNotices: [String] {
+        var ids = axes.filter { $0.kind == .sourceImage }.flatMap(\.values)
+        if ids.isEmpty, !settings.baseSourceImageID.isEmpty { ids = [settings.baseSourceImageID] }
+        guard !ids.isEmpty else { return [] }
+
+        var seen = Set<String>()
+        var notices: [String] = []
+        for id in ids {
+            guard let aspect = RenderQueueImageResolver.aspect(forID: id, in: modelContext),
+                  let fit = RenderQueueExpander.canvasFit(
+                      inConfigJSON: settings.baseConfigJSON, toAspect: aspect),
+                  fit.changesAnything
+            else { continue }
+            let text = settings.fitCanvasToSource
+                ? "Canvas fitted to source: \(fit.description)."
+                : "Source image doesn't match the canvas — it will be stretched to "
+                  + "\(fit.fromWidth)×\(fit.fromHeight). Turn on “Fit canvas to source image” above."
+            if seen.insert(text).inserted { notices.append(text) }
+        }
+        return notices
     }
 
     private var axisInputs: [RenderQueueExpander.AxisInput] {
@@ -214,8 +245,22 @@ struct RenderQueueView: View {
                 if let resolved {
                     cache[id] = resolved
                     job.sourceImageData = resolved.data
+                    let decoded = NSImage(data: resolved.data)
                     job.sourceThumbnailData = resolved.thumbnail
-                        ?? NSImage(data: resolved.data).flatMap { ImageStorageManager.makeThumbnailData(from: $0) }
+                        ?? decoded.flatMap { ImageStorageManager.makeThumbnailData(from: $0) }
+
+                    // Reshape the canvas to the source, measured from the real
+                    // image rather than the thumbnail — the preview may use the
+                    // thumbnail's aspect, but what is written into the job should
+                    // come from the bytes the job actually carries.
+                    if settings.fitCanvasToSource,
+                       let size = decoded?.size, size.width > 0, size.height > 0,
+                       let fit = RenderQueueExpander.canvasFit(
+                           inConfigJSON: job.configJSON,
+                           toAspect: Double(size.width / size.height)),
+                       fit.changesAnything {
+                        job.configJSON = RenderQueueExpander.applying(fit, toConfigJSON: job.configJSON)
+                    }
                 }
                 // A source that cannot be read produces a text-to-image job
                 // rather than no job at all. `expansionWarnings` says so before

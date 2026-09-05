@@ -217,6 +217,55 @@ enum RenderQueueExpander {
         loras.map { "\($0.file)@\($0.weight)" }.joined(separator: ", ")
     }
 
+    // MARK: - Fitting the canvas to a source image
+
+    /// What fitting a config's canvas to a source image's shape would do.
+    struct CanvasFit: Equatable {
+        let fromWidth: Int, fromHeight: Int
+        let toWidth: Int, toHeight: Int
+
+        var changesAnything: Bool { fromWidth != toWidth || fromHeight != toHeight }
+        var description: String { "\(fromWidth)×\(fromHeight) → \(toWidth)×\(toHeight)" }
+    }
+
+    /// Canvas that matches `aspect` at the config's **own pixel budget**.
+    ///
+    /// Not the source image's own dimensions: a 4096² reference would otherwise
+    /// turn a modest LTX job into a 16-megapixel one. Area is what governs render
+    /// time and memory and is the user's real choice; the shape is what the source
+    /// image dictates. So the budget is kept and the rectangle is reshaped.
+    ///
+    /// The grid arithmetic is `CanvasSizing.dimensions(ratio:area:)` — Draw Things
+    /// floors both axes to a multiple of 64, and rounding each axis independently
+    /// compounds badly enough to miss the ratio visibly (16:9 at the 1024² budget
+    /// lands on 7:4). That type already searches all four grid corners and prefers
+    /// ratio over area; there is no second implementation here.
+    ///
+    /// Returns `nil` when the config has no usable width/height to work from.
+    static func canvasFit(inConfigJSON json: String, toAspect aspect: Double) -> CanvasFit? {
+        guard aspect.isFinite, aspect > 0,
+              let dict = jsonDict(json),
+              let w = (dict["width"] as? NSNumber)?.intValue, w > 0,
+              let h = (dict["height"] as? NSNumber)?.intValue, h > 0
+        else { return nil }
+
+        let fitted = CanvasSizing.dimensions(ratio: aspect, area: Double(w) * Double(h))
+        return CanvasFit(fromWidth: w, fromHeight: h, toWidth: fitted.w, toHeight: fitted.h)
+    }
+
+    /// `json` with width and height replaced by the fit. Returns the original
+    /// string unchanged if it cannot be parsed, so a malformed config degrades to
+    /// "no fit applied" rather than losing the job's config entirely.
+    static func applying(_ fit: CanvasFit, toConfigJSON json: String) -> String {
+        guard var dict = jsonDict(json) else { return json }
+        dict["width"] = fit.toWidth
+        dict["height"] = fit.toHeight
+        guard let data = try? JSONSerialization.data(withJSONObject: dict,
+                                                     options: [.sortedKeys]),
+              let out = String(data: data, encoding: .utf8) else { return json }
+        return out
+    }
+
     /// `numFrames` out of an already-expanded job's config, for the Expand
     /// preview. Returns 0 when absent or not a video config; callers treat that
     /// as one frame.

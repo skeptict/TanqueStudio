@@ -42,6 +42,20 @@ enum RenderQueueImageResolver {
         return (data, record.thumbnailData)
     }
 
+    /// Width ÷ height of the image behind `id`, or `nil` if it cannot be read.
+    ///
+    /// Measured from the **thumbnail**, deliberately: `makeThumbnailData` scales
+    /// both axes by the same factor, so the thumbnail's aspect is the full image's
+    /// aspect, and the Expand preview can show what fitting will do without
+    /// decoding a multi-megabyte PNG per axis entry on every keystroke.
+    static func aspect(forID id: String, in context: ModelContext) -> Double? {
+        guard let data = thumbnailData(forID: id, in: context),
+              let image = NSImage(data: data) else { return nil }
+        let size = image.size
+        guard size.width > 0, size.height > 0 else { return nil }
+        return Double(size.width / size.height)
+    }
+
     /// Thumbnail bytes only — for the picker strip, which must stay cheap when a
     /// matrix holds dozens of sources.
     static func thumbnailData(forID id: String, in context: ModelContext) -> Data? {

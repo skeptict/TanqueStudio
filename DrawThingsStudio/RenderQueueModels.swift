@@ -254,6 +254,19 @@ final class RenderQueueSettings {
     var baseSourceImageID: String {
         didSet { UserDefaults.standard.set(baseSourceImageID, forKey: "tanqueStudio.renderQueue.baseSourceImageID") }
     }
+    /// Reshape each job's canvas to its source image's aspect ratio at Expand,
+    /// keeping the config's own pixel budget.
+    ///
+    /// **Default on.** Draw Things scales a source image to fill the canvas, so a
+    /// square reference in a 1280×768 config comes back visibly stretched, with
+    /// nothing anywhere saying why — that is exactly how the first LTX clip
+    /// through this queue came out squashed. Overriding the width and height a
+    /// user typed is the smaller surprise, because the number that actually
+    /// governs render time and memory — the pixel count — is preserved either
+    /// way, and Expand states the change before it commits.
+    var fitCanvasToSource: Bool {
+        didSet { UserDefaults.standard.set(fitCanvasToSource, forKey: "tanqueStudio.renderQueue.fitCanvasToSource") }
+    }
 
     private init() {
         let d = UserDefaults.standard
@@ -267,6 +280,7 @@ final class RenderQueueSettings {
             ?? RenderQueueSettings.defaultIdeasSystemPrompt
         ideasTopic = d.string(forKey: "tanqueStudio.renderQueue.ideasTopic") ?? ""
         baseSourceImageID = d.string(forKey: "tanqueStudio.renderQueue.baseSourceImageID") ?? ""
+        fitCanvasToSource = d.object(forKey: "tanqueStudio.renderQueue.fitCanvasToSource") as? Bool ?? true
     }
 
     static let defaultIdeasSystemPrompt = """
