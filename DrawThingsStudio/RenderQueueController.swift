@@ -123,6 +123,7 @@ final class RenderQueueController {
                         )
                     }
                     job.resultImagePath = poster.filePath
+                    job.resultImageID = poster.id
                     // Copy the thumbnail bytes onto the job rather than let the
                     // row re-read the PNG: the file usually lives in the user's
                     // Generate folder, outside the sandbox container, where a
@@ -140,6 +141,7 @@ final class RenderQueueController {
                     job.errorMessage = nil
                     job.resultImagePath = nil
                     job.resultThumbnailData = nil
+                    job.resultImageID = nil
                 } catch {
                     job.status = .failed
                     job.errorMessage = error.localizedDescription
@@ -257,6 +259,7 @@ final class RenderQueueController {
             job.resultThumbnailData = nil
             job.resultFrameCount = nil
             job.resultMoviePath = nil
+            job.resultImageID = nil
         }
         try? modelContext.save()
     }

@@ -42,6 +42,16 @@ enum RenderQueueImageResolver {
         return (data, record.thumbnailData)
     }
 
+    /// `TSImage` id for a file path — the fallback for jobs finished before
+    /// `RenderQueueJob.resultImageID` existed. Matching on paths is fragile by
+    /// nature (a moved file loses its record), which is exactly why new jobs
+    /// record the id directly.
+    static func imageID(forPath path: String, in context: ModelContext) -> UUID? {
+        var descriptor = FetchDescriptor<TSImage>(predicate: #Predicate { $0.filePath == path })
+        descriptor.fetchLimit = 1
+        return (try? context.fetch(descriptor).first)?.id
+    }
+
     /// Width ÷ height of the image behind `id`, or `nil` if it cannot be read.
     ///
     /// Measured from the **thumbnail**, deliberately: `makeThumbnailData` scales

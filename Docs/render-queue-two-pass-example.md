@@ -45,9 +45,16 @@ Six stills render and land in the gallery.
    ...
    ```
 
-8. **Add Axis** → kind **Source Image**, mode **Pair** → press **+** and pick the six
-   stills **in the same order as the motion prompts**. The picker numbers each thumbnail
-   as you click it, and that number *is* the pairing.
+8. Press **Use Results as Sources** in the JOBS header. It creates a Source Image axis
+   on **Pair**, filled with what pass 1 produced, **in queue order** — which is the order
+   the prompts were in, so the pairing is right by construction. Pressing it twice does
+   not duplicate anything, and it appends rather than replacing, so hand-picked images
+   survive.
+
+   *Or do it by hand:* **Add Axis** → kind **Source Image**, mode **Pair** → press **+**
+   and pick the stills **in the same order as the motion prompts**. The picker numbers
+   each thumbnail as you click it, and that number *is* the pairing. Use this for anything
+   that didn't come out of the queue.
 9. Leave **Fit canvas to source image** on.
 10. **Expand** — now reads **“Expand — 6 jobs · 726 frames”**, and a line above it says
     what the canvas will become, e.g. *“Canvas fitted to source: 1280×768 → 960×960”*.
@@ -92,14 +99,13 @@ expensive when each job is a video.
 
 ---
 
-## The rough edge
+## One paired axis is not enough
 
-Step 8 means hand-picking the six images you just made out of a gallery that may hold
-thousands, in the right order. The picker sorts newest-first so they're at the top, but
-this is still the clumsiest part of the flow.
+**Use Results as Sources** creates the Source Image axis already on **Pair**, but it does
+not touch your Prompt axis — changing settings you chose would be worse than leaving a
+step to you. And a *single* paired axis behaves exactly like a crossed one, so until the
+Prompt axis is also on Pair you get 6 × 6 = **36** jobs rather than 6.
 
-The obvious fix is a one-click **“use these results as source images”** on the queue —
-taking the outputs of the jobs you just ran, in their existing order, straight into a new
-Source Image axis. That would collapse steps 8 and 9 into a button and remove the ordering
-risk entirely. Not built; recorded here because this walkthrough is where the need is
-obvious.
+The queue says so: when one axis is paired and another of the same length is not, a line
+above Expand points it out, and the Expand button's own count is the giveaway — 36 where
+you expected 6.

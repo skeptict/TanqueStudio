@@ -181,6 +181,13 @@ final class RenderQueueJob {
     /// losing the render to that would be worse than shipping frames with no
     /// movie. The gallery's "Export Movie…" is the recovery path.
     var resultMoviePath: String?
+    /// `TSImage` id of this job's result (frame 0 for a clip).
+    ///
+    /// Exists so "use these results as source images" can hand ids straight to a
+    /// Source Image axis without matching on file paths, which break the moment
+    /// a file is moved. `nil` on jobs finished before 0.9.44; the button falls
+    /// back to a path lookup for those.
+    var resultImageID: UUID?
     /// The image this job renders *from*, as bytes.
     ///
     /// **Bytes, not a reference — Ned's call, 2026-09-05.** A job carrying its
@@ -213,6 +220,7 @@ final class RenderQueueJob {
         self.resultThumbnailData = nil
         self.resultFrameCount = nil
         self.resultMoviePath = nil
+        self.resultImageID = nil
         self.sourceImageData = nil
         self.sourceThumbnailData = nil
         self.createdAt = Date()

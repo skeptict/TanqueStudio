@@ -152,7 +152,7 @@ struct RenderQueueView: View {
             // Preview before commit: pressing Expand on a matrix that produces
             // 240 video jobs should not be the moment you find that out.
             let preview = expansionPreview
-            ForEach(preview.warnings + aspectNotices, id: \.self) { warning in
+            ForEach(preview.warnings + aspectNotices + pairingHint, id: \.self) { warning in
                 Label(warning, systemImage: "exclamationmark.triangle.fill")
                     .font(TanqueDS.Font.bodySmall)
                     .foregroundStyle(DashboardDS.brass)
@@ -194,6 +194,67 @@ struct RenderQueueView: View {
             if seen.insert(text).inserted { notices.append(text) }
         }
         return notices
+    }
+
+    // MARK: - Results → sources
+
+    /// `TSImage` ids of every succeeded job's result, in queue order.
+    ///
+    /// Order is the whole value of this: for a paired axis the position *is* the
+    /// pairing, and queue order is the order the prompts were in. Hand-picking
+    /// the same images out of a gallery sorted newest-first means reconstructing
+    /// that order by eye, which is the step most likely to go wrong silently.
+    private var resultImageIDs: [String] {
+        jobs.filter { $0.status == .succeeded }
+            .compactMap { job in
+                if let id = job.resultImageID { return id.uuidString }
+                // Jobs finished before resultImageID existed.
+                guard let path = job.resultImagePath else { return nil }
+                return RenderQueueImageResolver.imageID(forPath: path, in: modelContext)?.uuidString
+            }
+    }
+
+    /// Load those results into a Source Image axis.
+    ///
+    /// **Appends to an existing Source Image axis rather than replacing it**, and
+    /// skips ids already present — pressing this twice should not duplicate the
+    /// set, and it should never silently discard images picked by hand. The
+    /// picker remains the way to choose anything else.
+    ///
+    /// A newly created axis starts on `.pair`, because pairing images to prompts
+    /// is the entire reason to do this; an axis that already exists keeps
+    /// whatever mode it has.
+    private func useResultsAsSources() {
+        let incoming = resultImageIDs
+        guard !incoming.isEmpty else { return }
+
+        let axis: RenderQueueAxis
+        if let existing = axes.first(where: { $0.kind == .sourceImage }) {
+            axis = existing
+        } else {
+            axis = RenderQueueAxis(kind: .sourceImage,
+                                   order: (axes.map(\.order).max() ?? -1) + 1,
+                                   mode: .pair)
+            modelContext.insert(axis)
+        }
+        let already = Set(axis.values)
+        axis.values += incoming.filter { !already.contains($0) }
+        persist()
+    }
+
+    /// Nudge when one axis is paired and another, equally long, is not — the
+    /// exact state "Use Results as Sources" leaves behind if the prompt axis was
+    /// never switched, and the difference between six jobs and thirty-six.
+    private var pairingHint: [String] {
+        let active = axes.filter { !$0.values.isEmpty }
+        let paired = active.filter { $0.mode == .pair }
+        let crossed = active.filter { $0.mode == .cross }
+        guard let anchor = paired.first, paired.count == 1 else { return [] }
+        let matches = crossed.filter { $0.values.count == anchor.values.count }
+        guard let other = matches.first, matches.count == 1 else { return [] }
+        return ["\(other.kind.displayName) has the same \(anchor.values.count) values as "
+              + "\(anchor.kind.displayName) — set it to Pair to match them 1:1 instead of "
+              + "crossing them."]
     }
 
     private var axisInputs: [RenderQueueExpander.AxisInput] {
@@ -310,6 +371,11 @@ struct RenderQueueView: View {
                           ? "Picks up at the next pending job."
                           : "Renders every pending job, in list order.")
                 }
+                Button("Use Results as Sources") { useResultsAsSources() }
+                    .buttonStyle(DashboardGhostButtonStyle())
+                    .fixedSize()
+                    .disabled(controller.isRunning || resultImageIDs.isEmpty)
+                    .help("Put the images these jobs produced into a Source Image axis, in queue order — the second half of a stills-then-animate run, without hand-picking them out of the gallery.")
                 Button("Reset") { RenderQueueController.reset(finishedJobs, in: modelContext) }
                     .buttonStyle(DashboardGhostButtonStyle())
                     .fixedSize()
