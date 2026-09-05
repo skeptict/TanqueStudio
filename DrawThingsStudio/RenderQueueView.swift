@@ -46,7 +46,7 @@ struct RenderQueueView: View {
             titleVisibility: .visible
         ) {
             Button("Delete", role: .destructive) {
-                if let job = jobPendingDelete { modelContext.delete(job) }
+                if let job = jobPendingDelete { modelContext.delete(job); persist() }
                 jobPendingDelete = nil
             }
             Button("Cancel", role: .cancel) { jobPendingDelete = nil }
@@ -58,6 +58,7 @@ struct RenderQueueView: View {
         ) {
             Button("Clear All", role: .destructive) {
                 for job in jobs { modelContext.delete(job) }
+                persist()
             }
             Button("Cancel", role: .cancel) {}
         } message: {
@@ -130,6 +131,7 @@ struct RenderQueueView: View {
                 Spacer()
                 Button {
                     modelContext.insert(RenderQueueAxis(order: axes.count))
+                    persist()
                 } label: {
                     Label("Add Axis", systemImage: "plus")
                 }
@@ -144,7 +146,7 @@ struct RenderQueueView: View {
             }
 
             ForEach(axes) { axis in
-                AxisRow(axis: axis) { modelContext.delete(axis) }
+                AxisRow(axis: axis) { modelContext.delete(axis); persist() }
             }
 
             // Preview before commit: pressing Expand on a matrix that produces
@@ -269,6 +271,7 @@ struct RenderQueueView: View {
             modelContext.insert(job)
             order += 1
         }
+        persist()
     }
 
     // MARK: - Jobs
@@ -337,6 +340,25 @@ struct RenderQueueView: View {
         }
     }
 
+    /// Flush structural changes to disk.
+    ///
+    /// `RenderQueueController` saves after every status change; this view saved
+    /// after none of its seven mutations, relying purely on SwiftData's autosave.
+    /// That is not wrong — the container autosaves — but it left the store on disk
+    /// lagging the UI by an indefinite interval, and it made the queue the only
+    /// surface in the app where "the row is there" and "the row is persisted"
+    /// were different claims. Expand is the case that matters: with source images
+    /// it copies ~1.7 MB onto every job, so re-doing a 30-job expansion after a
+    /// crash is no longer the trivial cost it was when jobs were only strings.
+    ///
+    /// **Structural changes only** — insert, delete, reorder, kind, mode. Typing
+    /// in an axis's values field fires on every keystroke and is left to autosave
+    /// deliberately; a disk write per character would be a worse trade than the
+    /// exposure it closes.
+    private func persist() {
+        try? modelContext.save()
+    }
+
     /// Jobs that have run and could run again. `.skipped` counts: it is a
     /// terminal state the user may want to undo, and nothing else clears it.
     private var finishedJobs: [RenderQueueJob] {
@@ -382,6 +404,7 @@ struct RenderQueueView: View {
         let aOrder = a.order
         a.order = b.order
         b.order = aOrder
+        persist()
     }
 }
 
@@ -390,6 +413,10 @@ struct RenderQueueView: View {
 private struct AxisRow: View {
     @Bindable var axis: RenderQueueAxis
     let onDelete: () -> Void
+
+    /// Kind and mode are structural — same reasoning as `RenderQueueView.persist`.
+    /// The values field is not: it fires per keystroke and is left to autosave.
+    @Environment(\.modelContext) private var modelContext
 
     /// The TextEditor's own text, decoupled from `axis.values`. A Binding
     /// computed straight from `axis.values.joined(separator: "\n")` would
@@ -474,10 +501,12 @@ private struct AxisRow: View {
         // across: image ids typed into a Prompt axis, or prompt text handed to
         // the picker, are both nonsense.
         .onChange(of: axis.kind) { old, new in
+            defer { try? modelContext.save() }
             guard old != new, old == .sourceImage || new == .sourceImage else { return }
             axis.values = []
             text = ""
         }
+        .onChange(of: axis.mode) { _, _ in try? modelContext.save() }
         .sheet(isPresented: $showImagePicker) {
             RenderQueueImagePicker(selection: $axis.values)
         }
