@@ -116,6 +116,20 @@ final class RenderQueueJob {
     /// Set once a render for this job succeeds — the gallery already owns
     /// the file; this is just how the job row finds it to show a thumbnail.
     var resultImagePath: String?
+    /// Cached thumbnail bytes for the row, copied from the `TSImage` record.
+    ///
+    /// ⚠️ **Not an optimisation — the only thing that works.** The row used to
+    /// read `resultImagePath` back with `NSImage(contentsOfFile:)`, which is a
+    /// bare sandbox read: when the user's Generate folder lives outside the
+    /// container (Ned's is `~/Desktop/Studio Generate`), that read is denied
+    /// and every finished job showed the empty placeholder. Both other
+    /// thumbnail surfaces already dodge this — `GalleryStripCell` and
+    /// `StorySceneRenderPanel` render `TSImage.thumbnailData` and never touch
+    /// the disk. This does the same. Jobs finished before 0.9.43 have no
+    /// cached bytes, so `JobRow` backfills them once through
+    /// `ImageFolderAccess.readData(at:)`, which activates the folder's
+    /// security-scoped bookmark. See [ImageFolderAccess].
+    var resultThumbnailData: Data?
     var createdAt: Date
 
     var status: RenderQueueJobStatus {
@@ -131,6 +145,7 @@ final class RenderQueueJob {
         self.statusRaw = RenderQueueJobStatus.pending.rawValue
         self.errorMessage = nil
         self.resultImagePath = nil
+        self.resultThumbnailData = nil
         self.createdAt = Date()
     }
 }

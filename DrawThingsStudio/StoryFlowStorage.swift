@@ -430,41 +430,75 @@ final class StoryFlowStorage {
             try? saveVariable(v)
         }
         UserDefaults.standard.set(true, forKey: key)
-        UserDefaults.standard.set(2, forKey: "storyflow.seedVersion")
+        UserDefaults.standard.set(Self.builtInSeedVersion, forKey: "storyflow.seedVersion")
     }
 
-    /// Migrate built-in configs written by older seeds to include real model names.
+    /// Current shape of the built-in variable set. Bump this whenever
+    /// `builtInConfigSpecs` or the built-in prompts change, so existing installs
+    /// pick the change up through `migrateBuiltInsIfNeeded`.
+    ///
+    /// - 2: the three original configs (`flux-default`, `qwen-image`,
+    ///   `turbo-fast`) with real model filenames patched in.
+    /// - 3: those three retired; replaced by the six curated model presets in
+    ///   `builtInConfigSpecs`.
+    static let builtInSeedVersion = 3
+
+    /// Names seeded as built-ins by earlier versions and no longer shipped.
+    /// Removed on migration **only when still flagged `isBuiltIn`** — a user
+    /// config that happens to share the name is theirs, not ours.
+    private static let retiredBuiltInConfigNames: Set<String> = [
+        "flux-default", "qwen-image", "turbo-fast",
+    ]
+
+    /// Bring an existing install's built-in variables up to `builtInSeedVersion`.
+    ///
+    /// ⚠️ **Seeding alone is not enough, and that has bitten this codebase
+    /// before.** `seedBuiltInsIfNeeded` runs once, guarded by
+    /// `storyflow.seeded`; anything added to the built-in set afterwards would
+    /// reach new installs only — the same defect the built-in LLM operations
+    /// shipped with. Every change to the built-in set therefore goes in
+    /// `builtInConfigSpecs` (one source of truth, read by both paths) plus a
+    /// version bump, and this function replays it onto installs that already
+    /// seeded.
+    ///
+    /// User-authored variables are never touched: only entries flagged
+    /// `isBuiltIn` are deleted or overwritten, and a new preset whose name
+    /// collides with a user variable is skipped rather than clobbering it.
     func migrateBuiltInsIfNeeded() {
         let versionKey = "storyflow.seedVersion"
         let current = UserDefaults.standard.integer(forKey: versionKey)
-        guard current < 2 else { return }
-
-        let modelUpdates: [String: (model: String, notes: String)] = [
-            "flux-default": ("flux_1_dev_q5p.ckpt",           "Standard Flux config — steps 20, CFG 3.5, Euler A Trailing"),
-            "qwen-image":   ("qwen_image_2512_bf16_q6p.ckpt", "Qwen Image T2I config — steps 20, CFG 1.0, Euler A Trailing"),
-            "turbo-fast":   ("z_image_turbo_1.0_q6p.ckpt",    "Fast turbo config — steps 4, CFG 1.0, LCM"),
-        ]
+        guard current < Self.builtInSeedVersion else { return }
 
         let existing = loadVariables()
-        for var v in existing {
-            guard v.isBuiltIn, v.type == .config,
-                  let update = modelUpdates[v.name] else { continue }
-            // Patch the model field inside the stored JSON dict.
-            if let jsonStr = v.configJSON,
-               let data = jsonStr.data(using: .utf8),
-               var dict = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] {
-                dict["model"] = update.model
-                if let updated = try? JSONSerialization.data(withJSONObject: dict,
-                                                              options: [.prettyPrinted, .sortedKeys]),
-                   let str = String(data: updated, encoding: .utf8) {
-                    v.configJSON = str
-                }
-            }
-            v.notes = update.notes
-            try? saveVariable(v)
+
+        // 1. Retire built-ins we no longer ship.
+        for v in existing where v.isBuiltIn
+            && v.type == .config
+            && Self.retiredBuiltInConfigNames.contains(v.name) {
+            try? deleteVariable(id: v.id)
         }
 
-        UserDefaults.standard.set(2, forKey: versionKey)
+        // 2. Upsert the current presets. Overwrite an existing built-in of the
+        //    same name in place (keeping its id, so a workflow referencing it by
+        //    id keeps resolving); skip a name a user variable already owns.
+        let survivors = existing.filter {
+            !($0.isBuiltIn && $0.type == .config && Self.retiredBuiltInConfigNames.contains($0.name))
+        }
+        for spec in Self.builtInConfigSpecs {
+            if let match = survivors.first(where: { $0.name == spec.name }) {
+                guard match.isBuiltIn else { continue }   // user owns this name
+                var updated = match
+                updated.type = .config
+                updated.configJSON = spec.json
+                updated.notes = spec.notes
+                updated.isBuiltIn = true
+                try? saveVariable(updated)
+            } else {
+                try? saveVariable(Self.configVariable(spec))
+            }
+        }
+
+        UserDefaults.standard.set(Self.builtInSeedVersion, forKey: versionKey)
     }
 
     /// Import config variables from Draw Things' custom_configs.json.
@@ -512,44 +546,7 @@ final class StoryFlowStorage {
     }
 
     private func makeBuiltInVariables() -> [WorkflowVariable] {
-        var result: [WorkflowVariable] = []
-
-        // Config variables
-        let fluxConfig = DrawThingsGenerationConfig(
-            width: 1024, height: 1024,
-            steps: 20, guidanceScale: 3.5,
-            seed: -1, seedMode: "Scale Alike",
-            sampler: "Euler A Trailing",
-            model: "flux_1_dev_q5p.ckpt",
-            shift: 3.0, strength: 1.0,
-            stochasticSamplingGamma: 0.3,
-            batchSize: 1, batchCount: 1,
-            resolutionDependentShift: true
-        )
-        result.append(configVariable(name: "flux-default", config: fluxConfig,
-                                     notes: "Standard Flux config — steps 20, CFG 3.5, Euler A Trailing"))
-
-        let qwenConfig = DrawThingsGenerationConfig(
-            width: 1024, height: 1024,
-            steps: 20, guidanceScale: 1.0,
-            seed: -1, seedMode: "Scale Alike",
-            sampler: "Euler A Trailing",
-            model: "qwen_image_2512_bf16_q6p.ckpt",
-            shift: 3.0, strength: 1.0
-        )
-        result.append(configVariable(name: "qwen-image", config: qwenConfig,
-                                     notes: "Qwen Image T2I config — steps 20, CFG 1.0, Euler A Trailing"))
-
-        let turboConfig = DrawThingsGenerationConfig(
-            width: 1024, height: 1024,
-            steps: 4, guidanceScale: 1.0,
-            seed: -1, seedMode: "Scale Alike",
-            sampler: "LCM",
-            model: "z_image_turbo_1.0_q6p.ckpt",
-            shift: 1.0, strength: 1.0
-        )
-        result.append(configVariable(name: "turbo-fast", config: turboConfig,
-                                     notes: "Fast turbo config — steps 4, CFG 1.0, LCM"))
+        var result: [WorkflowVariable] = Self.builtInConfigSpecs.map(Self.configVariable)
 
         // Prompt variables
         var posBase = WorkflowVariable(name: "positive-base", type: .prompt)
@@ -567,16 +564,192 @@ final class StoryFlowStorage {
         return result
     }
 
-    private func configVariable(name: String,
-                                 config: DrawThingsGenerationConfig,
-                                 notes: String?) -> WorkflowVariable {
-        var v = WorkflowVariable(name: name, type: .config)
+    // MARK: — Built-in config presets
+
+    struct BuiltInConfigSpec {
+        let name: String
+        let notes: String
+        let json: String
+    }
+
+    /// The shipped `#config` presets — **one source of truth**, read by both
+    /// `makeBuiltInVariables` (fresh installs) and `migrateBuiltInsIfNeeded`
+    /// (existing ones). They surface anywhere `StoryUseSavedConfigMenu` does:
+    /// Story Studio, Cast & Staging and the Render Queue's Base Config. Generate
+    /// has its own preset list (`community_models_configs.json`) and is not fed
+    /// from here.
+    ///
+    /// **Why these six.** Trimmed on 2026-09-05 from three stale presets
+    /// (`flux-default`, `qwen-image`, `turbo-fast`) to the models actually in
+    /// use, so the menu is a shortlist of known-good starting points rather than
+    /// a museum. Numbers are Draw Things' own recommended settings for each
+    /// checkpoint, taken from the community config catalogue it ships, not
+    /// invented here.
+    ///
+    /// **Shape: Draw Things' JSON, not `DrawThingsGenerationConfig`'s.**
+    /// `sampler` and `seedMode` are DT's integer enums, matching what DT's own
+    /// "Copy Configuration" puts on the clipboard — so a preset can be pasted
+    /// back into DT and recognised. That is only safe because every consumer
+    /// reads these through `StoryFlowEngine.mergeDict`, which maps Int → String;
+    /// a `JSONDecoder` pass would throw. Same reasoning as
+    /// `StoryProject.builtInDefaultConfigJSON`.
+    ///
+    /// ⚠️ **Every filename here must exist in Draw Things' model catalogue.**
+    /// A model name that does not resolve is not a soft failure — on
+    /// 2026-08-28 a wrong one cost a full session and looked like a client bug.
+    static let builtInConfigSpecs: [BuiltInConfigSpec] = [
+        BuiltInConfigSpec(
+            name: "Z Image Turbo",
+            notes: "Fast general-purpose stills — 8 steps, CFG 1, UniPC Trailing. The everyday default.",
+            json: """
+            {
+            "clipSkip": 1,
+            "guidanceScale": 1,
+            "height": 1024,
+            "hiresFix": false,
+            "loras": [],
+            "model": "z_image_turbo_1.0_q6p.ckpt",
+            "resolutionDependentShift": false,
+            "sampler": 17,
+            "seed": -1,
+            "seedMode": 2,
+            "shift": 3,
+            "steps": 8,
+            "strength": 1,
+            "width": 1024
+            }
+            """
+        ),
+        BuiltInConfigSpec(
+            // Named for the quantization on purpose. It is the whole reason
+            // this preset exists (i8x silently drops LoRAs), and it keeps the
+            // preset from colliding with the "Krea 2 Turbo" a user has very
+            // likely already saved — a collision would mean the built-in is
+            // skipped and never seen.
+            name: "Krea 2 Turbo q6p",
+            notes: "Krea 2 Turbo stills — 8 steps, CFG 1, Euler A Trailing. q6p specifically: i8x silently ignores LoRAs.",
+            json: """
+            {
+            "clipSkip": 1,
+            "guidanceEmbed": 3.5,
+            "guidanceScale": 1,
+            "height": 768,
+            "hiresFix": false,
+            "loras": [],
+            "model": "krea_2_turbo_q6p.ckpt",
+            "resolutionDependentShift": false,
+            "sampler": 10,
+            "seed": -1,
+            "seedMode": 2,
+            "shift": 3,
+            "speedUpWithGuidanceEmbed": true,
+            "steps": 8,
+            "strength": 1,
+            "t5TextEncoder": true,
+            "width": 1024
+            }
+            """
+        ),
+        BuiltInConfigSpec(
+            name: "LTX 2.3 Distilled",
+            notes: "Video — 1280×768, 121 frames, 8 steps, CFG 1, TCD Trailing, hires fix from 640×384.",
+            json: """
+            {
+            "clipSkip": 1,
+            "guidanceScale": 1,
+            "height": 768,
+            "hiresFix": true,
+            "hiresFixHeight": 384,
+            "hiresFixStrength": 0.7,
+            "hiresFixWidth": 640,
+            "loras": [],
+            "model": "ltx_2.3_22b_distilled_q8p.ckpt",
+            "numFrames": 121,
+            "sampler": 19,
+            "seed": -1,
+            "seedMode": 2,
+            "shift": 5,
+            "steps": 8,
+            "strength": 1,
+            "width": 1280
+            }
+            """
+        ),
+        BuiltInConfigSpec(
+            name: "FLUX.2 Klein 9B",
+            notes: "FLUX.2 klein 9B — 4 steps, CFG 1, DDIM Trailing.",
+            json: """
+            {
+            "clipSkip": 2,
+            "guidanceScale": 1,
+            "height": 1024,
+            "hiresFix": false,
+            "loras": [],
+            "model": "flux_2_klein_9b_q6p.ckpt",
+            "resolutionDependentShift": false,
+            "sampler": 16,
+            "seed": -1,
+            "seedMode": 2,
+            "shift": 3,
+            "speedUpWithGuidanceEmbed": true,
+            "steps": 4,
+            "strength": 1,
+            "t5TextEncoder": true,
+            "width": 1024
+            }
+            """
+        ),
+        BuiltInConfigSpec(
+            name: "HiDream I1 Fast",
+            notes: "HiDream-I1 [fast] — 16 steps, CFG 1, Euler A Trailing. Text guidance has no effect on this model.",
+            json: """
+            {
+            "clipSkip": 2,
+            "guidanceScale": 1,
+            "height": 1024,
+            "hiresFix": false,
+            "loras": [],
+            "model": "hidream_i1_fast_q5p.ckpt",
+            "resolutionDependentShift": false,
+            "sampler": 10,
+            "seed": -1,
+            "seedMode": 2,
+            "shift": 3,
+            "steps": 16,
+            "strength": 1,
+            "width": 1024
+            }
+            """
+        ),
+        BuiltInConfigSpec(
+            name: "Kolors 1.0",
+            notes: "Kwai Kolors 1.0 (8-bit) — SDXL-architecture, so SDXL numbers: 16 steps, CFG 5, DPM++ 2M AYS.",
+            json: """
+            {
+            "clipSkip": 2,
+            "guidanceScale": 5,
+            "height": 1024,
+            "hiresFix": false,
+            "loras": [],
+            "model": "kwai_kolors_1.0_q6p_q8p.ckpt",
+            "resolutionDependentShift": false,
+            "sampler": 12,
+            "seed": -1,
+            "seedMode": 2,
+            "shift": 1,
+            "steps": 16,
+            "strength": 1,
+            "width": 1024
+            }
+            """
+        ),
+    ]
+
+    private static func configVariable(_ spec: BuiltInConfigSpec) -> WorkflowVariable {
+        var v = WorkflowVariable(name: spec.name, type: .config)
         v.isBuiltIn = true
-        v.notes = notes
-        if let data = try? encoder.encode(config),
-           let json = String(data: data, encoding: .utf8) {
-            v.configJSON = json
-        }
+        v.notes = spec.notes
+        v.configJSON = spec.json
         return v
     }
 }

@@ -35,6 +35,7 @@ struct RenderQueueView: View {
             .frame(maxWidth: .infinity)
         }
         .background(DashboardDS.bg)
+        .onAppear { releaseStuckRunningJobs() }
         .confirmationDialog(
             "Delete Job",
             isPresented: Binding(get: { jobPendingDelete != nil }, set: { if !$0 { jobPendingDelete = nil } }),
@@ -139,16 +140,41 @@ struct RenderQueueView: View {
         VStack(alignment: .leading, spacing: TanqueDS.Spacing.sm) {
             HStack {
                 Text("JOBS (\(jobs.count))").font(TanqueDS.Font.monoSemiBold(11)).foregroundStyle(DashboardDS.muted)
+                if !jobs.isEmpty {
+                    Text(progressLine)
+                        .font(TanqueDS.Font.mono(10))
+                        .foregroundStyle(controller.isPaused ? DashboardDS.brass : DashboardDS.muted)
+                }
                 Spacer()
                 if controller.isRunning {
+                    // Pause lets the in-flight job finish (the client has no
+                    // mid-render cancel); Stop tears the run task down now.
                     Button("Pause") { controller.pause() }
                         .buttonStyle(DashboardGhostButtonStyle())
                         .fixedSize()
+                        .help("Stops starting new jobs. The job currently rendering finishes first.")
+                    Button("Stop") {
+                        controller.cancel()
+                        releaseStuckRunningJobs()
+                    }
+                    .buttonStyle(DashboardGhostButtonStyle())
+                    .fixedSize()
+                    .help("Ends the run immediately. The job currently rendering is abandoned and goes back to pending.")
                 } else {
-                    Button("Run") { controller.run(jobs: jobs, modelContext: modelContext) }
-                        .buttonStyle(DashboardPrimaryButtonStyle())
-                        .disabled(jobs.allSatisfy { $0.status != .pending })
+                    Button(controller.isPaused ? "Resume" : "Run") {
+                        controller.run(jobs: jobs, modelContext: modelContext)
+                    }
+                    .buttonStyle(DashboardPrimaryButtonStyle())
+                    .disabled(pendingCount == 0)
+                    .help(controller.isPaused
+                          ? "Picks up at the next pending job."
+                          : "Renders every pending job, in list order.")
                 }
+                Button("Reset") { RenderQueueController.reset(finishedJobs, in: modelContext) }
+                    .buttonStyle(DashboardGhostButtonStyle())
+                    .fixedSize()
+                    .disabled(controller.isRunning || finishedJobs.isEmpty)
+                    .help("Puts every finished or failed job back to pending so the queue can run again. Images already produced stay in the gallery.")
                 Button("Clear All") { showClearAllConfirm = true }
                     .buttonStyle(DashboardGhostButtonStyle())
                     .fixedSize()
@@ -167,10 +193,47 @@ struct RenderQueueView: View {
                     canMoveUp: index > 0, canMoveDown: index < jobs.count - 1,
                     onMoveUp: { swapOrder(jobs[index], jobs[index - 1]) },
                     onMoveDown: { swapOrder(jobs[index], jobs[index + 1]) },
+                    onRetry: { RenderQueueController.reset([job], in: modelContext) },
                     onDelete: { jobPendingDelete = job }
                 )
             }
         }
+    }
+
+    /// Jobs that have run and could run again. `.skipped` counts: it is a
+    /// terminal state the user may want to undo, and nothing else clears it.
+    private var finishedJobs: [RenderQueueJob] {
+        jobs.filter { $0.status == .succeeded || $0.status == .failed || $0.status == .skipped }
+    }
+
+    private var pendingCount: Int { jobs.count { $0.status == .pending } }
+
+    /// Puts any job still flagged `.running` back to `.pending` when nothing is
+    /// actually running.
+    ///
+    /// `.running` is written to the store before the render starts and only
+    /// overwritten when it ends, so a job whose run never ended keeps that
+    /// status forever — after **Stop**, or after the app quits mid-render.
+    /// That row is then a dead end: Retry is hidden for a running job and
+    /// Delete is disabled for one, so the queue can be neither re-run nor
+    /// cleaned up. Called on Stop and whenever the pane appears, which also
+    /// covers a job orphaned by a previous launch.
+    private func releaseStuckRunningJobs() {
+        guard !controller.isRunning else { return }
+        let stuck = jobs.filter { $0.status == .running }
+        guard !stuck.isEmpty else { return }
+        RenderQueueController.reset(stuck, in: modelContext)
+    }
+
+    /// Deliberately counts *finished* jobs rather than naming an ordinal for the
+    /// one in flight. Rows can be reordered and individual jobs re-queued, so
+    /// "running 8 of 10" is a lie the moment a row in the middle goes back to
+    /// pending — which is exactly what the new Retry button invites.
+    private var progressLine: String {
+        if controller.isPaused { return "· paused — \(pendingCount) pending" }
+        if controller.isRunning { return "· \(finishedJobs.count) of \(jobs.count) done" }
+        if pendingCount == 0 { return "· all done" }
+        return "· \(pendingCount) pending"
     }
 
     /// Reordering, not drag handles — the page is a plain ScrollView, and
@@ -360,7 +423,13 @@ private struct JobRow: View {
     let canMoveDown: Bool
     let onMoveUp: () -> Void
     let onMoveDown: () -> Void
+    let onRetry: () -> Void
     let onDelete: () -> Void
+
+    /// Decoded thumbnail for this row. Held in view state rather than decoded
+    /// inline in `body` so a 40×40 image isn't rebuilt from `Data` on every
+    /// layout pass of a queue that can be dozens of rows long.
+    @State private var thumbnailImage: NSImage?
 
     var body: some View {
         HStack(spacing: TanqueDS.Spacing.sm) {
@@ -393,6 +462,12 @@ private struct JobRow: View {
             }
             Spacer()
             statusBadge
+            if job.status != .pending && job.status != .running {
+                Button(action: onRetry) { Image(systemName: "arrow.counterclockwise") }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(DashboardDS.muted)
+                    .help("Put this job back to pending so the next run renders it again.")
+            }
             Button(role: .destructive) { onDelete() } label: {
                 Image(systemName: "xmark.circle")
             }
@@ -400,6 +475,7 @@ private struct JobRow: View {
             .foregroundStyle(DashboardDS.muted)
             .disabled(job.status == .running)
         }
+        .task(id: thumbnailIdentity) { await loadThumbnail() }
         .padding(TanqueDS.Spacing.sm)
         .background(isCurrent ? DashboardDS.brassSubtle : DashboardDS.surf2,
                    in: RoundedRectangle(cornerRadius: 8))
@@ -419,7 +495,7 @@ private struct JobRow: View {
     }
 
     @ViewBuilder private var thumbnail: some View {
-        if let path = job.resultImagePath, let nsImage = NSImage(contentsOfFile: path) {
+        if let nsImage = thumbnailImage {
             Image(nsImage: nsImage)
                 .resizable()
                 .aspectRatio(contentMode: .fill)
@@ -431,6 +507,41 @@ private struct JobRow: View {
                 .frame(width: 40, height: 40)
                 .overlay(Image(systemName: "photo").font(.caption).foregroundStyle(DashboardDS.muted))
         }
+    }
+
+    /// Re-runs `loadThumbnail` when either half of the row's image state
+    /// changes — a fresh render sets both, `Retry` clears both.
+    private var thumbnailIdentity: String {
+        "\(job.resultImagePath ?? "")#\(job.resultThumbnailData?.count ?? 0)"
+    }
+
+    /// Prefers the bytes cached on the job; falls back — once — to reading the
+    /// PNG under the image folder's security-scoped bookmark and caching what
+    /// it finds.
+    ///
+    /// The fallback exists for jobs finished before `resultThumbnailData` was
+    /// added, and it must go through `ImageFolderAccess`: a bare
+    /// `NSImage(contentsOfFile:)` is what made every finished row show the
+    /// placeholder, because the Generate folder is typically outside the
+    /// sandbox container.
+    @MainActor
+    private func loadThumbnail() async {
+        if let data = job.resultThumbnailData, let image = NSImage(data: data) {
+            thumbnailImage = image
+            return
+        }
+        guard let path = job.resultImagePath, !path.isEmpty else {
+            thumbnailImage = nil
+            return
+        }
+        let url = URL(fileURLWithPath: path)
+        guard let data = try? ImageFolderAccess.readData(at: url),
+              let full = NSImage(data: data) else {
+            thumbnailImage = nil
+            return
+        }
+        thumbnailImage = full
+        job.resultThumbnailData = ImageStorageManager.makeThumbnailData(from: full)
     }
 
     private var statusLabel: String {

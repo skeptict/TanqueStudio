@@ -242,7 +242,9 @@ struct UseAsStoryStudioBaseMenu: View {
 }
 
 /// Lists the app's saved `#config` workflow variables (Generate → StoryFlow
-/// config presets, 16 exist today: `ZIT1.0`, `flux-default`, `cyberrealpony`…)
+/// config presets — the six built-ins from `StoryFlowStorage.builtInConfigSpecs`
+/// plus whatever the user has saved or imported: `Z Image Turbo`, `ZIT1.0`,
+/// `cyberrealpony`…)
 /// and copies the chosen one's JSON into Base Config.
 ///
 /// **Snapshot, not a live reference — decided.** Copying the JSON in means a

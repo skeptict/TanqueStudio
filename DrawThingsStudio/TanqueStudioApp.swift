@@ -117,6 +117,16 @@ struct TanqueStudioApp: App {
 
     init() {
         try? Tips.configure()
+
+        // Built-in `#config` presets, at launch rather than when the StoryFlow
+        // pane first loads. They are read by every Labs surface with a "Use a
+        // saved config…" menu — Story Studio, Cast & Staging, Render Queue —
+        // and those read `StoryFlowStorage.shared` directly, so hanging the
+        // migration off StoryFlowViewModel.loadAll() left anyone who opened
+        // Render Queue first looking at the previous version's presets.
+        // Both calls are idempotent and version-guarded.
+        StoryFlowStorage.shared.migrateBuiltInsIfNeeded()
+        StoryFlowStorage.shared.seedBuiltInsIfNeeded()
     }
 
     var body: some Scene {
