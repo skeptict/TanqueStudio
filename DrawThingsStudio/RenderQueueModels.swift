@@ -15,6 +15,32 @@ import SwiftData
 
 // MARK: - Axis kinds
 
+/// How an axis combines with the others.
+///
+/// `cross` is the original and only behaviour: every value against every value.
+/// `pair` exists because a cross product cannot say "animate image *i* with
+/// prompt *i*" — see `RenderQueueExpander.combos`.
+enum RenderQueueAxisMode: String, Codable, CaseIterable, Identifiable {
+    case cross
+    case pair
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .cross: return "Cross"
+        case .pair:  return "Pair"
+        }
+    }
+
+    var help: String {
+        switch self {
+        case .cross: return "Every value of this axis against every value of the others."
+        case .pair:  return "Advance in step with the other paired axes — value 1 with value 1, and so on."
+        }
+    }
+}
+
 /// What a single axis varies. Deliberately scoped to what sweep/scripting in
 /// Draw Things itself cannot already do (LoRAs, prompts) plus the common
 /// scalar knobs — not every field DrawThingsGenerationConfig models.
@@ -30,6 +56,11 @@ enum RenderQueueAxisKind: String, Codable, CaseIterable, Identifiable {
     case guidanceScale
     case strength
     case shift
+    /// Values are `TSImage` UUID strings, not user-typed text — the picker
+    /// writes them and the thumbnail strip renders them. The identifier is a
+    /// build-time convenience only: `Expand` copies the actual bytes onto each
+    /// job, so a queue never depends on the gallery record surviving.
+    case sourceImage
 
     var id: String { rawValue }
 
@@ -46,6 +77,7 @@ enum RenderQueueAxisKind: String, Codable, CaseIterable, Identifiable {
         case .guidanceScale: return "Guidance Scale"
         case .strength: return "Strength"
         case .shift: return "Shift"
+        case .sourceImage: return "Source Image"
         }
     }
 
@@ -57,6 +89,7 @@ enum RenderQueueAxisKind: String, Codable, CaseIterable, Identifiable {
         case .loraSet: return "One set per line: file@weight, file@weight — blank line = no LoRAs"
         case .steps, .seed: return "One whole number per line"
         case .guidanceScale, .strength, .shift: return "One number per line"
+        case .sourceImage: return "Pick images — each job gets one"
         }
     }
 }
@@ -83,17 +116,27 @@ final class RenderQueueAxis {
     /// responsible for filtering blank lines out of every other kind before
     /// they land here.
     var values: [String]
+    /// Optional so SwiftData can migrate existing axes in place; `nil` reads as
+    /// `.cross`, which is what every axis written before pairing existed meant.
+    var modeRaw: String?
 
     var kind: RenderQueueAxisKind {
         get { RenderQueueAxisKind(rawValue: kindRaw) ?? .prompt }
         set { kindRaw = newValue.rawValue }
     }
 
-    init(kind: RenderQueueAxisKind = .prompt, order: Int, values: [String] = []) {
+    var mode: RenderQueueAxisMode {
+        get { modeRaw.flatMap(RenderQueueAxisMode.init(rawValue:)) ?? .cross }
+        set { modeRaw = newValue.rawValue }
+    }
+
+    init(kind: RenderQueueAxisKind = .prompt, order: Int, values: [String] = [],
+         mode: RenderQueueAxisMode = .cross) {
         self.id = UUID()
         self.kindRaw = kind.rawValue
         self.order = order
         self.values = values
+        self.modeRaw = mode.rawValue
     }
 }
 
@@ -130,6 +173,28 @@ final class RenderQueueJob {
     /// `ImageFolderAccess.readData(at:)`, which activates the folder's
     /// security-scoped bookmark. See [ImageFolderAccess].
     var resultThumbnailData: Data?
+    /// Frame count when this job produced a video, `nil` for a still. Drives the
+    /// ▶ badge on the row, mirroring how `GalleryStripCell` marks a series.
+    var resultFrameCount: Int?
+    /// The assembled `.mp4`, when assembly succeeded. Optional even on a video
+    /// job: muxing can fail after the frames are safely in the gallery, and
+    /// losing the render to that would be worse than shipping frames with no
+    /// movie. The gallery's "Export Movie…" is the recovery path.
+    var resultMoviePath: String?
+    /// The image this job renders *from*, as bytes.
+    ///
+    /// **Bytes, not a reference — Ned's call, 2026-09-05.** A job carrying its
+    /// own source stays reproducible after the gallery record is deleted, the
+    /// file is moved, or the folder's security-scoped bookmark is lost, which is
+    /// the same self-containment rule that made each job carry a full standalone
+    /// config rather than a base plus overrides. The cost is real (~1.7 MB per
+    /// job, against a 27 MB store) and is accepted; if it bites, the fix is a
+    /// queue-owned blob model storing each distinct image once. See
+    /// `Docs/render-queue-image-inputs-spec.md` §4.
+    var sourceImageData: Data?
+    /// 256px preview of `sourceImageData` for the row, so a paired batch reads
+    /// as input → output at a glance without decoding a full frame per row.
+    var sourceThumbnailData: Data?
     var createdAt: Date
 
     var status: RenderQueueJobStatus {
@@ -146,6 +211,10 @@ final class RenderQueueJob {
         self.errorMessage = nil
         self.resultImagePath = nil
         self.resultThumbnailData = nil
+        self.resultFrameCount = nil
+        self.resultMoviePath = nil
+        self.sourceImageData = nil
+        self.sourceThumbnailData = nil
         self.createdAt = Date()
     }
 }
@@ -175,6 +244,16 @@ final class RenderQueueSettings {
     var ideasTopic: String {
         didSet { UserDefaults.standard.set(ideasTopic, forKey: "tanqueStudio.renderQueue.ideasTopic") }
     }
+    /// `TSImage` UUID string for the base source image — what a job renders from
+    /// when no `.sourceImage` axis overrides it. Empty means text-to-image.
+    ///
+    /// An identifier rather than bytes because this is UserDefaults: a few
+    /// megabytes of PNG in the preferences plist would be reread on every launch
+    /// and synced by the system. The bytes are copied onto each job at Expand,
+    /// which is where self-containment actually matters.
+    var baseSourceImageID: String {
+        didSet { UserDefaults.standard.set(baseSourceImageID, forKey: "tanqueStudio.renderQueue.baseSourceImageID") }
+    }
 
     private init() {
         let d = UserDefaults.standard
@@ -187,6 +266,7 @@ final class RenderQueueSettings {
         ideasSystemPrompt = d.string(forKey: "tanqueStudio.renderQueue.ideasSystemPrompt")
             ?? RenderQueueSettings.defaultIdeasSystemPrompt
         ideasTopic = d.string(forKey: "tanqueStudio.renderQueue.ideasTopic") ?? ""
+        baseSourceImageID = d.string(forKey: "tanqueStudio.renderQueue.baseSourceImageID") ?? ""
     }
 
     static let defaultIdeasSystemPrompt = """

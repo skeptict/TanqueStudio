@@ -20,6 +20,7 @@ struct RenderQueueView: View {
     @State private var controller = RenderQueueController()
     @State private var jobPendingDelete: RenderQueueJob?
     @State private var showClearAllConfirm = false
+    @State private var showingBasePicker = false
 
     var body: some View {
         ScrollView {
@@ -36,6 +37,9 @@ struct RenderQueueView: View {
         }
         .background(DashboardDS.bg)
         .onAppear { releaseStuckRunningJobs() }
+        .sheet(isPresented: $showingBasePicker) {
+            RenderQueueImagePicker(selection: baseSourceBinding, allowsMultiple: false)
+        }
         .confirmationDialog(
             "Delete Job",
             isPresented: Binding(get: { jobPendingDelete != nil }, set: { if !$0 { jobPendingDelete = nil } }),
@@ -83,7 +87,33 @@ struct RenderQueueView: View {
                 .scrollContentBackground(.hidden)
                 .background(DashboardDS.surf1, in: RoundedRectangle(cornerRadius: 6))
                 .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(DashboardDS.border, lineWidth: 1))
+
+            HStack(alignment: .top, spacing: TanqueDS.Spacing.sm) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Source Image")
+                        .font(TanqueDS.Font.body)
+                        .foregroundStyle(DashboardDS.muted2)
+                    Text(settings.baseSourceImageID.isEmpty
+                         ? "Optional — leave empty for text-to-image."
+                         : "Used by every job with no Source Image axis.")
+                        .font(TanqueDS.Font.bodySmall)
+                        .foregroundStyle(DashboardDS.muted)
+                }
+                Spacer()
+                RenderQueueImageStrip(ids: baseSourceBinding) { showingBasePicker = true }
+                    .frame(maxWidth: 200)
+            }
         }
+    }
+
+    /// The base source is a single image, but the strip and picker both speak
+    /// `[String]` — one array-of-at-most-one binding keeps a second single-image
+    /// code path from existing.
+    private var baseSourceBinding: Binding<[String]> {
+        Binding(
+            get: { settings.baseSourceImageID.isEmpty ? [] : [settings.baseSourceImageID] },
+            set: { settings.baseSourceImageID = $0.first ?? "" }
+        )
     }
 
     // MARK: - Axes
@@ -112,24 +142,86 @@ struct RenderQueueView: View {
                 AxisRow(axis: axis) { modelContext.delete(axis) }
             }
 
+            // Preview before commit: pressing Expand on a matrix that produces
+            // 240 video jobs should not be the moment you find that out.
+            let preview = expansionPreview
+            if !preview.warnings.isEmpty {
+                ForEach(preview.warnings, id: \.self) { warning in
+                    Label(warning, systemImage: "exclamationmark.triangle.fill")
+                        .font(TanqueDS.Font.bodySmall)
+                        .foregroundStyle(DashboardDS.brass)
+                }
+            }
+
             Button {
                 expand()
             } label: {
-                Label("Expand", systemImage: "square.grid.3x3.fill")
+                Label(expandLabel(preview), systemImage: "square.grid.3x3.fill")
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(DashboardPrimaryButtonStyle())
         }
     }
 
-    private func expand() {
-        let inputs = axes.map { RenderQueueExpander.AxisInput(kind: $0.kind, values: $0.values) }
-        let expanded = RenderQueueExpander.expand(
-            axes: inputs, basePrompt: settings.basePrompt, baseConfigJSON: settings.baseConfigJSON
+    private var axisInputs: [RenderQueueExpander.AxisInput] {
+        axes.map { RenderQueueExpander.AxisInput(kind: $0.kind, values: $0.values, mode: $0.mode) }
+    }
+
+    private var expansionPreview: RenderQueueExpander.ExpansionPlan {
+        RenderQueueExpander.plan(
+            axes: axisInputs, basePrompt: settings.basePrompt,
+            baseConfigJSON: settings.baseConfigJSON,
+            baseSourceImageID: settings.baseSourceImageID.isEmpty ? nil : settings.baseSourceImageID
         )
+    }
+
+    /// "Expand — 12 jobs · 1,452 frames". The frame total matters more than the
+    /// job count for video: there is no frame cap in either engine (the old 257
+    /// clamp was removed deliberately), so a modest-looking matrix of LTX jobs is
+    /// thousands of files and hours of render time.
+    private func expandLabel(_ preview: RenderQueueExpander.ExpansionPlan) -> String {
+        let count = preview.jobs.count
+        var label = "Expand — \(count) job\(count == 1 ? "" : "s")"
+        let frames = preview.jobs.reduce(0) { total, job in
+            total + max(RenderQueueExpander.numFrames(inConfigJSON: job.configJSON), 1)
+        }
+        if frames > count {
+            label += " · \(frames.formatted(.number.grouping(.automatic))) frames"
+        }
+        return label
+    }
+
+    /// Turn the plan into real jobs, copying each source image's **bytes** onto
+    /// the job as it goes.
+    ///
+    /// This is the one place a source image is read from disk. After Expand the
+    /// queue owes nothing to the gallery: delete the picked image, move the
+    /// folder, lose the security-scoped bookmark — the jobs still render exactly
+    /// what their rows describe. That is the self-containment rule the queue was
+    /// built on, applied to images.
+    ///
+    /// Bytes are cached per id within one Expand, so a source crossed against ten
+    /// prompts is read once, not ten times.
+    private func expand() {
+        let expanded = expansionPreview.jobs
         var order = (jobs.map(\.order).max() ?? -1) + 1
+        var cache: [String: (data: Data, thumbnail: Data?)] = [:]
+
         for result in expanded {
-            modelContext.insert(RenderQueueJob(order: order, prompt: result.prompt, configJSON: result.configJSON))
+            let job = RenderQueueJob(order: order, prompt: result.prompt, configJSON: result.configJSON)
+            if let id = result.sourceImageID {
+                let resolved = cache[id] ?? RenderQueueImageResolver.imageData(forID: id, in: modelContext)
+                if let resolved {
+                    cache[id] = resolved
+                    job.sourceImageData = resolved.data
+                    job.sourceThumbnailData = resolved.thumbnail
+                        ?? NSImage(data: resolved.data).flatMap { ImageStorageManager.makeThumbnailData(from: $0) }
+                }
+                // A source that cannot be read produces a text-to-image job
+                // rather than no job at all. `expansionWarnings` says so before
+                // Expand is pressed, so this is not the first the user hears.
+            }
+            modelContext.insert(job)
             order += 1
         }
     }
@@ -264,6 +356,7 @@ private struct AxisRow: View {
     /// style preference.
     @State private var text: String = ""
     @State private var showIdeasSheet = false
+    @State private var showImagePicker = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -276,6 +369,16 @@ private struct AxisRow: View {
                 .labelsHidden()
                 .pickerStyle(.menu)
                 .frame(width: 160)
+
+                Picker("", selection: $axis.mode) {
+                    ForEach(RenderQueueAxisMode.allCases) { mode in
+                        Text(mode.displayName).tag(mode)
+                    }
+                }
+                .labelsHidden()
+                .pickerStyle(.segmented)
+                .frame(width: 108)
+                .help(axis.mode.help)
 
                 Text("\(axis.values.count) value\(axis.values.count == 1 ? "" : "s")")
                     .font(TanqueDS.Font.mono(10.5))
@@ -296,18 +399,25 @@ private struct AxisRow: View {
                 .buttonStyle(.plain)
                 .foregroundStyle(DashboardDS.muted)
             }
-            TextEditor(text: $text)
-                .font(TanqueDS.Font.mono(11))
-                .frame(minHeight: 50, maxHeight: 90)
-                .scrollContentBackground(.hidden)
-                .background(DashboardDS.surf1, in: RoundedRectangle(cornerRadius: 6))
-                .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(DashboardDS.border, lineWidth: 1))
-                .onChange(of: text) { _, newText in
-                    let lines = newText.components(separatedBy: .newlines)
-                    axis.values = axis.kind == .loraSet
-                        ? lines
-                        : lines.map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
-                }
+            // A Source Image axis holds picked image ids, not typed text, so it
+            // gets a thumbnail strip where every other kind gets a TextEditor.
+            // Editing those ids as text would be meaningless and destructive.
+            if axis.kind == .sourceImage {
+                RenderQueueImageStrip(ids: $axis.values) { showImagePicker = true }
+            } else {
+                TextEditor(text: $text)
+                    .font(TanqueDS.Font.mono(11))
+                    .frame(minHeight: 50, maxHeight: 90)
+                    .scrollContentBackground(.hidden)
+                    .background(DashboardDS.surf1, in: RoundedRectangle(cornerRadius: 6))
+                    .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(DashboardDS.border, lineWidth: 1))
+                    .onChange(of: text) { _, newText in
+                        let lines = newText.components(separatedBy: .newlines)
+                        axis.values = axis.kind == .loraSet
+                            ? lines
+                            : lines.map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+                    }
+            }
             Text(axis.kind.valuesHelp)
                 .font(TanqueDS.Font.mono(10))
                 .foregroundStyle(DashboardDS.muted)
@@ -315,6 +425,17 @@ private struct AxisRow: View {
         .padding(TanqueDS.Spacing.sm)
         .background(DashboardDS.surf2, in: RoundedRectangle(cornerRadius: 8))
         .onAppear { text = axis.values.joined(separator: "\n") }
+        // Switching an axis to or from Source Image must not carry stale values
+        // across: image ids typed into a Prompt axis, or prompt text handed to
+        // the picker, are both nonsense.
+        .onChange(of: axis.kind) { old, new in
+            guard old != new, old == .sourceImage || new == .sourceImage else { return }
+            axis.values = []
+            text = ""
+        }
+        .sheet(isPresented: $showImagePicker) {
+            RenderQueueImagePicker(selection: $axis.values)
+        }
         .sheet(isPresented: $showIdeasSheet) {
             RenderQueuePromptIdeasSheet { ideas in
                 let joined = ideas.joined(separator: "\n")
@@ -443,6 +564,22 @@ private struct JobRow: View {
             }
             .font(.caption2)
             .foregroundStyle(DashboardDS.muted)
+            // Input → output, so a paired batch reads at a glance: this image,
+            // animated by this prompt, produced that. Absent entirely for a
+            // text-to-image job rather than shown as an empty slot.
+            if let data = job.sourceThumbnailData, let source = NSImage(data: data) {
+                Image(nsImage: source)
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+                    .frame(width: 40, height: 40)
+                    .clipShape(RoundedRectangle(cornerRadius: 5))
+                    .overlay(RoundedRectangle(cornerRadius: 5)
+                        .strokeBorder(DashboardDS.border, lineWidth: 1))
+                    .help("Source image for this job")
+                Image(systemName: "arrow.right")
+                    .font(.system(size: 9))
+                    .foregroundStyle(DashboardDS.muted)
+            }
             thumbnail
             VStack(alignment: .leading, spacing: 2) {
                 Text(job.prompt.isEmpty ? "(no prompt)" : job.prompt)
@@ -501,6 +638,22 @@ private struct JobRow: View {
                 .aspectRatio(contentMode: .fill)
                 .frame(width: 40, height: 40)
                 .clipShape(RoundedRectangle(cornerRadius: 5))
+                // Badge AFTER the frame + clip, never before: an overlay applied
+                // ahead of the sizing modifiers gets laid out against the full
+                // image and clips to nothing. Same trap as the browser cell.
+                .overlay(alignment: .bottomTrailing) {
+                    if let frames = job.resultFrameCount, frames > 1 {
+                        Label("\(frames)", systemImage: "play.fill")
+                            .font(.system(size: 8, weight: .semibold))
+                            .labelStyle(.titleAndIcon)
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 3)
+                            .padding(.vertical, 1)
+                            .background(Color.black.opacity(0.65),
+                                        in: RoundedRectangle(cornerRadius: 3))
+                            .padding(2)
+                    }
+                }
         } else {
             RoundedRectangle(cornerRadius: 5)
                 .fill(DashboardDS.surf3)

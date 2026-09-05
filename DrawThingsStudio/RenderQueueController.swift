@@ -88,23 +88,46 @@ final class RenderQueueController {
                         }
                     }
 
+                    // The job carries its own source bytes (see
+                    // RenderQueueJob.sourceImageData), so there is no disk read
+                    // and no dependency on a gallery record still existing. A
+                    // job with bytes that will not decode fails loudly rather
+                    // than quietly rendering text-to-image, which would look
+                    // like a successful run and would not be one.
+                    var sourceImage: NSImage?
+                    if let data = job.sourceImageData {
+                        guard let decoded = NSImage(data: data) else {
+                            throw RenderQueueError.unreadableSourceImage
+                        }
+                        sourceImage = decoded
+                    }
+
                     let images = try await client.generateImage(
-                        prompt: job.prompt, config: config, onProgress: nil
+                        prompt: job.prompt, sourceImage: sourceImage, mask: nil,
+                        config: config, onProgress: nil
                     )
                     guard let image = images.first else {
                         throw RenderQueueError.noImageReturned
                     }
 
-                    let record = try ImageStorageManager.createAndInsert(
-                        image: image, source: .generated, config: config,
-                        prompt: job.prompt, in: modelContext
-                    )
-                    job.resultImagePath = record.filePath
+                    let poster: TSImage
+                    if images.count > 1 {
+                        poster = try await Self.saveClip(
+                            images, config: config, prompt: job.prompt,
+                            job: job, in: modelContext
+                        )
+                    } else {
+                        poster = try ImageStorageManager.createAndInsert(
+                            image: image, source: .generated, config: config,
+                            prompt: job.prompt, in: modelContext
+                        )
+                    }
+                    job.resultImagePath = poster.filePath
                     // Copy the thumbnail bytes onto the job rather than let the
                     // row re-read the PNG: the file usually lives in the user's
                     // Generate folder, outside the sandbox container, where a
                     // bare read is denied. See RenderQueueJob.resultThumbnailData.
-                    job.resultThumbnailData = record.thumbnailData
+                    job.resultThumbnailData = poster.thumbnailData
                     job.status = .succeeded
                 } catch is CancellationError {
                     // Stop, not a failure. The gRPC call *is* cancellation-aware,
@@ -147,6 +170,86 @@ final class RenderQueueController {
         currentJobID = nil
     }
 
+    // MARK: - Multi-frame results
+
+    /// Save a multi-frame render as one gallery series, then assemble the `.mp4`.
+    /// Returns frame 0's record, which becomes the job's poster.
+    ///
+    /// Before this existed the controller did `guard let image = images.first` and
+    /// saved that — so a 121-frame LTX job rendered all 121 on the server, returned
+    /// all 121, and the queue kept one still. Silent, and expensive.
+    ///
+    /// Frames go in as **JPEG 0.9 with a shared `batchID`**, exactly as
+    /// `GenerateViewModel.saveVideoSeries` does, which is what makes them group
+    /// under one ▶ cell in the gallery and stay openable in the scrubber. PNG at
+    /// 121+ full-res frames per job is a disk problem.
+    ///
+    /// The `.mp4` is assembled here rather than left to the gallery's "Export
+    /// Movie…" because the queue's whole purpose is to be left alone — coming back
+    /// to ten series that each still need a manual export would defeat it. A muxing
+    /// failure is logged and swallowed: the frames are already safe in the gallery,
+    /// and losing a finished render to an assembly problem would be the worse
+    /// outcome. (StoryFlow's `saveOutputClip` makes the same call for the same
+    /// reason.)
+    private static func saveClip(
+        _ frames: [NSImage],
+        config: DrawThingsGenerationConfig,
+        prompt: String,
+        job: RenderQueueJob,
+        in modelContext: ModelContext
+    ) async throws -> TSImage {
+        let batchID = UUID()
+        var records: [TSImage] = []
+        records.reserveCapacity(frames.count)
+        for (index, frame) in frames.enumerated() {
+            let record = try ImageStorageManager.createAndInsert(
+                image: frame, source: .generated, config: config, prompt: prompt,
+                format: .jpeg(quality: 0.9), batchID: batchID, batchIndex: index,
+                in: modelContext
+            )
+            records.append(record)
+        }
+        guard let poster = records.first else { throw RenderQueueError.noImageReturned }
+        job.resultFrameCount = records.count
+        try? modelContext.save()
+
+        let movieURL = URL(fileURLWithPath: poster.filePath)
+            .deletingPathExtension()
+            .appendingPathExtension("mp4")
+        do {
+            try await VideoAssembler.assemble(
+                frameURLs: records.map { URL(fileURLWithPath: $0.filePath) },
+                fps: clipFPS(for: config),
+                metadataComment: poster.configJSON,
+                to: movieURL
+            )
+            job.resultMoviePath = movieURL.path
+            try? modelContext.save()
+        } catch {
+            Logger(subsystem: "tanque.org.TanqueStudio", category: "RenderQueue")
+                .error("Clip assembly failed for job \(job.id, privacy: .public): \(error.localizedDescription, privacy: .public) — frames kept")
+        }
+        return poster
+    }
+
+    /// Frames per second for an assembled queue clip.
+    ///
+    /// ⚠️ Deliberately mirrors `GenerateViewModel.seriesFPS` and **not**
+    /// `StoryFlowEngine.clipFPS`, which disagree: 24 vs 25 for LTX. Queue frames
+    /// land in Generate's gallery, so re-exporting them there with "Export Movie…"
+    /// must produce the same timing as the file the queue already wrote. Matching
+    /// StoryFlow instead would make one clip play at two different speeds depending
+    /// on which button produced it. The underlying disagreement is real and is not
+    /// resolved here.
+    static func clipFPS(for config: DrawThingsGenerationConfig) -> Int32 {
+        if config.fps > 0 { return Int32(config.fps) }
+        switch config.modelFamily {
+        case .ltx: return 24
+        case .wan: return 16
+        default:   return 16
+        }
+    }
+
     /// Puts finished jobs back in line so they render again.
     ///
     /// Deliberately clears `resultImagePath` and `resultThumbnailData` as well
@@ -161,6 +264,8 @@ final class RenderQueueController {
             job.errorMessage = nil
             job.resultImagePath = nil
             job.resultThumbnailData = nil
+            job.resultFrameCount = nil
+            job.resultMoviePath = nil
         }
         try? modelContext.save()
     }
@@ -168,10 +273,12 @@ final class RenderQueueController {
     enum RenderQueueError: LocalizedError {
         case noModel
         case noImageReturned
+        case unreadableSourceImage
 
         var errorDescription: String? {
             switch self {
             case .noModel: return "No model set — would render noise."
+            case .unreadableSourceImage: return "Source image could not be decoded."
             // Terse by design — this lands in a queue row, not a banner. The
             // full explanation (stale DT+ session first, since that was the
             // real cause on 2026-08-04) lives in GenerateViewModel's
