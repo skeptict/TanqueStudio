@@ -764,15 +764,18 @@ final class GenerateViewModel {
     }
 
     /// Playback fps for a series: config fps when set, else per-family default.
+    /// Playback rate for exporting a gallery series, recovered from the frames'
+    /// own saved metadata.
+    ///
+    /// The rule itself lives on `DrawThingsGenerationConfig.playbackFPS` and is
+    /// shared with the Render Queue — this only reconstructs a config from what
+    /// the frames recorded. The two used to hold identical copies that agreed
+    /// only by hand.
     private static func seriesFPS(for frames: [TSImage]) -> Int32 {
         let meta = frames.first?.configJSON.flatMap { ImageStorageManager.decodeConfigJSON($0) }
-        if let fps = meta?.fps, fps > 0 { return Int32(fps) }
-        let family = DrawThingsGenerationConfig(model: meta?.model ?? "").modelFamily
-        switch family {
-        case .ltx: return 24
-        case .wan: return 16
-        default:   return 16
-        }
+        var config = DrawThingsGenerationConfig(model: meta?.model ?? "")
+        config.fps = meta?.fps ?? 0
+        return config.playbackFPS
     }
 
     // MARK: — Inpaint

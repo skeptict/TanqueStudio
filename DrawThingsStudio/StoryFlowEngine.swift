@@ -786,6 +786,27 @@ final class StoryFlowEngine {
     /// ("25fps (LTX2)") and `framesDialog`'s ×25. Note `GenerateViewModel.seriesFPS` says 24 for
     /// the same family and prefers `meta.fps` over any default — both worth revisiting, and
     /// deliberately left alone here rather than changed in a StoryFlow commit.
+    /// StoryFlow's **pacing rate** — deliberately 25 for LTX, and deliberately
+    /// not the same number as `DrawThingsGenerationConfig.playbackFPS` (24).
+    ///
+    /// ⚠️ **This is not a competing opinion about LTX, and "fixing" it to match
+    /// would silently desynchronise every spoken clip.** `framesDialog` below
+    /// computes how many frames a line of dialogue needs as
+    /// *spoken words ÷ words-per-second × 25* — so 25 is the **inverse of
+    /// StoryFlow's own frame budget**, not a guess at a display rate. A ten-second
+    /// line becomes 250 frames *because* 25 was assumed; play those at 24 and the
+    /// clip runs 10.42 s against 10 s of speech, and picture drifts from audio.
+    ///
+    /// `playbackFPS` governs the surfaces with **no duration math** — Generate's
+    /// gallery export and the Render Queue — where nothing constrains the rate and
+    /// the only real requirement is that those two agree with each other. Draw
+    /// Things itself ships no `fps` in any of its video presets and its
+    /// `config.fbs` `fps_id` is a conditioning input rather than a playback rate,
+    /// so neither number is "correct" in the abstract; each is right for what
+    /// depends on it.
+    ///
+    /// The one place this is empirically decidable is audio sync on a real
+    /// StoryFlow render. Until that test exists, leave both numbers alone.
     static func clipFPS(for config: DrawThingsGenerationConfig, framesDialogFPS: Int32?) -> Int32 {
         if let fps = framesDialogFPS { return fps }
         switch config.modelFamily {

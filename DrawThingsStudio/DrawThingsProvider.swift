@@ -348,6 +348,38 @@ struct DrawThingsGenerationConfig: Codable {
         case unknown     = "Unknown"
     }
 
+    /// Frame rate for **playing back** a rendered frame series.
+    ///
+    /// One rule, two callers: `GenerateViewModel.seriesFPS` (the gallery's
+    /// "Export Movie…") and `RenderQueueController.saveClip`. They previously
+    /// held identical copies that agreed only because they were hand-matched —
+    /// nothing kept them in step, and the same frames re-exported from the
+    /// gallery had to produce the same timing as the file the queue wrote, or
+    /// one clip plays at two speeds depending on which button you pressed.
+    ///
+    /// An explicit `fps` in the config always wins; these are only the fallback
+    /// for when nobody said. Draw Things ships **no `fps` at all** in its own
+    /// video presets (checked across every LTX, Wan, Hunyuan and SkyReels entry),
+    /// and `config.fbs`'s `fps_id` is a conditioning input rather than a playback
+    /// rate — so there is no authoritative number to copy and these are
+    /// presentation defaults, chosen for consistency rather than correctness.
+    ///
+    /// ⚠️ **Not the same question as `StoryFlowEngine.clipFPS`, which answers 25
+    /// for LTX.** That is not a competing opinion about LTX: StoryFlow *derives*
+    /// its frame counts from spoken duration × 25, so 25 is the inverse of its own
+    /// frame budget and changing it would desynchronise picture from audio. This
+    /// number governs surfaces with no duration math, where the only requirement
+    /// is that they agree with each other. Do not "unify" the two without reading
+    /// `StoryFlowEngine.framesDialog`.
+    var playbackFPS: Int32 {
+        if fps > 0 { return Int32(fps) }
+        switch modelFamily {
+        case .ltx: return 24
+        case .wan, .hunyuan, .cogVideo, .mochi, .animateDiff: return 16
+        default:   return 16
+        }
+    }
+
     var modelFamily: ModelFamily {
         let lower = model.lowercased()
         if lower.contains("ltx")                                        { return .ltx }

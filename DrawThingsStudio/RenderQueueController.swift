@@ -227,7 +227,7 @@ final class RenderQueueController {
             try await ImageFolderAccess.withDefaultImageFolderAccess {
                 try await VideoAssembler.assemble(
                     frameURLs: records.map { URL(fileURLWithPath: $0.filePath) },
-                    fps: clipFPS(for: config),
+                    fps: config.playbackFPS,
                     metadataComment: poster.configJSON,
                     to: movieURL
                 )
@@ -239,24 +239,6 @@ final class RenderQueueController {
                 .error("Clip assembly failed for job \(job.id, privacy: .public): \(error.localizedDescription, privacy: .public) — frames kept")
         }
         return poster
-    }
-
-    /// Frames per second for an assembled queue clip.
-    ///
-    /// ⚠️ Deliberately mirrors `GenerateViewModel.seriesFPS` and **not**
-    /// `StoryFlowEngine.clipFPS`, which disagree: 24 vs 25 for LTX. Queue frames
-    /// land in Generate's gallery, so re-exporting them there with "Export Movie…"
-    /// must produce the same timing as the file the queue already wrote. Matching
-    /// StoryFlow instead would make one clip play at two different speeds depending
-    /// on which button produced it. The underlying disagreement is real and is not
-    /// resolved here.
-    static func clipFPS(for config: DrawThingsGenerationConfig) -> Int32 {
-        if config.fps > 0 { return Int32(config.fps) }
-        switch config.modelFamily {
-        case .ltx: return 24
-        case .wan: return 16
-        default:   return 16
-        }
     }
 
     /// Puts finished jobs back in line so they render again.
