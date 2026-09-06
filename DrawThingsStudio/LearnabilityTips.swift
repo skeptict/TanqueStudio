@@ -39,7 +39,7 @@ struct PasteConfigTip: Tip {
 }
 
 /// Dice button + "Randomize each run" toggle — anchored on the dice button
-/// in GenerateLeftPanel.swift.
+/// in DashboardFocusPanels.swift.
 struct DiceRandomizeTip: Tip {
     var title: Text { Text("Seed control") }
     var message: Text? { Text("Roll a new seed with the dice, or turn on \"Randomize each run\" to get a fresh one automatically before every generation.") }
@@ -48,7 +48,7 @@ struct DiceRandomizeTip: Tip {
 }
 
 /// Resolution Dependent Shift under Advanced — anchored on its toggle row in
-/// GenerateLeftPanel.swift.
+/// DashboardFocusPanels.swift.
 struct ResolutionShiftTip: Tip {
     var title: Text { Text("Resolution Dependent Shift") }
     var message: Text? { Text("Automatically computes Shift from your image size instead of using the fixed value below.") }

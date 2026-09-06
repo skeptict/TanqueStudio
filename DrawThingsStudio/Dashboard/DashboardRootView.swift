@@ -156,7 +156,9 @@ struct DashboardRootView: View {
         case .projects:
             DTProjectBrowserView(vm: generateVM, onNavigateToGenerate: { mode = .focus })
         case .labs:
-            DashboardLabsPage(storyFlowVM: storyFlowVM)
+            DashboardLabsPage(storyFlowVM: storyFlowVM,
+                              generateVM: generateVM,
+                              onNavigateToGenerate: { mode = .focus })
         case .settings:
             SettingsView()
         }

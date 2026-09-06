@@ -206,7 +206,6 @@ Source retrieved 2026-06-12. Note: each preset references a specific model file 
 DrawThingsStudio/
 ├── App & Navigation
 │   ├── TanqueStudioApp.swift          # App entry, ModelContainer, migrations — WindowGroup root is DashboardRootView
-│   ├── ContentView.swift              # Classic NavigationSplitView shell, sidebar (no longer the app root; kept for reference)
 │   └── AppSettings.swift              # @Observable settings singleton (UserDefaults)
 │
 ├── Dashboard (default navigation as of v0.9.25)
@@ -218,12 +217,10 @@ DrawThingsStudio/
 │   ├── DashboardLabsPage.swift        # Labs pill-tabs (StoryFlow / Cast & Staging / Story Studio / Render Queue)
 │   └── DashboardDS.swift              # Isolated light "paper" design tokens for this navigation
 │
-├── Generate (business logic + classic four-panel view, reused by both navigations)
-│   ├── GenerateView.swift             # Classic four-panel root layout (config left, canvas center, gallery, inspect right)
-│   ├── GenerateLeftPanel.swift        # Config: prompt, params, LoRAs, moodboard
-│   ├── GenerateRightPanel.swift       # Metadata / Assist / Actions tabs
+├── Generate (business logic; the UI lives in the Dashboard/Focus Room above)
+│   ├── GenerateViewModel.swift        # @MainActor @Observable ViewModel — the app's single Generate session
+│   ├── ConfigPickerSheet.swift        # "Saved Configs" sheet: bundled community presets + imported custom_configs.json
 │   ├── GalleryStripView.swift         # Resizable gallery column
-│   ├── GenerateViewModel.swift        # @MainActor @Observable ViewModel — shared by Dashboard and the classic view
 │   └── ImageStorageManager.swift      # Writes PNG + thumbnail, creates TSImage
 │
 ├── DT Project Browser

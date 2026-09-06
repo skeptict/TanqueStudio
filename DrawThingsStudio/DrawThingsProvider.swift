@@ -678,6 +678,23 @@ struct DrawThingsModel: Identifiable, Hashable {
 }
 
 /// Sampler information
+/// Draw Things' seed modes, in **DT's own order** — the index is the wire
+/// value, exactly as with `DrawThingsSampler.builtIn`.
+///
+/// Canonical home. Three copies of this list used to exist: the picker in the
+/// (now deleted) `GenerateLeftPanel`, a private duplicate in `DTConfigImporter`
+/// whose comment said it had to match, and the Focus Room reading the first one
+/// across a file boundary. A list whose *order* is a wire protocol should not be
+/// written down more than once.
+enum DrawThingsSeedMode {
+    static let all = [
+        "Legacy",
+        "Torch CPU Compatible",
+        "Scale Alike",
+        "Nvidia GPU Compatible",
+    ]
+}
+
 struct DrawThingsSampler: Identifiable, Hashable {
     let id: String
     let name: String

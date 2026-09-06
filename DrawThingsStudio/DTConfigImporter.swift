@@ -79,7 +79,7 @@ enum DTConfigImporter {
             return samplers[idx].name
         }()
 
-        // SeedMode: Int index into ordered string list matching GenerateLeftPanel.seedModes
+        // SeedMode: Int index into DrawThingsSeedMode.all, whose order is the wire value
         let seedModeName: String? = {
             guard let idx = (cfg["seedMode"] as? NSNumber)?.intValue else { return nil }
             let modes = ["Legacy", "Torch CPU Compatible", "Scale Alike", "Nvidia GPU Compatible"]
@@ -144,7 +144,7 @@ enum DTConfigImporter {
 /// seedMode stored as Int indices, matching DT's clipboard schema exactly.
 enum DTConfigExporter {
 
-    private static let seedModes = ["Legacy", "Torch CPU Compatible", "Scale Alike", "Nvidia GPU Compatible"]
+    private static let seedModes = DrawThingsSeedMode.all
 
     // MARK: — Copy direction (TanqueStudio → clipboard)
 

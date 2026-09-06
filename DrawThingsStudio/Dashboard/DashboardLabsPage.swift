@@ -6,6 +6,13 @@ import SwiftUI
 
 struct DashboardLabsPage: View {
     let storyFlowVM: StoryFlowViewModel
+    /// The app's real Generate session — the same instance the Focus Room shows.
+    /// Story Studio's "Send to Generate" writes a scene's config, prompt and
+    /// source image into this, so it has to be the live one.
+    let generateVM: GenerateViewModel
+    /// Switch the app to the Focus Room. Story Studio calls this immediately
+    /// after populating `generateVM`.
+    let onNavigateToGenerate: () -> Void
     @State private var selectedTab: LabsTab = .storyFlow
     /// Owned here rather than passed in, so the open project folder and any unsaved cast edits
     /// survive a switch to another Labs tab and back.
@@ -43,12 +50,19 @@ struct DashboardLabsPage: View {
                 case .castStaging:
                     StoryFlowCastPane(vm: castVM)
                 case .storyStudio:
-                    // Story Studio needs a real GenerateViewModel + navigate-away
-                    // closure it can call after "Send to Generate" — the Labs
-                    // page has no Generate destination of its own to hand it, so
-                    // this fork gives it a throwaway session rather than reaching
-                    // back into DashboardRootView's navigation for a spike tab.
-                    StoryStudioView(generateVM: GenerateViewModel(), onNavigateToGenerate: {})
+                    // Both handed down from DashboardRootView, which owns the
+                    // real session and the mode switch.
+                    //
+                    // These used to be `GenerateViewModel()` and `{}` — a
+                    // throwaway session and a no-op — from when Labs was a spike
+                    // with no Generate destination to reach. The consequence was
+                    // that **"Send to Generate" silently did nothing**: it wrote
+                    // a scene's config, prompt and source image into a view model
+                    // nothing was displaying, then called an empty closure. The
+                    // button looked like it worked. See the sibling wiring on
+                    // DTProjectBrowserView, which had it right all along.
+                    StoryStudioView(generateVM: generateVM,
+                                    onNavigateToGenerate: onNavigateToGenerate)
                 case .renderQueue:
                     RenderQueueView()
                 }

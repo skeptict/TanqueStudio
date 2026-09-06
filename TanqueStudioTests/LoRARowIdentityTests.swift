@@ -10,7 +10,7 @@ import XCTest
 /// past the end and trapped. Every row before the removed one was fine, which is why it took a
 /// specific deselect to find it.
 ///
-/// The correct pattern already existed in `GenerateLeftPanel` — `id: \.file`, and lookups via
+/// The correct pattern already existed in the since-deleted `GenerateLeftPanel` — `id: \.file`, and lookups via
 /// `first(where:)` / `firstIndex(where:)`. The drawer was written with indices instead. These
 /// tests pin the two properties the view now relies on, so a future rewrite cannot quietly go
 /// back to positions.

@@ -279,7 +279,7 @@ struct ModelSection: View {
 
 // MARK: - Parameters
 
-// MARK: - Canvas Size (ported from GenerateLeftPanel's Canvas Size section)
+// MARK: - Canvas Size (ported from the since-deleted GenerateLeftPanel)
 
 struct CanvasSizeSection: View {
     @Bindable var vm: GenerateViewModel
@@ -857,7 +857,7 @@ struct ParametersSection: View {
             //    applied to the machine in question.
             //
             // A numeric field plus a dice button is what the classic
-            // GenerateLeftPanel already uses, holds the full UInt32 range, and
+            // the since-deleted GenerateLeftPanel used, holds the full UInt32 range, and
             // removes the 100k-step control entirely.
             //
             // Verified: a tester on an older Intel Mac confirmed 0.9.29 no
@@ -902,7 +902,7 @@ struct ParametersSection: View {
                 .help("Roll a fresh seed automatically before every generation.")
                 .padding(.top, 6)
 
-            // Renders — sequential batch count. Mirrors GenerateLeftPanel's
+            // Renders — sequential batch count. Mirrors the since-deleted GenerateLeftPanel's
             // "Renders" Stepper (ported from the classic shell); this fork's
             // rewritten Parameters accordion had dropped it entirely, leaving
             // no way to request more than one render per Generate tap.
@@ -938,7 +938,7 @@ struct ParametersSection: View {
             .disabled(true)
             .help("Images per batch — not yet verified end-to-end; coming in a later release.")
 
-            // Advanced params, flattened — GenerateLeftPanel keeps these behind a
+            // Advanced params, flattened — the since-deleted GenerateLeftPanel kept these behind a
             // collapsed "Advanced" section; the Dashboard drawer surfaces them as
             // plain rows instead (Ned's direction: no revived collapse pattern).
             HStack {
@@ -972,7 +972,7 @@ struct ParametersSection: View {
                 Text("Seed Mode").font(TanqueDS.Font.mono(11.5)).foregroundStyle(DashboardDS.muted2)
                 Spacer()
                 Picker("", selection: $vm.config.seedMode) {
-                    ForEach(GenerateLeftPanel.seedModes, id: \.self) { Text($0) }
+                    ForEach(DrawThingsSeedMode.all, id: \.self) { Text($0) }
                 }
                 .labelsHidden()
                 .pickerStyle(.menu)

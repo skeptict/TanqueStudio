@@ -412,7 +412,7 @@ enum ImageStorageManager {
     /// Inverse of `dtSeedModeName`. Every real Draw Things PNG spells this mode
     /// "NVIDIA GPU Compatible" — without this, applying a genuine DT file's
     /// metadata would set `config.seedMode` to a string TS's own seed-mode
-    /// picker (`GenerateLeftPanel.seedModes`) doesn't list as an option.
+    /// picker (`DrawThingsSeedMode.all`) doesn't list as an option.
     static func tsSeedModeName(_ seedMode: String) -> String {
         seedMode == "NVIDIA GPU Compatible" ? "Nvidia GPU Compatible" : seedMode
     }
