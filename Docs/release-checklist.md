@@ -53,13 +53,25 @@ Both keys appear **six times each** in `TanqueStudio.xcodeproj/project.pbxproj`:
 sed -i '' 's/MARKETING_VERSION = OLD;/MARKETING_VERSION = NEW;/g; s/CURRENT_PROJECT_VERSION = OLD;/CURRENT_PROJECT_VERSION = NEW;/g' TanqueStudio.xcodeproj/project.pbxproj
 ```
 
-Confirm the replacement took, rather than assuming `sed` matched:
+Confirm the replacement took, rather than assuming `sed` matched. **Use `-F`** — see below:
 
 ```bash
-grep -c "MARKETING_VERSION = NEW;" TanqueStudio.xcodeproj/project.pbxproj        # expect 6
-grep -c "CURRENT_PROJECT_VERSION = NEW;" TanqueStudio.xcodeproj/project.pbxproj  # expect 6
-grep -c "OLD" TanqueStudio.xcodeproj/project.pbxproj                             # expect 0
+grep -cF "MARKETING_VERSION = NEW;" TanqueStudio.xcodeproj/project.pbxproj        # expect 6
+grep -cF "CURRENT_PROJECT_VERSION = NEW;" TanqueStudio.xcodeproj/project.pbxproj  # expect 6
+grep -cF "MARKETING_VERSION = OLD;" TanqueStudio.xcodeproj/project.pbxproj        # expect 0
+grep -cF "CURRENT_PROJECT_VERSION = OLD;" TanqueStudio.xcodeproj/project.pbxproj  # expect 0
 ```
+
+> **Why `-F`, and why not bare `grep -c "OLD"`.** Without `-F`, grep reads the pattern as a
+> regular expression, where `.` matches *any* character — so `0.9.42` means "zero, anything,
+> nine, anything, four, two", not the literal version string. The pinned DT-gRPC-Swift-Client
+> revision in this very file is `2e44f4f99e742709eb90cfd96ff3fe10198421c1`, which contains
+> `019842` and matches. Releasing 0.9.43 that check reported `1` where the checklist says
+> "expect 0" — a phantom stale version, in a file where nothing was stale. `-F` treats the
+> pattern as literal text and answers `0` correctly.
+>
+> Searching for the full `KEY = OLD;` rather than the bare version is the second half of the
+> fix: it cannot collide with a hash, a date, or a dependency version even by accident.
 
 Rebuild, then commit as `chore: bump to X.Y.Z (build N)`.
 
