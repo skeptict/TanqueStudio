@@ -274,8 +274,98 @@ enum RenderQueueExpander {
         return (dict["numFrames"] as? NSNumber)?.intValue ?? 0
     }
 
+    /// The `model` out of a config, or `nil` when absent or empty.
+    static func model(inConfigJSON json: String) -> String? {
+        guard let dict = jsonDict(json),
+              let model = dict["model"] as? String,
+              !model.trimmingCharacters(in: .whitespaces).isEmpty
+        else { return nil }
+        return model
+    }
+
     private static func jsonDict(_ json: String) -> [String: Any]? {
         guard let data = json.data(using: .utf8) else { return nil }
         return try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+    }
+}
+
+/// Whether a job's model is one Draw Things will actually use.
+///
+/// **Draw Things does not refuse a model it cannot provide.** Asked for a
+/// filename that has never existed, it renders the prompt with some other model
+/// and returns images — no error, nothing in the response saying the model was
+/// ignored. Measured 2026-09-07 on two servers: a nonsense filename and a real
+/// name whose file is 1 byte both returned nine images (one was requested),
+/// byte-identical to each other. The prompt was honoured; the model was not.
+///
+/// A queue is the worst place for that. It exists to be left running unattended,
+/// each job carries its own config, and the result lands in the gallery labelled
+/// with the config we *believe* produced it — so a stale model name writes
+/// plausible, wrong, permanently mislabelled renders and nothing looks broken.
+/// Generate has guarded this for a while (`GenerateViewModel`); the queue did not.
+///
+/// ## ⚠️ Why this warns instead of blocking
+///
+/// This was built to **refuse** at Expand. Measuring what the model list actually
+/// contains killed that: Draw Things' inventory comes from its own **file list**
+/// (`EchoReply.files`, see `DrawThingsGRPCClient.fetchModels`), and **Bridge Mode
+/// renders models that are not on disk.**
+///
+/// Measured 2026-09-07 on the local server: `krea_2_turbo_q8p.ckpt` is *not* in the
+/// reported list — and rendered in 23.2 s. Neither is `ltx_2.3_22b_distilled_q8p.ckpt`.
+/// Both are in daily use. A hard block would have refused the user's own saved base
+/// config and every LTX job on that server.
+///
+/// So absence from the list means **"cannot confirm"**, not "will not work". Two
+/// different situations produce it — a genuinely bogus name, and a perfectly good
+/// model that Bridge Mode will fetch — and nothing on the wire distinguishes them.
+/// Warning on both is honest; blocking on both is not. **Do not turn this back into
+/// a block without a way to ask Draw Things what it can actually serve.**
+enum RenderQueueModelCheck {
+
+    /// ⚠️ **An empty `known` means the inventory could not be fetched, not that
+    /// nothing is installed.** Treating that as "every model is unavailable"
+    /// would warn about everything whenever Draw Things is merely unreachable,
+    /// which is a connection problem with its own reporting. Same rule Generate uses.
+    static func isAvailable(_ model: String, in known: [DrawThingsModel]) -> Bool {
+        guard !known.isEmpty else { return true }
+        let name = model.trimmingCharacters(in: .whitespaces)
+        guard !name.isEmpty else { return true }
+        return known.contains { $0.filename == name || $0.name == name }
+    }
+
+    /// Distinct unconfirmable model names across `configJSONs`, in first-seen
+    /// order. One name repeated across forty jobs is reported once.
+    static func unconfirmedModels(inConfigJSONs configJSONs: [String],
+                                  known: [DrawThingsModel]) -> [String] {
+        guard !known.isEmpty else { return [] }
+        var seen = Set<String>()
+        var missing: [String] = []
+        for json in configJSONs {
+            guard let model = RenderQueueExpander.model(inConfigJSON: json),
+                  !isAvailable(model, in: known),
+                  seen.insert(model).inserted
+            else { continue }
+            missing.append(model)
+        }
+        return missing
+    }
+
+    /// The notice shown above Expand. Names the models rather than saying "a
+    /// model", because the whole failure mode is not knowing which one Draw
+    /// Things quietly swapped out.
+    ///
+    /// Worded for a genuine ambiguity: it says what *may* be wrong and how to
+    /// tell, rather than asserting a failure that often will not happen. A notice
+    /// that cries wolf on every Bridge Mode render is one nobody reads.
+    static func warningMessage(for unconfirmed: [String]) -> String {
+        guard !unconfirmed.isEmpty else { return "" }
+        let names = unconfirmed.map { "“\($0)”" }.joined(separator: ", ")
+        let subject = unconfirmed.count == 1
+            ? "Model \(names) isn't" : "Models \(names) aren't"
+        return "\(subject) on the Draw Things server. Bridge Mode may still fetch "
+             + "it — but if it can't, Draw Things renders with a different model and "
+             + "says nothing, and these jobs land in the gallery labelled with a model "
+             + "that never made them. Worth a single test render before a long run."
     }
 }

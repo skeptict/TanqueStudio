@@ -22,6 +22,12 @@ struct RenderQueueView: View {
     @State private var showClearAllConfirm = false
     @State private var showingBasePicker = false
 
+    /// Draw Things' model inventory, for `RenderQueueModelCheck`. Empty until the
+    /// fetch lands, and empty *stays* permissive — see that type's comment. Not
+    /// shared with Generate's copy on purpose: the queue is reachable without
+    /// Generate ever having been opened.
+    @State private var knownModels: [DrawThingsModel] = []
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: TanqueDS.Spacing.lg) {
@@ -37,6 +43,7 @@ struct RenderQueueView: View {
         }
         .background(DashboardDS.bg)
         .onAppear { releaseStuckRunningJobs() }
+        .task { await loadKnownModels() }
         .sheet(isPresented: $showingBasePicker) {
             RenderQueueImagePicker(selection: baseSourceBinding, allowsMultiple: false)
         }
@@ -156,6 +163,19 @@ struct RenderQueueView: View {
                 Label(warning, systemImage: "exclamationmark.triangle.fill")
                     .font(TanqueDS.Font.bodySmall)
                     .foregroundStyle(DashboardDS.brass)
+            }
+
+            // Red rather than brass — the notices above are things to know,
+            // this one can produce permanently mislabelled renders. It does not
+            // disable Expand: absence from the model list means "cannot confirm",
+            // not "will fail". See RenderQueueModelCheck.
+            let unconfirmed = unconfirmedModels(in: preview)
+            if !unconfirmed.isEmpty {
+                Label(RenderQueueModelCheck.warningMessage(for: unconfirmed),
+                      systemImage: "exclamationmark.octagon.fill")
+                    .font(TanqueDS.Font.bodySmall)
+                    .foregroundStyle(DashboardDS.red)
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
             Button {
@@ -285,6 +305,21 @@ struct RenderQueueView: View {
         return label
     }
 
+    /// Models the server can't confirm, among the jobs this Expand *would*
+    /// create. Reads the planned configs rather than the base config, so a model
+    /// varied on an axis is checked too.
+    private func unconfirmedModels(in preview: RenderQueueExpander.ExpansionPlan) -> [String] {
+        RenderQueueModelCheck.unconfirmedModels(
+            inConfigJSONs: preview.jobs.map(\.configJSON), known: knownModels)
+    }
+
+    private func loadKnownModels() async {
+        let client = AppSettings.shared.createDrawThingsClient()
+        // A failed fetch leaves the list empty, which is the permissive case —
+        // an unreachable Draw Things must not block Expand.
+        knownModels = (try? await client.fetchModels()) ?? []
+    }
+
     /// Turn the plan into real jobs, copying each source image's **bytes** onto
     /// the job as it goes.
     ///
@@ -396,6 +431,11 @@ struct RenderQueueView: View {
             ForEach(Array(jobs.enumerated()), id: \.element.id) { index, job in
                 JobRow(
                     job: job, isCurrent: controller.currentJobID == job.id,
+                    // Rows built before this check existed, or before a model was
+                    // uninstalled, are marked rather than silently left to render
+                    // with whatever Draw Things substitutes.
+                    modelIsConfirmed: RenderQueueExpander.model(inConfigJSON: job.configJSON)
+                        .map { RenderQueueModelCheck.isAvailable($0, in: knownModels) } ?? true,
                     canMoveUp: index > 0, canMoveDown: index < jobs.count - 1,
                     onMoveUp: { swapOrder(jobs[index], jobs[index - 1]) },
                     onMoveDown: { swapOrder(jobs[index], jobs[index + 1]) },
@@ -680,6 +720,11 @@ private struct RenderQueuePromptIdeasSheet: View {
 private struct JobRow: View {
     @Bindable var job: RenderQueueJob
     let isCurrent: Bool
+    /// False when this job's model is not in the server's file list. That does
+    /// **not** mean it will fail — Bridge Mode serves models that aren't on disk —
+    /// only that it can't be confirmed. True whenever the inventory is unknown.
+    /// See `RenderQueueModelCheck`.
+    let modelIsConfirmed: Bool
     let canMoveUp: Bool
     let canMoveDown: Bool
     let onMoveUp: () -> Void
@@ -728,8 +773,12 @@ private struct JobRow: View {
                     .lineLimit(1)
                 Text(summaryLine)
                     .font(TanqueDS.Font.mono(10))
-                    .foregroundStyle(DashboardDS.muted)
+                    .foregroundStyle(modelIsConfirmed ? DashboardDS.muted : DashboardDS.red)
                     .lineLimit(1)
+                    .help(modelIsConfirmed ? "" :
+                          "This model isn't on the Draw Things server. Bridge Mode may "
+                          + "fetch it — but if it can't, Draw Things renders with a "
+                          + "different model without saying so.")
                 if let error = job.errorMessage, job.status == .failed {
                     Text(error)
                         .font(TanqueDS.Font.mono(10))
@@ -769,6 +818,7 @@ private struct JobRow: View {
         let steps = (dict["steps"] as? NSNumber)?.intValue ?? 0
         let seed = (dict["seed"] as? NSNumber)?.intValue ?? 0
         var line = "\(model) · \(steps) steps · seed \(seed)"
+        if !modelIsConfirmed { line += " · model not on the server" }
         if let frames = job.resultFrameCount, frames > 1 {
             // Say so when the frames landed but the movie didn't. Assembly
             // failure is deliberately non-fatal — the frames are already safe in
