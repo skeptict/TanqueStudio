@@ -358,23 +358,35 @@ struct DrawThingsGenerationConfig: Codable {
     /// one clip plays at two speeds depending on which button you pressed.
     ///
     /// An explicit `fps` in the config always wins; these are only the fallback
-    /// for when nobody said. Draw Things ships **no `fps` at all** in its own
-    /// video presets (checked across every LTX, Wan, Hunyuan and SkyReels entry),
+    /// for when nobody said. Draw Things ships no `fps` in its own video presets,
     /// and `config.fbs`'s `fps_id` is a conditioning input rather than a playback
-    /// rate — so there is no authoritative number to copy and these are
-    /// presentation defaults, chosen for consistency rather than correctness.
+    /// rate.
     ///
-    /// ⚠️ **Not the same question as `StoryFlowEngine.clipFPS`, which answers 25
-    /// for LTX.** That is not a competing opinion about LTX: StoryFlow *derives*
-    /// its frame counts from spoken duration × 25, so 25 is the inverse of its own
-    /// frame budget and changing it would desynchronise picture from audio. This
-    /// number governs surfaces with no duration math, where the only requirement
-    /// is that they agree with each other. Do not "unify" the two without reading
-    /// `StoryFlowEngine.framesDialog`.
+    /// **LTX is 25, measured, not chosen.** Draw Things records a
+    /// `frames_per_second` per clip in its own project databases, and every clip
+    /// across three local LTX databases — 36 clips, 121 to 1121 frames,
+    /// `ltx_2.3_22b_distilled` / `ltx_2.3_22b_dev` / `ltx_2_19b_distilled` —
+    /// reads exactly **25.000**. The audio corroborates it independently: each
+    /// clip's soundtrack, divided by `frames / 25`, lands within **0.62%** of
+    /// 48 kHz or 24 kHz. Divided by `frames / 24` it lands 4.1–4.6% away from any
+    /// standard rate at all. This returned 24 until 2026-09-07, which played
+    /// every exported LTX movie about 4% slow.
+    ///
+    /// `StoryFlowEngine.clipFPS` has always answered 25 for LTX — it derives frame
+    /// counts as spoken-seconds × 25, so 25 is the inverse of its own frame
+    /// budget. The two were long documented as deliberately separate questions
+    /// that happened to disagree. They agree now, and the measurement is why;
+    /// keep them together.
+    ///
+    /// ⚠️ The non-LTX numbers below are still **unmeasured presentation
+    /// defaults**. Settle one the same way before trusting it: read
+    /// `frames_per_second` off a Draw Things database holding clips from that
+    /// family, and check it against `samples / (frames / fps)` landing on a
+    /// standard sample rate.
     var playbackFPS: Int32 {
         if fps > 0 { return Int32(fps) }
         switch modelFamily {
-        case .ltx: return 24
+        case .ltx: return 25
         case .wan, .hunyuan, .cogVideo, .mochi, .animateDiff: return 16
         default:   return 16
         }
