@@ -195,15 +195,37 @@ enum ImageStorageManager {
         let url = URL(fileURLWithPath: poster.filePath)
             .deletingPathExtension()
             .appendingPathExtension("wav")
-        do {
-            try wav.write(to: url)
-            poster.audioFilePath = url.path
-            return url.path
-        } catch {
-            Logger(subsystem: "tanque.org.TanqueStudio", category: "ImageStorage")
-                .error("audio write failed at \(url.path): \(error.localizedDescription)")
-            return nil
+        let log = Logger(subsystem: "tanque.org.TanqueStudio", category: "ImageStorage")
+
+        // ⚠️ The scope is resolved HERE rather than left to callers.
+        //
+        // The frames land in the user's own Generate folder, which is outside the
+        // app's container — `createAndInsert` opens security-scoped access for its
+        // own write and closes it again before returning, so by the time a caller
+        // has a `poster` to hand us, there is no live grant. A plain
+        // `Data.write(to:)` at that point fails with "don't have permission",
+        // which is precisely how the first LTX clip through the queue lost its
+        // `.mp4` — and how the first clip through *this* path lost its soundtrack.
+        // Doing it here means no future caller can forget.
+        func write() -> Bool {
+            do {
+                try wav.write(to: url)
+                return true
+            } catch {
+                log.error("audio write failed at \(url.path): \(error.localizedDescription)")
+                return false
+            }
         }
+
+        // `withScopedFolder` returns nil *without running the body* when no
+        // bookmark covers this path — which is the ordinary case for the default
+        // folder inside our own container, where no grant is needed. So nil means
+        // "unscoped", not "failed", and the write is simply retried plainly.
+        let scoped = ImageFolderAccess.withScopedFolder(containing: url, body: write)
+        guard scoped ?? write() else { return nil }
+
+        poster.audioFilePath = url.path
+        return url.path
     }
 
     /// The soundtrack for a series, ready to mux, or nil when there isn't one.
@@ -212,8 +234,15 @@ enum ImageStorageManager {
     /// Generate's Export Movie runs long after the render that produced it — the
     /// user picks frames out of the gallery and presses a button.
     static func audioTrack(forSeries frames: [TSImage]) -> VideoAssembler.Audio? {
-        guard let path = frames.first(where: { $0.audioFilePath != nil })?.audioFilePath,
-              let wav = try? Data(contentsOf: URL(fileURLWithPath: path)),
+        guard let path = frames.first(where: { $0.audioFilePath != nil })?.audioFilePath
+        else { return nil }
+        let url = URL(fileURLWithPath: path)
+        // Scoped for the same reason the write is: the file lives in the user's own
+        // Generate folder, outside the container. Reading it unscoped fails just as
+        // silently as writing it did. nil from `withScopedFolder` means no bookmark
+        // covers this path — an in-container file — so read it plainly instead.
+        func read() -> Data? { try? Data(contentsOf: url) }
+        guard let wav = ImageFolderAccess.withScopedFolder(containing: url, body: read) ?? read(),
               let (channels, rate) = wavFormat(wav)
         else { return nil }
         return VideoAssembler.Audio(wav: wav, channels: channels, sampleRate: rate)
