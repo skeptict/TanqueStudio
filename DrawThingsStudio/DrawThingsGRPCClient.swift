@@ -299,6 +299,22 @@ final class DrawThingsGRPCClient: DrawThingsProvider {
                                 config: config, onProgress: onProgress, onStage: nil)
     }
 
+    /// The audio-capturing requirement from `DrawThingsProvider`. Overrides the
+    /// protocol extension's silent default — this client can capture, because it
+    /// can reach the low-level service.
+    func generateImage(
+        prompt: String,
+        sourceImage: NSImage?,
+        mask: NSImage?,
+        config: DrawThingsGenerationConfig,
+        onProgress: ((GenerationProgress) -> Void)?,
+        onAudio: ((Data) -> Void)?
+    ) async throws -> [NSImage] {
+        try await generateImage(prompt: prompt, sourceImage: sourceImage, mask: mask,
+                                config: config, onProgress: onProgress, onStage: nil,
+                                onAudio: onAudio)
+    }
+
     /// As above, plus `onStage`: the raw Draw Things stage name on every change, including the
     /// encoding stages `mapStage` drops. Callers that want to show *what* a long render is doing
     /// — rather than only how far a mapped stage has got — use this one.
@@ -308,7 +324,8 @@ final class DrawThingsGRPCClient: DrawThingsProvider {
         mask: NSImage?,
         config: DrawThingsGenerationConfig,
         onProgress: ((GenerationProgress) -> Void)?,
-        onStage: ((String) -> Void)?
+        onStage: ((String) -> Void)?,
+        onAudio: ((Data) -> Void)? = nil
     ) async throws -> [NSImage] {
 
         // Ensure we have a connected client
@@ -391,13 +408,29 @@ final class DrawThingsGRPCClient: DrawThingsProvider {
             // Draw Things in isInpainting(). Route masked renders through the low-level
             // service with the correct createMaskFromAlpha encoding (1 byte/pixel,
             // alpha<255 = inpaint, alpha=255 = preserve).
-            if let mask = mask, let source = sourceImage {
+            //
+            // The same branch also serves any render that wants **audio**. The
+            // high-level client hard-codes a no-op audio handler, so a soundtrack
+            // can only be captured by talking to the service — which is why every
+            // clip this app produced before 0.9.47 was silent.
+            //
+            // ⚠️ Gated on `numFrames > 1`, not merely on `onAudio` being set. Every
+            // caller now passes a handler, so testing the handler alone would route
+            // **every still in the app** down this branch — swapping the progress
+            // mechanism and the request-building code for millions of renders that
+            // can never produce a note of audio. Only video models emit any, so only
+            // video renders need the service.
+            let wantsAudio = onAudio != nil && config.numFrames > 1
+            if wantsAudio || (mask != nil && sourceImage != nil) {
                 guard let service = service else {
-                    throw DrawThingsError.connectionFailed("No gRPC service available for inpainting")
+                    throw DrawThingsError.connectionFailed("No gRPC service available")
                 }
                 let configData = try grpcConfig.toFlatBufferData()
-                let imageData = try ImageHelpers.imageToDTTensor(source, forceRGB: true)
-                let maskData = try ImageHelpers.createMaskFromAlpha(mask)
+                // Both optional now: an audio render is usually plain text-to-video
+                // with neither. The mask encoding is still the reason this branch
+                // exists at all, so it stays exactly as it was when one is present.
+                let imageData = try sourceImage.map { try ImageHelpers.imageToDTTensor($0, forceRGB: true) }
+                let maskData = try mask.map { try ImageHelpers.createMaskFromAlpha($0) }
                 let resultData = try await withGenerateTimeout(timeout, heartbeat: heartbeat) {
                     try await service.generateImage(
                         prompt: prompt,
@@ -418,6 +451,9 @@ final class DrawThingsGRPCClient: DrawThingsProvider {
                             }
                             guard let mapped = Self.mapSignpost(signpost, totalSteps: totalSteps) else { return }
                             await MainActor.run { onProgress?(mapped) }
+                        },
+                        audioHandler: { data in
+                            await MainActor.run { onAudio?(data) }
                         }
                     )
                 }

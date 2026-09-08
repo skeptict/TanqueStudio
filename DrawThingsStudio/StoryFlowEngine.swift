@@ -1105,6 +1105,10 @@ final class StoryFlowEngine {
 
         // Generate
         stepProgress = .starting
+        // One tensor per clip, not per frame. Collected here and handed to
+        // saveOutputClip; before 0.9.47 nothing asked for it and every StoryFlow
+        // clip came out silent.
+        var audioTensors: [Data] = []
         let images = try await grpcClient.generateImage(
             prompt: prompt,
             sourceImage: sourceImage,
@@ -1119,7 +1123,8 @@ final class StoryFlowEngine {
                     self.currentStage = stage
                     self.currentStageSince = Date()
                 }
-            }
+            },
+            onAudio: { audioTensors.append($0) }
         )
         stepProgress = .complete
         currentStage = ""
@@ -1168,6 +1173,7 @@ final class StoryFlowEngine {
                         stepLabel: step.displayLabel,
                         to: folder,
                         fps: fps,
+                        audioTensors: audioTensors,
                         config: cfg,
                         prompt: prompt
                     )

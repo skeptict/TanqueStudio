@@ -2,6 +2,7 @@ import Foundation
 import AppKit
 import ImageIO
 import SwiftData
+import os
 
 // MARK: - Image Storage Manager
 
@@ -176,6 +177,63 @@ enum ImageStorageManager {
         record.thumbnailData = thumbnail
         context.insert(record)
         return record
+    }
+
+    /// Writes a clip's soundtrack beside its frames and records the path on
+    /// `poster` (frame 0, which owns it — there is one WAV per series).
+    ///
+    /// Beside the frames rather than in the container so the sound travels with the
+    /// pictures: move the folder, back it up, open it in Finder, and the `.wav` is
+    /// simply there next to the `.png`s. Named for the poster frame's id, which is
+    /// already unique and already the series' identity everywhere else.
+    ///
+    /// Non-throwing on purpose. A clip with silent audio is worth keeping; losing
+    /// the frames because a WAV would not write is not. Failures are logged and the
+    /// path is left nil, which every reader already treats as "no audio".
+    @discardableResult
+    static func saveAudio(_ wav: Data, for poster: TSImage) -> String? {
+        let url = URL(fileURLWithPath: poster.filePath)
+            .deletingPathExtension()
+            .appendingPathExtension("wav")
+        do {
+            try wav.write(to: url)
+            poster.audioFilePath = url.path
+            return url.path
+        } catch {
+            Logger(subsystem: "tanque.org.TanqueStudio", category: "ImageStorage")
+                .error("audio write failed at \(url.path): \(error.localizedDescription)")
+            return nil
+        }
+    }
+
+    /// The soundtrack for a series, ready to mux, or nil when there isn't one.
+    ///
+    /// Reads the WAV back off disk rather than holding it in memory, because
+    /// Generate's Export Movie runs long after the render that produced it — the
+    /// user picks frames out of the gallery and presses a button.
+    static func audioTrack(forSeries frames: [TSImage]) -> VideoAssembler.Audio? {
+        guard let path = frames.first(where: { $0.audioFilePath != nil })?.audioFilePath,
+              let wav = try? Data(contentsOf: URL(fileURLWithPath: path)),
+              let (channels, rate) = wavFormat(wav)
+        else { return nil }
+        return VideoAssembler.Audio(wav: wav, channels: channels, sampleRate: rate)
+    }
+
+    /// Channel count and sample rate straight out of a WAV's `fmt ` chunk.
+    ///
+    /// The header is the authority once the file is on disk — re-deriving the rate
+    /// from frame counts here would risk disagreeing with what was actually
+    /// written, and playing the clip at the wrong speed.
+    private static func wavFormat(_ wav: Data) -> (channels: Int, sampleRate: Double)? {
+        // "fmt " chunk: 8-byte header, then format(2) channels(2) sampleRate(4).
+        guard wav.count > 44 else { return nil }
+        guard let range = wav.range(of: Data("fmt ".utf8)) else { return nil }
+        let base = range.upperBound + 4          // skip the chunk size
+        guard wav.count >= base + 8 else { return nil }
+        let channels = Int(wav[base + 2]) | Int(wav[base + 3]) << 8
+        let rate = (0..<4).reduce(0) { $0 | Int(wav[base + 4 + $1]) << (8 * $1) }
+        guard channels > 0, rate > 0 else { return nil }
+        return (channels, Double(rate))
     }
 
     // MARK: — Private: image write core

@@ -102,9 +102,14 @@ final class RenderQueueController {
                         sourceImage = decoded
                     }
 
+                    // Draw Things sends a clip's soundtrack as one tensor
+                    // alongside the frames. Collected here and muxed in saveClip;
+                    // before 0.9.47 nobody asked for it and every clip was silent.
+                    var audioTensors: [Data] = []
                     let images = try await client.generateImage(
                         prompt: job.prompt, sourceImage: sourceImage, mask: nil,
-                        config: config, onProgress: nil
+                        config: config, onProgress: nil,
+                        onAudio: { audioTensors.append($0) }
                     )
                     guard let image = images.first else {
                         throw RenderQueueError.noImageReturned
@@ -114,6 +119,7 @@ final class RenderQueueController {
                     if images.count > 1 {
                         poster = try await Self.saveClip(
                             images, config: config, prompt: job.prompt,
+                            audioTensors: audioTensors,
                             job: job, in: modelContext
                         )
                     } else {
@@ -197,6 +203,7 @@ final class RenderQueueController {
         _ frames: [NSImage],
         config: DrawThingsGenerationConfig,
         prompt: String,
+        audioTensors: [Data] = [],
         job: RenderQueueJob,
         in modelContext: ModelContext
     ) async throws -> TSImage {
@@ -226,10 +233,18 @@ final class RenderQueueController {
             // this path produced 25 good frames and no movie for exactly this
             // reason. `StoryFlowStorage.saveOutputClip` has always wrapped its
             // own assemble the same way.
+            let audio = RenderAudio.track(fromTensors: audioTensors,
+                                          frameCount: records.count,
+                                          fps: config.playbackFPS)
             try await ImageFolderAccess.withDefaultImageFolderAccess {
+                // The WAV goes next to the frames as well as into the movie, so
+                // Generate's Export Movie can re-export this clip with its sound
+                // long after the render — it reads frames off disk, not memory.
+                if let audio { ImageStorageManager.saveAudio(audio.wav, for: poster) }
                 try await VideoAssembler.assemble(
                     frameURLs: records.map { URL(fileURLWithPath: $0.filePath) },
                     fps: config.playbackFPS,
+                    audio: audio,
                     metadataComment: poster.configJSON,
                     to: movieURL
                 )

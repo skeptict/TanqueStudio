@@ -18,6 +18,13 @@ final class TSImage {
     var batchID: UUID?        // groups batch/sequence results
     var batchIndex: Int?
     var thumbnailData: Data?  // cached thumbnail, optional
+    /// Path to this series' soundtrack, set on **frame 0 only**.
+    ///
+    /// Draw Things emits one audio tensor for a whole clip, not one per frame, so
+    /// there is one WAV per series and the poster frame owns it. Nil for stills,
+    /// for models that generate no audio, and for every clip rendered before
+    /// 0.9.47 — the app did not ask Draw Things for audio until then.
+    var audioFilePath: String?
 
     init(
         id: UUID = UUID(),

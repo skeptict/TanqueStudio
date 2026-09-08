@@ -452,6 +452,10 @@ final class GenerateViewModel {
                     // ([Data] → [NSImage]) — a 450-frame video render spikes 1 GB+ RAM
                     // while the response lands. If that ever bites, the fix is a
                     // per-frame streaming callback in DT-gRPC-Swift-Client (upstream PR).
+                    // One tensor for the whole clip. Persisted with the series so
+                    // Export Movie can mux it later — that button runs long after
+                    // the render, off frames read back from disk.
+                    var audioTensors: [Data] = []
                     let images = try await client.generateImage(
                         prompt: capturedPrompt,
                         sourceImage: capturedSource,
@@ -459,7 +463,8 @@ final class GenerateViewModel {
                         config: iterCfg,
                         onProgress: { [weak self] p in
                             Task { @MainActor [weak self] in self?.progress = p }
-                        }
+                        },
+                        onAudio: { audioTensors.append($0) }
                     )
                     guard let image = images.first else {
                         // DT completed the request but produced nothing (e.g. model/sampler
@@ -474,7 +479,8 @@ final class GenerateViewModel {
                     // <= 1), and those must keep the first-image behavior below.
                     if iterCfg.numFrames > 1 && images.count > 1 {
                         let frames = self.saveVideoSeries(images, config: iterCfg,
-                                                          prompt: capturedPrompt, in: context)
+                                                          prompt: capturedPrompt,
+                                                          audioTensors: audioTensors, in: context)
                         if self.selectedGalleryID != capturedSelection {
                             // User navigated the gallery mid-render — don't clobber
                             // their selection; the series is already in the gallery.
@@ -554,6 +560,7 @@ final class GenerateViewModel {
         _ images: [NSImage],
         config: DrawThingsGenerationConfig,
         prompt: String,
+        audioTensors: [Data] = [],
         in context: ModelContext
     ) -> [TSImage] {
         let batchID = UUID()
@@ -570,6 +577,15 @@ final class GenerateViewModel {
                 errorMessage = "Failed to save frame \(index + 1) of \(images.count): \(error.localizedDescription)"
                 break
             }
+        }
+        // Beside the frames, owned by frame 0. Written after the loop so a partial
+        // save (a frame that failed) can't leave a soundtrack pointing at a series
+        // that isn't all there.
+        if let poster = records.first,
+           let audio = RenderAudio.track(fromTensors: audioTensors,
+                                         frameCount: records.count,
+                                         fps: config.playbackFPS) {
+            ImageStorageManager.saveAudio(audio.wav, for: poster)
         }
         try? context.save()
         return records
@@ -693,6 +709,10 @@ final class GenerateViewModel {
         // (ImageStorageManager.buildDTMetadataJSON) — carry it straight into the movie
         // rather than re-deriving it, the same way a still's config travels with it.
         let comment = sorted.first?.configJSON
+        // Read back off disk rather than held in memory: this button is pressed long
+        // after the render, often in a later session. Nil for a series with no
+        // soundtrack, including every clip rendered before 0.9.47.
+        let audio = ImageStorageManager.audioTrack(forSeries: sorted)
 
         let panel = NSSavePanel()
         panel.allowedContentTypes = [.mpeg4Movie]
@@ -701,18 +721,25 @@ final class GenerateViewModel {
         panel.begin { [weak self] response in
             guard response == .OK, let output = panel.url else { return }
             Task { @MainActor [weak self] in
-                self?.runVideoExport(frameURLs: urls, fps: fps, comment: comment, to: output)
+                self?.runVideoExport(frameURLs: urls, fps: fps, audio: audio,
+                                     comment: comment, to: output)
             }
         }
     }
 
-    private func runVideoExport(frameURLs: [URL], fps: Int32, comment: String?, to output: URL) {
+    private func runVideoExport(frameURLs: [URL], fps: Int32,
+                                audio: VideoAssembler.Audio?,
+                                comment: String?, to output: URL) {
         isExportingSeries = true
         seriesExportTask = Task {
             do {
                 try await VideoAssembler.assemble(frameURLs: frameURLs, fps: fps,
+                                                  audio: audio,
                                                   metadataComment: comment, to: output)
-                self.transientWarning = "Video exported — \(frameURLs.count) frames at \(fps) fps."
+                // Say which, so a silent export is never a surprise found later
+                // in a video player.
+                self.transientWarning = "Video exported — \(frameURLs.count) frames at \(fps) fps"
+                    + (audio == nil ? ", no audio." : " with audio.")
             } catch is CancellationError {
                 self.transientWarning = "Video export cancelled."
             } catch {

@@ -840,6 +840,23 @@ protocol DrawThingsProvider: AnyObject {
         onProgress: ((GenerationProgress) -> Void)?
     ) async throws -> [NSImage]
 
+    /// As above, but also handing back the raw ccv audio tensors Draw Things emits
+    /// for models that generate sound (LTX-2).
+    ///
+    /// A separate entry point rather than a parameter on the one above, so the
+    /// silent path stays exactly as it was and a provider that cannot capture audio
+    /// needs no changes — the default implementation below forwards and reports
+    /// none. `RenderAudio.track(fromTensors:frameCount:fps:)` turns what arrives
+    /// here into something `VideoAssembler` can mux.
+    func generateImage(
+        prompt: String,
+        sourceImage: NSImage?,
+        mask: NSImage?,
+        config: DrawThingsGenerationConfig,
+        onProgress: ((GenerationProgress) -> Void)?,
+        onAudio: ((Data) -> Void)?
+    ) async throws -> [NSImage]
+
     /// Fetch available models from Draw Things
     func fetchModels() async throws -> [DrawThingsModel]
 
@@ -850,6 +867,20 @@ protocol DrawThingsProvider: AnyObject {
 // MARK: - Protocol Extension for Convenience
 
 extension DrawThingsProvider {
+
+    /// Providers that cannot capture audio get the silent behaviour for free.
+    func generateImage(
+        prompt: String,
+        sourceImage: NSImage?,
+        mask: NSImage?,
+        config: DrawThingsGenerationConfig,
+        onProgress: ((GenerationProgress) -> Void)?,
+        onAudio: ((Data) -> Void)?
+    ) async throws -> [NSImage] {
+        try await generateImage(prompt: prompt, sourceImage: sourceImage, mask: mask,
+                                config: config, onProgress: onProgress)
+    }
+
     /// Convenience method for txt2img (no source image)
     func generateImage(
         prompt: String,

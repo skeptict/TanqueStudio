@@ -215,6 +215,7 @@ final class StoryFlowStorage {
                         stepLabel: String,
                         to folder: URL,
                         fps: Int32,
+                        audioTensors: [Data] = [],
                         config: DrawThingsGenerationConfig? = nil,
                         prompt: String? = nil) async throws -> ClipOutput {
         guard !frames.isEmpty else { throw StoryFlowError.imageSaveFailed }
@@ -241,10 +242,20 @@ final class StoryFlowStorage {
                 frameURLs.append(url)
             }
 
+            // The soundtrack lands beside the poster as well as inside the movie,
+            // so the frames folder is a complete record of the clip rather than a
+            // silent one. Nil for models that generate no audio.
+            let audio = RenderAudio.track(fromTensors: audioTensors,
+                                          frameCount: frames.count, fps: fps)
+            if let audio {
+                try? audio.wav.write(to: folder.appendingPathComponent("\(stem).wav"))
+            }
+
             let movieURL = folder.appendingPathComponent("\(stem).mp4")
             try await VideoAssembler.assemble(
                 frameURLs: frameURLs,
                 fps: fps,
+                audio: audio,
                 metadataComment: config.flatMap {
                     ImageStorageManager.dtMetadataJSON(config: $0, prompt: prompt)
                 },
