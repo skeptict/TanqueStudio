@@ -299,6 +299,44 @@ final class DrawThingsGRPCClient: DrawThingsProvider {
                                 config: config, onProgress: onProgress, onStage: nil)
     }
 
+    /// Turn Draw Things' returned tensors into frames, or say plainly why not.
+    ///
+    /// The bare library error for an undecodable tensor is *"Failed to convert
+    /// image to desired format"*, which surfaces to the user as
+    /// `Request failed (-1): Failed to convert image to desired format` — a
+    /// sentence that names no cause and suggests no action. It is what a 121-frame
+    /// LTX request looks like when Draw Things hands back **one** tensor that is
+    /// not a finished image, which is what an overloaded server does: seen on a
+    /// laptop rendering 1024×1024 × 121 frames with hires fix, while the same
+    /// request on a bigger machine returned all 121.
+    ///
+    /// Short returns are not new and are not rare — they appear in this app's own
+    /// request log from April onwards — so the failure is worth naming properly
+    /// rather than passing through.
+    static func decodeFrames(_ tensors: [Data], expected: Int) throws -> [NSImage] {
+        do {
+            let frames = try tensors.map { try ImageHelpers.dtTensorToImage($0) }
+            if expected > 1 && frames.count < expected {
+                // Decodable, but fewer than asked for. Not fatal — a short clip is
+                // still a clip — but the user asked for a length and did not get it,
+                // and silently keeping 25 of 121 frames is how a bad render looks
+                // exactly like a good one.
+                Logger(subsystem: "tanque.org.TanqueStudio", category: "DrawThingsGRPC")
+                    .warning("Draw Things returned \(frames.count) of \(expected) frames")
+            }
+            return frames
+        } catch {
+            guard expected > 1, tensors.count < expected else { throw error }
+            throw DrawThingsError.requestFailed(-1, """
+                Draw Things returned \(tensors.count) of \(expected) frames, and \
+                what came back isn't a finished image — the render stopped part way \
+                rather than failing outright. This usually means the server ran out \
+                of room: try fewer frames, a smaller canvas, turning off Hires Fix, \
+                or a machine with more memory.
+                """)
+        }
+    }
+
     /// The audio-capturing requirement from `DrawThingsProvider`. Overrides the
     /// protocol extension's silent default — this client can capture, because it
     /// can reach the low-level service.
@@ -459,7 +497,7 @@ final class DrawThingsGRPCClient: DrawThingsProvider {
                 }
                 onProgress?(.complete)
                 RequestLogger.shared.logGRPCResponse(imageCount: resultData.count)
-                return try resultData.map { try ImageHelpers.dtTensorToImage($0) }
+                return try Self.decodeFrames(resultData, expected: config.numFrames)
             }
 
             let images = try await withGenerateTimeout(timeout, heartbeat: heartbeat) {
@@ -481,6 +519,12 @@ final class DrawThingsGRPCClient: DrawThingsProvider {
                 logger.debug("Image \(idx): \(img.pixelWidth)x\(img.pixelHeight) pixels")
             }
             logger.info("Generated \(images.count) image(s) via \(isImg2Img ? "img2img" : "txt2img")")
+            // Same short-return check the service path gets from `decodeFrames`.
+            // These tensors are already decoded by the library, so only the count
+            // is checkable here — but a 25-of-121 clip is worth saying out loud.
+            if config.numFrames > 1 && images.count < Int(config.numFrames) {
+                logger.warning("Draw Things returned \(images.count) of \(config.numFrames) frames")
+            }
 
             // PlatformImage is NSImage on macOS, so we can return directly
             return images
