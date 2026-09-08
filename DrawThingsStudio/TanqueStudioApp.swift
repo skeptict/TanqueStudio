@@ -136,6 +136,17 @@ struct TanqueStudioApp: App {
         }
         .modelContainer(sharedModelContainer)
         .windowStyle(.hiddenTitleBar)
+        // Without this the window cannot be made smaller than the content's
+        // *ideal* height, which is what `.automatic` resizability enforces. The
+        // Focus Room's right column is a long stack of sections, so that ideal
+        // ran past the screen: measured at 1075 points tall on a 982-point
+        // display, where dragging the bottom edge up simply snapped back and the
+        // window sat partly below the screen with no way to recover it.
+        //
+        // `.contentMinSize` honours the content's *minimum* instead. The panels
+        // are already inside ScrollViews, so a shorter window scrolls rather than
+        // clipping — the tall ideal was never a real constraint.
+        .windowResizability(.contentMinSize)
         .commands {
             CommandGroup(replacing: .help) {
                 HelpMenuCommands()
