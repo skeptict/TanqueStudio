@@ -327,12 +327,24 @@ final class DrawThingsGRPCClient: DrawThingsProvider {
             return frames
         } catch {
             guard expected > 1, tensors.count < expected else { throw error }
-            throw DrawThingsError.requestFailed(-1, """
-                Draw Things returned \(tensors.count) of \(expected) frames, and \
-                what came back isn't a finished image — the render stopped part way \
-                rather than failing outright. This usually means the server ran out \
-                of room: try fewer frames, a smaller canvas, turning off Hires Fix, \
-                or a machine with more memory.
+            // ⚠️ Do NOT report this as "N of M frames". When the stream ends with no
+            // finished images, DT-gRPC-Swift-Client substitutes the last *preview*
+            // — an internal latent, not a picture ("No generatedImages received,
+            // using last preview image as result"). So one undecodable tensor for a
+            // many-frame request means Draw Things produced **nothing**, and saying
+            // "1 of 121" invents a partial render that never happened. It sent me
+            // hunting a truncation for an afternoon.
+            let substituted = tensors.count == 1
+            throw DrawThingsError.requestFailed(-1, substituted ? """
+                Draw Things finished the render but produced no frames — the single \
+                item it returned is an internal preview, not an image, which is what \
+                the client falls back to when nothing usable arrives. The first pass \
+                ran; it stopped early in the second (Hires Fix) pass. Try turning off \
+                Hires Fix, fewer frames, or a smaller canvas.
+                """ : """
+                Draw Things returned \(tensors.count) of \(expected) frames and they \
+                will not decode. The render stopped part way rather than failing \
+                outright — try fewer frames, a smaller canvas, or turning off Hires Fix.
                 """)
         }
     }
