@@ -114,7 +114,15 @@ final class RenderAudioLiveTests: XCTestCase {
         let poster = TSImage(filePath: posterPath, source: .generated)
         let wavURL = URL(fileURLWithPath: posterPath)
             .deletingPathExtension().appendingPathExtension("wav")
-        defer { try? FileManager.default.removeItem(at: wavURL) }
+        // Scoped, for the very reason this test exists: the Generate folder is
+        // outside the container, so an unscoped delete is denied as silently as an
+        // unscoped write was — three stray fixtures accumulated in the user's real
+        // output folder before anyone noticed.
+        defer {
+            ImageFolderAccess.withScopedFolder(containing: wavURL) {
+                try? FileManager.default.removeItem(at: wavURL)
+            }
+        }
 
         let tensor = ccvTensor(channels: 2, samplesPerChannel: 4800)
         let track = try XCTUnwrap(RenderAudio.track(fromTensors: [tensor], frameCount: 3, fps: 25))
