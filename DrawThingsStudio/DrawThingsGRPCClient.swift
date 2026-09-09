@@ -392,7 +392,9 @@ final class DrawThingsGRPCClient: DrawThingsProvider {
 
         // Convert our config to DrawThingsConfiguration
         let grpcConfig = convertConfig(config)
-        RequestLogger.shared.logGRPCRequest(host: host, port: port, config: grpcConfig, prompt: prompt, negativePrompt: config.negativePrompt)
+        RequestLogger.shared.logGRPCRequest(host: host, port: port, config: grpcConfig,
+                                            prompt: prompt, negativePrompt: config.negativePrompt,
+                                            sourceImage: sourceImage, mask: mask)
 
         let timeout = Self.resolveGenerateTimeout(
             for: config,

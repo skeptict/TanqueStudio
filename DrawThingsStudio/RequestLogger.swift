@@ -65,7 +65,15 @@ final class RequestLogger {
 
     // MARK: - gRPC
 
-    func logGRPCRequest(host: String, port: Int, config: DrawThingsConfiguration, prompt: String, negativePrompt: String) {
+    /// - Parameter sourceImage: the img2img / image-to-video source, if any.
+    ///   **Recorded because its absence is invisible otherwise.** Asked whether a
+    ///   121-frame LTX clip had actually used its start frame, the log could not
+    ///   answer: nothing here distinguished image-to-video from text-to-video, and
+    ///   for a prompt that describes the same scene the first frames look alike
+    ///   either way. Guessing from the pixels is not evidence.
+    func logGRPCRequest(host: String, port: Int, config: DrawThingsConfiguration,
+                        prompt: String, negativePrompt: String,
+                        sourceImage: NSImage? = nil, mask: NSImage? = nil) {
         var entry = "\n── [\(timestamp())] gRPC → generateImage ──\n"
         // Which server this went to. Two identical requests can succeed on one
         // host and fail on another (models installed differ per machine) — without
@@ -75,6 +83,13 @@ final class RequestLogger {
         if !negativePrompt.isEmpty {
             entry += "negativePrompt:           \(negativePrompt.prefix(200))\n"
         }
+        if let src = sourceImage {
+            entry += "sourceImage:              \(Int(src.size.width))×\(Int(src.size.height))"
+                  +  " (image-to-\(config.numFrames > 1 ? "video" : "image"), strength \(config.strength))\n"
+        } else {
+            entry += "sourceImage:              none (text-to-\(config.numFrames > 1 ? "video" : "image"))\n"
+        }
+        if mask != nil { entry += "mask:                     present (inpaint)\n" }
         entry += "model:                    \(config.model)\n"
         entry += "sampler:                  \(config.sampler)\n"
         entry += "width:                    \(config.width)\n"
