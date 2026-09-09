@@ -294,6 +294,43 @@ struct FocusRoomView: View {
                     .disabled(vm.maskStrokes.isEmpty)
                 }
                 .foregroundStyle(DashboardDS.muted2)
+
+                // How the inpaint meets the rest of the picture. Both have always
+                // been sent to Draw Things — at 1.5 and 0, with no way to change
+                // them — and they are what decides whether a repair blends or shows
+                // its outline. Ranges are Draw Things' own (0…25, −100…1000); the
+                // slider covers the useful part of the outset range.
+                HStack(spacing: 12) {
+                    Image(systemName: "circle.dashed").font(.caption).foregroundStyle(DashboardDS.muted2)
+                    Text("Edge").font(TanqueDS.Font.mono(11)).foregroundStyle(DashboardDS.muted2)
+                    Slider(value: $vm.config.maskBlur, in: 0...25).frame(width: 110).tint(DashboardDS.brass)
+                    Text(String(format: "%.1f", vm.config.maskBlur))
+                        .font(TanqueDS.Font.mono(11)).foregroundStyle(DashboardDS.muted2)
+                        .frame(width: 30, alignment: .leading)
+                        .help("Mask Blur — feathers the join between the repair and the original. 0 is a hard edge.")
+                    Divider().frame(height: 18)
+                    Text("Grow").font(TanqueDS.Font.mono(11)).foregroundStyle(DashboardDS.muted2)
+                    Slider(value: Binding(
+                        get: { Double(vm.config.maskBlurOutset) },
+                        set: { vm.config.maskBlurOutset = Int($0.rounded()) }
+                    ), in: -32...32, step: 1).frame(width: 110).tint(DashboardDS.brass)
+                    Text("\(vm.config.maskBlurOutset)")
+                        .font(TanqueDS.Font.mono(11)).foregroundStyle(DashboardDS.muted2)
+                        .frame(width: 26, alignment: .leading)
+                        .help("Mask Blur Outset — positive pushes the repaired area outward into the surrounding image, negative pulls it in. Each step is one 3×3 pass.")
+                    if vm.config.maskBlur != 1.5 || vm.config.maskBlurOutset != 0 {
+                        Button {
+                            vm.config.maskBlur = 1.5
+                            vm.config.maskBlurOutset = 0
+                        } label: {
+                            Image(systemName: "arrow.counterclockwise").font(.caption)
+                        }
+                        .buttonStyle(.plain)
+                        .help("Back to Draw Things' defaults (1.5 / 0)")
+                    }
+                }
+                .foregroundStyle(DashboardDS.muted2)
+
                 HStack(spacing: 10) {
                     Button {
                         vm.generateInpaint(in: modelContext)
