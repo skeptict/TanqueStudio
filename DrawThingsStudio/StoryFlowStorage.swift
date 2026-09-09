@@ -452,7 +452,10 @@ final class StoryFlowStorage {
     ///   `turbo-fast`) with real model filenames patched in.
     /// - 3: those three retired; replaced by the six curated model presets in
     ///   `builtInConfigSpecs`.
-    static let builtInSeedVersion = 3
+    /// Bumped to 4 on 2026-09-09: the LTX preset's hires-fix start size went from a
+    /// hardcoded 640×384 to 0×0, which is what makes long LTX renders work. Existing
+    /// installs keep their seeded copy unless this number moves.
+    static let builtInSeedVersion = 4
 
     /// Names seeded as built-ins by earlier versions and no longer shipped.
     /// Removed on migration **only when still flagged `isBuiltIn`** — a user
@@ -663,16 +666,29 @@ final class StoryFlowStorage {
         ),
         BuiltInConfigSpec(
             name: "LTX 2.3 Distilled",
-            notes: "Video — 1280×768, 121 frames, 8 steps, CFG 1, TCD Trailing, hires fix from 640×384.",
+            notes: "Video — 1280×768, 121 frames, 8 steps, CFG 1, TCD Trailing. Hires fix "
+                 + "start size left to Draw Things (0×0), as Draw Things itself does.",
+            // ⚠️ `hiresFixWidth`/`hiresFixHeight` are 0 ON PURPOSE. 0 means "let Draw
+            // Things derive the first-pass size from the model", which it does from
+            // `default_scale` in its own model spec — units of 64, so video models sit
+            // at 12 (768 px) with `hires_fix_scale` 16 (1024 px). Draw Things' own
+            // configs ship `hiresFix: true` with 0×0 for exactly this reason.
+            //
+            // This preset used to hardcode 640×384, which is BELOW every video model's
+            // native scale and so forced an upscale ratio DT would never pick — 2.2×
+            // for a 1408-wide canvas. That is the only reason Tanque Studio ever ran a
+            // real second pass, and a 121-frame render with one came back with **zero
+            // frames** while the identical request without it returned all 121.
+            // See the 0.9.47 notes.
             json: """
             {
             "clipSkip": 1,
             "guidanceScale": 1,
             "height": 768,
             "hiresFix": true,
-            "hiresFixHeight": 384,
+            "hiresFixHeight": 0,
             "hiresFixStrength": 0.7,
-            "hiresFixWidth": 640,
+            "hiresFixWidth": 0,
             "loras": [],
             "model": "ltx_2.3_22b_distilled_q8p.ckpt",
             "numFrames": 121,
