@@ -817,13 +817,19 @@ final class GenerateViewModel {
             errorMessage = "Select a model first."
             return
         }
+        // Warn, don't block — matching `generate()` above, which has warned since
+        // the DT+ bridge landed. This path refused instead, so the same model that
+        // renders fine from Generate was rejected the moment you painted a mask.
+        //
+        // The list is Draw Things' own **file inventory**, and Bridge Mode renders
+        // models that are not on disk: `krea_2_turbo_q8p.ckpt` is absent from one
+        // lab server's list of 524 and renders there in 23 s. Absence means "cannot
+        // confirm", not "will fail" — the same conclusion the Render Queue's guard
+        // reached in 0.9.46, which this was never updated to match. Draw Things
+        // returns its own error if the model is genuinely missing.
         if !models.isEmpty,
            !models.contains(where: { $0.filename == config.model || $0.name == config.model }) {
-            errorMessage = "Model '\(config.model)' isn't in Draw Things' model list. Choose an installed model."
-            isGenerating = false
-            progress = .complete
-            generationTask = nil
-            return
+            transientWarning = "'\(config.model)' isn't in the local model list — inpainting anyway (may be a DT+ cloud model)."
         }
         guard let mask = rasterizeMask(for: source) else {
             errorMessage = "Could not build the mask."
