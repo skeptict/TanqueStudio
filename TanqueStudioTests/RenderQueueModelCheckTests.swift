@@ -11,6 +11,9 @@ import XCTest
 /// gallery of plausible renders permanently mislabelled with a config that never
 /// produced them.
 ///
+/// The predicate underneath lives in `ModelAvailability` and is covered by
+/// `ModelAvailabilityTests`; what follows is the queue's own layer on top of it.
+///
 /// ⚠️ It **warns** rather than blocking, and that is load-bearing. Draw Things'
 /// model list is its own file list, and Bridge Mode renders models that are not on
 /// disk: `krea_2_turbo_q8p.ckpt` is absent from one lab server's list and rendered
@@ -38,7 +41,6 @@ final class RenderQueueModelCheckTests: XCTestCase {
     /// Draw Things unreachable, or not yet answered. Warning on everything then
     /// would turn a connection problem into a wall of noise about every job.
     func testAnEmptyInventoryNeverWarns() {
-        XCTAssertTrue(RenderQueueModelCheck.isAvailable("anything_at_all.ckpt", in: []))
         XCTAssertEqual(
             RenderQueueModelCheck.unconfirmedModels(
                 inConfigJSONs: [configJSON(model: "nonexistent.ckpt")], known: []),
@@ -59,23 +61,6 @@ final class RenderQueueModelCheckTests: XCTestCase {
         XCTAssertEqual(
             RenderQueueModelCheck.unconfirmedModels(inConfigJSONs: ["not json at all"], known: known),
             [])
-    }
-
-    // MARK: - Matching
-
-    func testMatchesOnFilenameOrDisplayName() {
-        XCTAssertTrue(RenderQueueModelCheck.isAvailable("krea_2_turbo_q6p.ckpt", in: known))
-        XCTAssertTrue(RenderQueueModelCheck.isAvailable("Krea 2 Turbo", in: known))
-        XCTAssertTrue(RenderQueueModelCheck.isAvailable("  krea_2_turbo_q6p.ckpt  ", in: known),
-                      "surrounding whitespace shouldn't make an installed model look missing")
-    }
-
-    /// Quantizations are genuinely different files, not interchangeable labels —
-    /// q6p installed does not make q8p available. This is the case the guard
-    /// exists for: the two names differ by three characters.
-    func testADifferentQuantizationIsNotAMatch() {
-        XCTAssertFalse(RenderQueueModelCheck.isAvailable("krea_2_turbo_q8p.ckpt", in: known))
-        XCTAssertFalse(RenderQueueModelCheck.isAvailable("krea_2_turbo_i8x.ckpt", in: known))
     }
 
     // MARK: - Collecting across a planned expansion

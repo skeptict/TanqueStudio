@@ -22,7 +22,7 @@ struct RenderQueueView: View {
     @State private var showClearAllConfirm = false
     @State private var showingBasePicker = false
 
-    /// Draw Things' model inventory, for `RenderQueueModelCheck`. Empty until the
+    /// Draw Things' model inventory, for `ModelAvailability`. Empty until the
     /// fetch lands, and empty *stays* permissive — see that type's comment. Not
     /// shared with Generate's copy on purpose: the queue is reachable without
     /// Generate ever having been opened.
@@ -435,7 +435,7 @@ struct RenderQueueView: View {
                     // uninstalled, are marked rather than silently left to render
                     // with whatever Draw Things substitutes.
                     modelIsConfirmed: RenderQueueExpander.model(inConfigJSON: job.configJSON)
-                        .map { RenderQueueModelCheck.isAvailable($0, in: knownModels) } ?? true,
+                        .map { ModelAvailability.isAvailable($0, in: knownModels) } ?? true,
                     canMoveUp: index > 0, canMoveDown: index < jobs.count - 1,
                     onMoveUp: { swapOrder(jobs[index], jobs[index - 1]) },
                     onMoveDown: { swapOrder(jobs[index], jobs[index + 1]) },

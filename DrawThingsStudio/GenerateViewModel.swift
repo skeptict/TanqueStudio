@@ -399,8 +399,7 @@ final class GenerateViewModel {
         // cloud models that aren't in the local model list, so a hard block here
         // would prevent all StoryFlow → Generate cross-pane workflows. DT returns
         // its own error if the model is genuinely absent.
-        if !models.isEmpty,
-           !models.contains(where: { $0.filename == config.model || $0.name == config.model }) {
+        if !ModelAvailability.isAvailable(config.model, in: models) {
             transientWarning = "'\(config.model)' isn't in the local model list — generating anyway (may be a DT+ cloud model)."
         }
         errorMessage = nil
@@ -827,8 +826,7 @@ final class GenerateViewModel {
         // confirm", not "will fail" — the same conclusion the Render Queue's guard
         // reached in 0.9.46, which this was never updated to match. Draw Things
         // returns its own error if the model is genuinely missing.
-        if !models.isEmpty,
-           !models.contains(where: { $0.filename == config.model || $0.name == config.model }) {
+        if !ModelAvailability.isAvailable(config.model, in: models) {
             transientWarning = "'\(config.model)' isn't in the local model list — inpainting anyway (may be a DT+ cloud model)."
         }
         guard let mask = rasterizeMask(for: source) else {
@@ -1089,11 +1087,8 @@ final class GenerateViewModel {
     /// list. Only fires when the list is populated — an empty list means we couldn't
     /// fetch the inventory, which is a connection problem, not an unknown model.
     private func warnIfModelUnknown(_ modelName: String) {
-        guard !modelName.isEmpty, !models.isEmpty else { return }
-        let known = models.contains { $0.filename == modelName || $0.name == modelName }
-        if !known {
-            transientWarning = "Model '\(modelName)' isn't in Draw Things' model list."
-        }
+        guard !ModelAvailability.isAvailable(modelName, in: models) else { return }
+        transientWarning = "Model '\(modelName)' isn't in Draw Things' model list."
     }
 
     /// Applies a PNGMetadata snapshot to the current config as a REFRESH.

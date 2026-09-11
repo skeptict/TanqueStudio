@@ -323,17 +323,9 @@ enum RenderQueueExpander {
 /// a block without a way to ask Draw Things what it can actually serve.**
 enum RenderQueueModelCheck {
 
-    /// ⚠️ **An empty `known` means the inventory could not be fetched, not that
-    /// nothing is installed.** Treating that as "every model is unavailable"
-    /// would warn about everything whenever Draw Things is merely unreachable,
-    /// which is a connection problem with its own reporting. Same rule Generate uses.
-    static func isAvailable(_ model: String, in known: [DrawThingsModel]) -> Bool {
-        guard !known.isEmpty else { return true }
-        let name = model.trimmingCharacters(in: .whitespaces)
-        guard !name.isEmpty else { return true }
-        return known.contains { $0.filename == name || $0.name == name }
-    }
-
+    /// The predicate itself lives in `ModelAvailability` — Generate, inpaint and the
+    /// metadata applier ask the same question, and each inline copy had to remember
+    /// the empty-inventory rule on its own.
     /// Distinct unconfirmable model names across `configJSONs`, in first-seen
     /// order. One name repeated across forty jobs is reported once.
     static func unconfirmedModels(inConfigJSONs configJSONs: [String],
@@ -343,7 +335,7 @@ enum RenderQueueModelCheck {
         var missing: [String] = []
         for json in configJSONs {
             guard let model = RenderQueueExpander.model(inConfigJSON: json),
-                  !isAvailable(model, in: known),
+                  !ModelAvailability.isAvailable(model, in: known),
                   seen.insert(model).inserted
             else { continue }
             missing.append(model)
