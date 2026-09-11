@@ -77,6 +77,78 @@ enum ImageFolderAccess {
         return try await body()
     }
 
+    /// Why a save can fail with a message about *file format*.
+    ///
+    /// A security-scoped bookmark records the folder's identity, not just its path.
+    /// Delete the folder and recreate it at the same path and the bookmark comes back
+    /// **stale** — the path still resolves, but the grant is against an identity that
+    /// no longer exists. Resolving a bookmark whose target is gone entirely throws
+    /// `NSCocoaErrorDomain` 259, *"The file couldn't be opened because it isn't in the
+    /// correct format"* — a message about file format for what is really a missing
+    /// folder. It names neither the path nor the cause, and it cost two separate
+    /// debugging sessions on 2026-09-11 before the folder was the suspect.
+    enum FolderAccessError: LocalizedError {
+        case unusable(path: String)
+
+        var errorDescription: String? {
+            switch self {
+            case .unusable(let path):
+                return "The Generate folder “\(path)” can no longer be opened — it may have "
+                     + "been moved, renamed, or deleted. Choose it again in Settings."
+            }
+        }
+    }
+
+    /// Resolves **and activates** security-scoped access to the user's configured
+    /// Generate folder. The caller owns the grant and must call
+    /// `stopAccessingSecurityScopedResource()` on the returned URL.
+    ///
+    /// Returns `nil` when no custom folder is configured, which is not an error —
+    /// the caller should fall back to the in-container location.
+    ///
+    /// ⚠️ **Refreshing a stale bookmark is the load-bearing part.** `withScopedFolder`
+    /// below has always done this; the save path did not — it read `isStale` into a
+    /// variable and then ignored it, re-persisting the stale bookmark on every write.
+    /// That meant a folder which was moved or recreated stayed broken for every
+    /// subsequent render until the user re-picked it in Settings, with only the
+    /// misleading 259 message to go on. A fresh bookmark must be minted *while the
+    /// grant is active*, which is why this activates before refreshing.
+    ///
+    /// `configuredPath` and `bookmark` are injectable so tests can exercise this
+    /// without writing to `AppSettings.shared`. That is not a stylistic preference:
+    /// these keys are the user's live configuration, and a test that set
+    /// `defaultImageFolder` to `""` tripped the migration in `AppSettings.load`
+    /// — which deletes a bookmark that has no folder path — and permanently
+    /// destroyed the real one. Never reach for the singleton from a test here.
+    static func beginDefaultImageFolderAccess(
+        configuredPath: String = AppSettings.shared.defaultImageFolder,
+        bookmark: Data? = AppSettings.shared.defaultImageFolderBookmark,
+        persist: Bool = true
+    ) throws -> URL? {
+        guard let bookmark, !configuredPath.isEmpty else { return nil }
+
+        var isStale = false
+        guard let resolved = try? URL(resolvingBookmarkData: bookmark,
+                                      options: .withSecurityScope,
+                                      relativeTo: nil,
+                                      bookmarkDataIsStale: &isStale),
+              resolved.startAccessingSecurityScopedResource() else {
+            throw FolderAccessError.unusable(path: configuredPath)
+        }
+
+        guard persist else { return resolved }
+
+        if isStale, let fresh = try? resolved.bookmarkData(options: .withSecurityScope,
+                                                           includingResourceValuesForKeys: nil,
+                                                           relativeTo: nil) {
+            AppSettings.shared.defaultImageFolderBookmark = fresh
+            AppSettings.shared.addImageFolderBookmark(fresh)
+        } else {
+            AppSettings.shared.addImageFolderBookmark(bookmark)
+        }
+        return resolved
+    }
+
     /// Prompts the user to reauthorize the folder containing `url` and persists the bookmark.
     /// Returns `true` if a bookmark was stored, `false` if the user cancelled or the bookmark failed.
     @discardableResult

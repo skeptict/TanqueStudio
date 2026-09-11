@@ -127,20 +127,8 @@ enum ImageStorageManager {
         // activate it for the duration of the write; otherwise use the default path.
         var securityScopedURL: URL?
         let directory: URL
-        if let bookmarkData = AppSettings.shared.defaultImageFolderBookmark,
-           !AppSettings.shared.defaultImageFolder.isEmpty {
-            var isStale = false
-            let resolvedURL = try URL(
-                resolvingBookmarkData: bookmarkData,
-                options: .withSecurityScope,
-                relativeTo: nil,
-                bookmarkDataIsStale: &isStale
-            )
-            guard resolvedURL.startAccessingSecurityScopedResource() else {
-                throw StorageError.cannotAccessDirectory
-            }
+        if let resolvedURL = try ImageFolderAccess.beginDefaultImageFolderAccess() {
             securityScopedURL = resolvedURL
-            AppSettings.shared.addImageFolderBookmark(bookmarkData)
             try FileManager.default.createDirectory(at: resolvedURL, withIntermediateDirectories: true)
             directory = resolvedURL
         } else {
