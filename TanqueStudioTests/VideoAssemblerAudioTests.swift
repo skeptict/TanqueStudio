@@ -273,4 +273,49 @@ final class VideoAssemblerAudioTests: XCTestCase {
         let seconds = try await track.load(.timeRange).duration.seconds
         XCTAssertEqual(seconds, 21.0 / 25.0, accuracy: 1.0 / Double(fps))
     }
+
+    // MARK: — The 32 kHz clip (2026-09-22)
+
+    /// ⚠️ **Draw Things also produces 32 kHz audio, and the rate table did not list it.**
+    ///
+    /// `beta 26.0908.sqlite3` holds 14 clips at 24 fps whose soundtracks are exactly
+    /// 32 kHz (90 frames, 120000 samples/channel → 120000 ÷ (90/24) = 32000.0). With
+    /// `candidateSampleRates` set to `[48000, 24000]`, every one of them snapped to the
+    /// nearer 24000, and the export died on the first soundtrack sample with
+    /// AVFoundation -11861, "the encoding parameters are not supported".
+    ///
+    /// The mislabel is not merely cosmetic: 120000 samples called 24 kHz describe 5.0s of
+    /// audio against 3.75s of video, so the tracks disagree about how long the clip is.
+    func testClipAtThirtyTwoKilohertzResolvesAndExports() async throws {
+        // The real geometry, not a scaled-down stand-in.
+        let clipFrames = 90
+        let clipFPS: Double = 24
+        let samplesPerChannel = 120_000
+
+        // 1. The rate table must now recognise it.
+        let resolved = DTClipAudio.sampleRate(framesPerChannel: samplesPerChannel,
+                                              clipDuration: Double(clipFrames) / clipFPS)
+        XCTAssertEqual(resolved, 32_000,
+                       "a 32 kHz clip resolved to \(resolved) — the rate is being mis-snapped")
+
+        // 2. And a movie built at that rate must come out with a real audio track whose
+        //    duration matches the video, rather than running 33% long.
+        let output = scratch.appendingPathComponent("thirtytwo.mp4")
+        try await withTimeout(seconds: 120) {
+            try await VideoAssembler.assemble(
+                frameURLs: try self.makeFrames(count: clipFrames, prefix: "k32"),
+                fps: Int32(clipFPS),
+                audio: self.makeAudio(seconds: Double(samplesPerChannel) / resolved,
+                                      sampleRate: resolved),
+                to: output)
+        }
+
+        let asset = AVURLAsset(url: output)
+        let audioTracks = try await asset.loadTracks(withMediaType: .audio)
+        XCTAssertEqual(audioTracks.count, 1, "the movie came out silent")
+
+        let audioSeconds = try await XCTUnwrap(audioTracks.first).load(.timeRange).duration.seconds
+        XCTAssertEqual(audioSeconds, Double(clipFrames) / clipFPS, accuracy: 0.05,
+                       "soundtrack length disagrees with the video length")
+    }
 }

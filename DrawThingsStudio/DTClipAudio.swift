@@ -15,19 +15,32 @@ import AVFoundation
 
 enum DTClipAudio {
 
-    /// The only rates Draw Things produces. They are 2× apart, which is what
-    /// makes picking the nearest safe.
-    static let candidateSampleRates: [Double] = [48_000, 24_000]
+    /// The rates Draw Things is known to produce.
+    ///
+    /// ⚠️ **32 kHz is real and was missing.** This list was `[48_000, 24_000]`, justified
+    /// by "the only rates DT produces, 2× apart, so nearest-match is safe". That held for
+    /// the 12 clips it was measured on, all 25 fps and all 48 kHz. It is false in general:
+    /// `beta 26.0908.sqlite3` holds 14 clips at **24 fps whose audio is exactly 32 kHz**
+    /// (90 frames, 120000 samples/channel: 120000 ÷ (90/24) = 32000.0, not a rounding
+    /// artefact). With 32000 absent, every one of them snapped to the nearer 24000 and
+    /// broke twice over — played back at 0.75× and five semitones flat, and failed export
+    /// outright, because 192 kbps AAC at 24 kHz is an unsupported combination
+    /// (AVFoundation -11861, "the encoding parameters are not supported").
+    ///
+    /// Adding 32000 costs nothing in safety. Measured rates land within ~1% of truth, and
+    /// the decision boundaries are now 28000 and 40000 — a 1% band around any candidate
+    /// (31680–32320, 47520–48480, 23760–24240) stays well clear of both.
+    static let candidateSampleRates: [Double] = [48_000, 32_000, 24_000]
 
     /// Draw Things does not record the sample rate, so it has to be inferred
     /// from how long the clip runs and how many samples that covers.
     ///
-    /// Measured over all 12 clips on this machine, the computed rate lands within
-    /// **0.62%** of 48000 — the samples cover fractionally less time than
-    /// `count / fps` implies. Snapping to the nearest candidate absorbs that;
-    /// with the two candidates an octave apart, a sub-1% error cannot cross over
-    /// and pick the wrong one. Using the raw computed rate instead would detune
-    /// every clip by a few cents.
+    /// The computed rate lands within ~1% of the true one — the samples cover
+    /// fractionally less time than `count / fps` implies. Snapping to the nearest
+    /// candidate absorbs that; using the raw computed rate would detune every clip by a
+    /// few cents. A rate DT produces that is **not** in `candidateSampleRates` is not
+    /// absorbed, it is silently mis-snapped — so extend the list from measurement rather
+    /// than assuming the set is closed.
     static func sampleRate(framesPerChannel: Int, clipDuration: TimeInterval) -> Double {
         guard clipDuration > 0, framesPerChannel > 0 else { return 48_000 }
         let measured = Double(framesPerChannel) / clipDuration
