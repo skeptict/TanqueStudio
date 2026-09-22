@@ -11,13 +11,55 @@
 import AVFoundation
 import AppKit
 
-enum VideoAssemblerError: Error {
+/// ⚠️ Conform to `LocalizedError`, not just `Error`.
+///
+/// A bare `Error` enum bridges to NSError with a *synthesised* code and the useless
+/// message "The operation couldn't be completed. (Tanque_Studio.VideoAssemblerError
+/// error 1.)" — which is what the export alert showed for every failure, discarding the
+/// diagnostic string these cases already carry.
+///
+/// The synthesised code is also not the declaration index: cases WITH associated values
+/// are numbered first, in order, then the cases without. For this enum that is
+/// frameLoadFailed 0, writeFailed 1, audioReadFailed 2, noFrames 3, setupFailed 4,
+/// pixelBufferFailed 5. Don't read such a number as a declaration position.
+enum VideoAssemblerError: Error, LocalizedError {
     case noFrames
     case setupFailed
     case frameLoadFailed(Int)
     case pixelBufferFailed
     case writeFailed(String)
     case audioReadFailed(String)
+
+    var errorDescription: String? {
+        switch self {
+        case .noFrames:
+            return "The clip has no frames to write."
+        case .setupFailed:
+            return "Could not create the movie file. The destination may not be writable."
+        case .frameLoadFailed(let index):
+            return "Frame \(index) could not be read."
+        case .pixelBufferFailed:
+            return "Could not allocate a pixel buffer for a frame."
+        case .writeFailed(let detail):
+            return "The movie writer failed: \(detail)"
+        case .audioReadFailed(let detail):
+            return "The soundtrack could not be read: \(detail)"
+        }
+    }
+}
+
+/// AVFoundation's own `localizedDescription` is frequently the generic "The operation
+/// could not be completed"; the actionable part sits in the underlying error and the
+/// failure reason. Flatten the whole chain so a report names the real cause.
+private func describeWriterFailure(_ error: Error?) -> String {
+    guard let error else { return "no error reported" }
+    let ns = error as NSError
+    var parts = ["\(ns.domain) \(ns.code)", ns.localizedDescription]
+    if let reason = ns.localizedFailureReason { parts.append(reason) }
+    if let underlying = ns.userInfo[NSUnderlyingErrorKey] as? NSError {
+        parts.append("underlying: \(underlying.domain) \(underlying.code) — \(underlying.localizedDescription)")
+    }
+    return parts.joined(separator: " | ")
 }
 
 struct VideoAssembler {
@@ -175,7 +217,14 @@ struct VideoAssembler {
             writer.metadata = [item]
         }
 
-        writer.startWriting()
+        // ⚠️ startWriting() returns Bool and its failure is silent. Ignoring it meant a
+        // writer that never opened still ran the whole append loop, and the first sign
+        // of trouble was `.failed` at finishWriting — by which point the reason was a
+        // step further away. Report it where it happens.
+        guard writer.startWriting() else {
+            throw VideoAssemblerError.writeFailed(
+                "startWriting failed — \(describeWriterFailure(writer.error))")
+        }
         writer.startSession(atSourceTime: .zero)
         audioReader?.startReading()
 
@@ -222,7 +271,10 @@ struct VideoAssembler {
                             didWork = true
                             break
                         }
-                        input.append(buffer)
+                        guard input.append(buffer) else {
+                            throw VideoAssemblerError.writeFailed(
+                                "a soundtrack sample was rejected — \(describeWriterFailure(writer.error))")
+                        }
                         pendingAudio = audioOutput?.copyNextSampleBuffer()
                         didWork = true
                     }
@@ -235,8 +287,15 @@ struct VideoAssembler {
                     guard let pb = makePixelBuffer(from: cgImage, size: size, pool: adaptor.pixelBufferPool) else {
                         throw VideoAssemblerError.pixelBufferFailed
                     }
-                    adaptor.append(pb, withPresentationTime:
-                        CMTimeMultiply(frameDuration, multiplier: Int32(frameIndex)))
+                    // append() returns false the moment the writer goes bad. Dropping that
+                    // result let the loop run to the end against a dead writer, so the
+                    // failure only surfaced at finishWriting with no hint of which frame
+                    // broke it. Name the frame here, while we still know it.
+                    guard adaptor.append(pb, withPresentationTime:
+                        CMTimeMultiply(frameDuration, multiplier: Int32(frameIndex))) else {
+                        throw VideoAssemblerError.writeFailed(
+                            "frame \(frameIndex) of \(frameURLs.count) was rejected — \(describeWriterFailure(writer.error))")
+                    }
                     frameIndex += 1
                     didWork = true
                     if frameIndex == frameURLs.count {
@@ -258,8 +317,8 @@ struct VideoAssembler {
             writer.finishWriting { continuation.resume() }
         }
 
-        if writer.status == .failed, let error = writer.error {
-            throw VideoAssemblerError.writeFailed(error.localizedDescription)
+        if writer.status == .failed {
+            throw VideoAssemblerError.writeFailed(describeWriterFailure(writer.error))
         }
     }
 
