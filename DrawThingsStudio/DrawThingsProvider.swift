@@ -345,6 +345,7 @@ struct DrawThingsGenerationConfig: Codable {
         case animateDiff = "AnimateDiff"
         case cogVideo    = "CogVideo"
         case mochi       = "Mochi"
+        case miniMax     = "MiniMax"
         case unknown     = "Unknown"
     }
 
@@ -378,17 +379,27 @@ struct DrawThingsGenerationConfig: Codable {
     /// that happened to disagree. They agree now, and the measurement is why;
     /// keep them together.
     ///
-    /// ⚠️ The non-LTX numbers below are still **unmeasured presentation
-    /// defaults**. Settle one the same way before trusting it: read
-    /// `frames_per_second` off a Draw Things database holding clips from that
-    /// family, and check it against `samples / (frames / fps)` landing on a
-    /// standard sample rate.
+    /// **Measured** (2026-09-22, by the method below, over 43 clips in this
+    /// machine's Draw Things projects):
+    ///   - `.ltx` = 25 — 26 clips; audio implies 25.02–25.16 fps at 48 kHz.
+    ///   - `.miniMax` = 24 — 17 clips (`minimax_h3_i8x`, `minimax_h3_ref2va_i8x`);
+    ///     audio implies 23.96–24.04 fps at 32 kHz. Before this, minimax matched no
+    ///     family at all and fell to the 16 default, so every minimax clip played
+    ///     back 50% slow.
+    ///
+    /// ⚠️ `.wan`, `.hunyuan`, `.cogVideo`, `.mochi` and `.animateDiff` are **still
+    /// unmeasured guesses** — not because the method failed, but because there is
+    /// not one clip from any of them on this machine. Render one in Draw Things and
+    /// the method settles it: read `frames_per_second` off the project's `clip`
+    /// table, and cross-check that `count * rate / samplesPerChannel` lands on the
+    /// recorded fps for one of `DTClipAudio.candidateSampleRates`.
     var playbackFPS: Int32 {
         if fps > 0 { return Int32(fps) }
         switch modelFamily {
-        case .ltx: return 25
+        case .ltx:     return 25
+        case .miniMax: return 24
         case .wan, .hunyuan, .cogVideo, .mochi, .animateDiff: return 16
-        default:   return 16
+        default:       return 16
         }
     }
 
@@ -400,6 +411,7 @@ struct DrawThingsGenerationConfig: Codable {
         if lower.contains("hunyuan") && lower.contains("video")         { return .hunyuan }
         if lower.contains("cogvideo") || lower.contains("cog_video")    { return .cogVideo }
         if lower.contains("mochi")                                      { return .mochi }
+        if lower.contains("minimax") || lower.contains("mini_max")      { return .miniMax }
         if lower.contains("flux")                                       { return .flux }
         if lower.contains("zimage") || lower.contains("z_image") || lower.contains("z-image") { return .zImage }
         if lower.contains("sd3") || lower.contains("sd_3") || lower.contains("stable-diffusion-3") { return .sd3 }
@@ -498,6 +510,12 @@ struct DrawThingsGenerationConfig: Codable {
             c.numFrames = 25
             c.resolutionDependentShift = nil
             c.cfgZeroStar = nil
+        case .miniMax:
+            // Deliberately empty. The 24 fps playback rate is measured (see
+            // `playbackFPS`), but nothing else about this family is — inventing
+            // width/steps/sampler numbers here would plant exactly the kind of
+            // unmeasured default that made the non-LTX rates untrustworthy.
+            break
         case .unknown:
             break
         }

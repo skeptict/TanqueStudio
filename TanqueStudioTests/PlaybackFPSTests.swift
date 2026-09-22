@@ -14,9 +14,15 @@ import XCTest
 /// `frames_per_second` per clip in its own project databases; every clip across
 /// three local LTX databases (36 clips, 121–1121 frames, three LTX checkpoints)
 /// reads exactly 25.000, and each clip's audio divided by `frames / 25` lands
-/// within 0.62% of 48 kHz or 24 kHz, versus 4.1–4.6% off any standard rate at
-/// `frames / 24`. StoryFlow was right; `playbackFPS` was playing every exported
-/// LTX movie about 4% slow.
+/// within 0.62% of 48 kHz. StoryFlow was right; `playbackFPS` was playing every
+/// exported LTX movie about 4% slow.
+///
+/// ⚠️ **Corrected 2026-09-22.** This comment used to add "versus 4.1–4.6% off any
+/// standard rate at `frames / 24`" as supporting evidence. That was an artefact of
+/// a rate table missing 32 kHz: at 24 fps the audio lands *exactly* on 32 kHz. The
+/// LTX conclusion is unaffected — it rests on DT's own recorded 25.000 — but the
+/// "24 fps is off anything standard" half was never true. When a cross-check says
+/// a measurement is off every standard value, suspect the list of standard values.
 final class PlaybackFPSTests: XCTestCase {
 
     private func config(_ model: String, fps: Int = 0) -> DrawThingsGenerationConfig {
@@ -90,5 +96,35 @@ final class PlaybackFPSTests: XCTestCase {
     func testAnExplicitFramesDialogRateStillOverridesStoryFlowsDefault() {
         let c = config("ltx_2.3_22b_distilled_q8p.ckpt")
         XCTAssertEqual(StoryFlowEngine.clipFPS(for: c, framesDialogFPS: 30), 30)
+    }
+
+    /// ⚠️ **minimax matched no family at all, so it got the 16 fps fallback.**
+    ///
+    /// Draw Things records 24.000 for all 17 minimax clips on this machine
+    /// (`minimax_h3_i8x`, `minimax_h3_ref2va_i8x`, 90–362 frames), and their audio
+    /// agrees: `count * 32000 / samplesPerChannel` gives 23.96–24.04. Until this was
+    /// added, `modelFamily` returned `.unknown` for them and every minimax clip
+    /// TanqueStudio assembled played at 16 fps — 50% slow.
+    func testMiniMaxIsTwentyFourNotTheSixteenFallback() {
+        for model in ["minimax_h3_i8x.ckpt", "minimax_h3_ref2va_i8x.ckpt"] {
+            let c = config(model)
+            XCTAssertEqual(c.modelFamily, .miniMax,
+                           "\(model) is not being recognised as a family")
+            XCTAssertEqual(c.playbackFPS, 24,
+                           "\(model) fell back to the unmeasured default")
+            XCTAssertEqual(StoryFlowEngine.clipFPS(for: c, framesDialogFPS: nil), 24,
+                           "\(model) disagrees between the two fps rules")
+        }
+    }
+
+    /// The families with no local clips keep the documented guess. This is here so
+    /// that changing one is a deliberate act with evidence attached, not a drift.
+    func testStillUnmeasuredFamiliesKeepTheDocumentedFallback() {
+        for model in ["wan_v2.2_a14b_hne_t2v_q6p_svd.ckpt", "hunyuan_video_720p_q6p.ckpt",
+                      "cogvideo_x_5b_q6p.ckpt", "mochi_1_preview_q6p.ckpt",
+                      "animatediff_v3_q6p.ckpt"] {
+            XCTAssertEqual(config(model).playbackFPS, 16,
+                           "\(model) changed without a measurement recorded")
+        }
     }
 }

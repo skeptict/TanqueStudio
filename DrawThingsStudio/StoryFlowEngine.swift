@@ -810,6 +810,7 @@ final class StoryFlowEngine {
         if let fps = framesDialogFPS { return fps }
         switch config.modelFamily {
         case .ltx:                            return 25
+        case .miniMax:                        return 24
         case .wan, .hunyuan, .cogVideo, .mochi, .animateDiff: return 16
         default:                              return 16
         }
