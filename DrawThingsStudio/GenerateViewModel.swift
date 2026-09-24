@@ -799,9 +799,9 @@ final class GenerateViewModel {
     /// only by hand.
     private static func seriesFPS(for frames: [TSImage]) -> Int32 {
         let meta = frames.first?.configJSON.flatMap { ImageStorageManager.decodeConfigJSON($0) }
-        var config = DrawThingsGenerationConfig(model: meta?.model ?? "")
-        config.fps = meta?.fps ?? 0
-        return config.playbackFPS
+        // Only the model matters. The saved `fps` is DT's SVD `fps_id`, not a
+        // playback rate — reading it here is how a series could export at 5 fps.
+        return DrawThingsGenerationConfig(model: meta?.model ?? "").playbackFPS
     }
 
     // MARK: — Inpaint

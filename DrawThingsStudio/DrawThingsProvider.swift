@@ -83,7 +83,11 @@ struct DrawThingsGenerationConfig: Codable {
     var batchSize: Int
     var batchCount: Int
     var numFrames: Int          // video models: number of frames to generate (0 = use model default)
-    var fps: Int                // video models: playback frame rate (0 = use model default)
+    /// Draw Things' `fps_id` — a **Stable Video Diffusion conditioning input**, not a
+    /// playback rate. DT embeds it next to `motion_bucket_id` and `cond_aug` for SVD
+    /// only (`UNetFixedEncoder`, `case .svdI2v`); every other architecture ignores it.
+    /// DT's default is 5. Playback speed comes from `playbackFPS`, which never reads this.
+    var fps: Int
     var negativePrompt: String
     var loras: [LoRAConfig]
     var resolutionDependentShift: Bool?
@@ -349,28 +353,20 @@ struct DrawThingsGenerationConfig: Codable {
         case unknown     = "Unknown"
     }
 
-    /// Frame rate for **playing back** a rendered frame series.
+    /// Frame rate for **playing back** a rendered frame series: the rate Draw Things
+    /// itself uses for this model — a port of `ModelZoo.framesPerSecondForModel(_:)`
+    /// in draw-things-community. The model's own `frames_per_second` when its spec
+    /// carries one, otherwise a rate by architecture, otherwise 30.
     ///
-    /// One rule, two callers: `GenerateViewModel.seriesFPS` (the gallery's
-    /// "Export Movie…") and `RenderQueueController.saveClip`. They previously
-    /// held identical copies that agreed only because they were hand-matched —
-    /// nothing kept them in step, and the same frames re-exported from the
-    /// gallery had to produce the same timing as the file the queue wrote, or
-    /// one clip plays at two speeds depending on which button you pressed.
+    /// One rule, every caller: `GenerateViewModel.seriesFPS` (the gallery's "Export
+    /// Movie…"), `RenderQueueController.saveClip`, and `StoryFlowEngine.clipFPS`. The
+    /// same frames must play at the same speed whichever button exported them.
     ///
-    /// An explicit `fps` in the config always wins; these are only the fallback
-    /// for when nobody said. Draw Things ships no `fps` in its own video presets,
-    /// and `config.fbs`'s `fps_id` is a conditioning input rather than a playback
-    /// rate.
-    var playbackFPS: Int32 {
-        if fps > 0 { return Int32(fps) }
-        return drawThingsFPS
-    }
-
-    /// The frame rate Draw Things itself uses for this model — a port of
-    /// `ModelZoo.framesPerSecondForModel(_:)` in draw-things-community: the model's
-    /// own `frames_per_second` when its spec carries one, otherwise a rate by
-    /// architecture, otherwise 30.
+    /// ⚠️ **Never reads `config.fps`.** That field is DT's `fps_id`, an SVD
+    /// conditioning input defaulting to 5 — and DT itself never uses it for playback.
+    /// Until 2026-09-24 this honoured it whenever it was non-zero, so a config pasted
+    /// from DT, read from a DT PNG, or taken from Story Studio's default (all of which
+    /// carry 5) could export a 5 fps movie.
     ///
     /// ⚠️ **Port DT's rule; don't reason from family names.** This was a hand-kept
     /// table where only LTX (measured 2026-09-07) and MiniMax (measured 2026-09-22)
@@ -392,9 +388,8 @@ struct DrawThingsGenerationConfig: Codable {
     /// 2026-09-23. A model DT adds later is only covered once that list is
     /// re-extracted; the test says how.
     ///
-    /// `StoryFlowEngine.clipFPS` delegates here too. Two copies of this switch is
-    /// how MiniMax once had to be fixed in two places.
-    var drawThingsFPS: Int32 {
+    /// Two copies of this switch is how MiniMax once had to be fixed in two places.
+    var playbackFPS: Int32 {
         let lower = model.lowercased()
         if lower.contains("skyreels")   { return 24 }
         if lower.contains("chronoedit") { return 16 }

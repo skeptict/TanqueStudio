@@ -999,8 +999,11 @@ struct ParametersSection: View {
             .padding(.top, 6)
             .help("Video models: number of frames to render. 0 or 1 = still image.")
 
+            // Draw Things' `fps_id`: SVD conditioning, not a playback rate. It was
+            // labelled and tooltipped as playback speed, and `playbackFPS` believed
+            // it — see `DrawThingsGenerationConfig.fps`.
             HStack {
-                Text("FPS").font(TanqueDS.Font.mono(11.5)).foregroundStyle(DashboardDS.muted2)
+                Text("SVD FPS").font(TanqueDS.Font.mono(11.5)).foregroundStyle(DashboardDS.muted2)
                 Spacer()
                 TextField("0", value: $vm.config.fps, format: .number)
                     .textFieldStyle(.plain)
@@ -1010,7 +1013,7 @@ struct ParametersSection: View {
                     .frame(width: 52)
             }
             .padding(.top, 6)
-            .help("Video playback frame rate. 0 = model default.")
+            .help("Stable Video Diffusion only: the frame rate SVD imitates, which shapes how much moves between frames. Other models ignore it. Not the playback speed — exported movies use Draw Things' own rate for the model.")
 
             if vm.config.numFrames > 1 {
                 Text("Video render — \(vm.config.numFrames) frames will be saved as one gallery series.")

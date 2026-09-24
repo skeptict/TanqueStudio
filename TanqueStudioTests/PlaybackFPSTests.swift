@@ -1,8 +1,9 @@
 import XCTest
 @testable import Tanque_Studio
 
-/// Pins the two frame-rate rules, and — since 2026-09-07 — the fact that they
-/// **agree for LTX**, which they did not before.
+/// Pins the playback frame rate, which since 2026-09-24 is a port of Draw Things'
+/// own `framesPerSecondForModel` and **never** reads `config.fps` (DT's SVD
+/// `fps_id`). `StoryFlowEngine.clipFPS` delegates to the same property.
 ///
 /// `playbackFPS` serves surfaces with no duration math (the gallery's Export
 /// Movie, the Render Queue). `StoryFlowEngine.clipFPS` is the inverse of
@@ -31,9 +32,23 @@ final class PlaybackFPSTests: XCTestCase {
         return c
     }
 
-    func testAnExplicitFPSAlwaysWinsOverTheFamilyDefault() {
-        XCTAssertEqual(config("ltx_2.3_22b_distilled_q8p.ckpt", fps: 30).playbackFPS, 30)
-        XCTAssertEqual(config("wan_v2.2_a14b_hne_t2v_q6p_svd.ckpt", fps: 12).playbackFPS, 12)
+    /// ⚠️ **This test used to assert the opposite** — "an explicit fps always wins".
+    ///
+    /// `config.fps` is Draw Things' `fps_id`: a Stable Video Diffusion conditioning
+    /// input that DT embeds for `.svdI2v` only and never uses as a playback rate. It
+    /// defaults to 5, and arrives that way in a config pasted from DT, a DT PNG's
+    /// metadata, and Story Studio's default config. Honouring it meant any of those
+    /// could export a movie at 5 fps. The realistic values are the ones tested.
+    func testSVDConditioningFPSNeverSetsPlaybackSpeed() {
+        for fpsId in [5, 6, 12, 30] {
+            XCTAssertEqual(config("ltx_2.3_22b_distilled_q8p.ckpt", fps: fpsId).playbackFPS, 25,
+                           "fps_id \(fpsId) leaked into LTX playback")
+            XCTAssertEqual(config("wan_v2.2_a14b_hne_t2v_q6p_svd.ckpt", fps: fpsId).playbackFPS, 16,
+                           "fps_id \(fpsId) leaked into Wan playback")
+            // Even for SVD, the one model that reads fps_id, DT plays back at 30.
+            XCTAssertEqual(config("svd_i2v_xt_1.1_f16.ckpt", fps: fpsId).playbackFPS, 30,
+                           "fps_id \(fpsId) leaked into SVD playback")
+        }
     }
 
     /// Spot checks, one per rule. The exhaustive check against Draw Things' own data
@@ -58,10 +73,16 @@ final class PlaybackFPSTests: XCTestCase {
         }
     }
 
-    func testZeroFPSMeansUseTheFamilyDefaultRatherThanZero() {
-        // 0 is DrawThingsGenerationConfig's "unset" sentinel for fps; a zero-fps
-        // movie is not a thing, and AVAssetWriter would reject it.
-        XCTAssertEqual(config("ltx_2.3_22b_distilled_q8p.ckpt", fps: 0).playbackFPS, 25)
+    /// The gallery path decodes a series' saved config, which carries DT's fps_id.
+    /// Pin that the exact import DT produces — its default 5 — plays at the model's
+    /// rate. This is the path that could previously write a 5 fps movie.
+    func testADrawThingsPastedConfigStillExportsAtTheModelsRate() throws {
+        let pasted = #"{"model":"ltx_2.3_22b_distilled_q8p.ckpt","fps":5,"numFrames":121}"#
+        let meta = try XCTUnwrap(ImageStorageManager.decodeConfigJSON(pasted))
+        XCTAssertEqual(meta.fps, 5, "precondition: the saved config really does carry fps_id 5")
+        var c = DrawThingsGenerationConfig(model: meta.model ?? "")
+        c.fps = meta.fps ?? 0
+        XCTAssertEqual(c.playbackFPS, 25)
     }
 
     /// The reason the shared property exists: the gallery re-exporting a queue

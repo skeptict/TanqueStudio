@@ -808,11 +808,9 @@ final class StoryFlowEngine {
     /// anything to sync against. Reading Draw Things' database answers it directly.
     static func clipFPS(for config: DrawThingsGenerationConfig, framesDialogFPS: Int32?) -> Int32 {
         if let fps = framesDialogFPS { return fps }
-        // Draw Things' own per-model rate. Shared with `playbackFPS` rather than
-        // copied — a second copy of this table is how MiniMax once needed fixing
-        // in two places. Note it is `drawThingsFPS`, not `playbackFPS`: this path
-        // deliberately never reads `config.fps` (see above).
-        return config.drawThingsFPS
+        // Draw Things' own per-model rate, shared rather than copied — a second copy
+        // of this table is how MiniMax once needed fixing in two places.
+        return config.playbackFPS
     }
 
     /// `framesDialog(pacing)` in the pipeline: count whitespace-separated tokens
