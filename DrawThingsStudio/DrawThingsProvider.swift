@@ -362,44 +362,49 @@ struct DrawThingsGenerationConfig: Codable {
     /// for when nobody said. Draw Things ships no `fps` in its own video presets,
     /// and `config.fbs`'s `fps_id` is a conditioning input rather than a playback
     /// rate.
-    ///
-    /// **LTX is 25, measured, not chosen.** Draw Things records a
-    /// `frames_per_second` per clip in its own project databases, and every clip
-    /// across three local LTX databases — 36 clips, 121 to 1121 frames,
-    /// `ltx_2.3_22b_distilled` / `ltx_2.3_22b_dev` / `ltx_2_19b_distilled` —
-    /// reads exactly **25.000**. The audio corroborates it independently: each
-    /// clip's soundtrack, divided by `frames / 25`, lands within **0.62%** of
-    /// 48 kHz or 24 kHz. Divided by `frames / 24` it lands 4.1–4.6% away from any
-    /// standard rate at all. This returned 24 until 2026-09-07, which played
-    /// every exported LTX movie about 4% slow.
-    ///
-    /// `StoryFlowEngine.clipFPS` has always answered 25 for LTX — it derives frame
-    /// counts as spoken-seconds × 25, so 25 is the inverse of its own frame
-    /// budget. The two were long documented as deliberately separate questions
-    /// that happened to disagree. They agree now, and the measurement is why;
-    /// keep them together.
-    ///
-    /// **Measured** (2026-09-22, by the method below, over 43 clips in this
-    /// machine's Draw Things projects):
-    ///   - `.ltx` = 25 — 26 clips; audio implies 25.02–25.16 fps at 48 kHz.
-    ///   - `.miniMax` = 24 — 17 clips (`minimax_h3_i8x`, `minimax_h3_ref2va_i8x`);
-    ///     audio implies 23.96–24.04 fps at 32 kHz. Before this, minimax matched no
-    ///     family at all and fell to the 16 default, so every minimax clip played
-    ///     back 50% slow.
-    ///
-    /// ⚠️ `.wan`, `.hunyuan`, `.cogVideo`, `.mochi` and `.animateDiff` are **still
-    /// unmeasured guesses** — not because the method failed, but because there is
-    /// not one clip from any of them on this machine. Render one in Draw Things and
-    /// the method settles it: read `frames_per_second` off the project's `clip`
-    /// table, and cross-check that `count * rate / samplesPerChannel` lands on the
-    /// recorded fps for one of `DTClipAudio.candidateSampleRates`.
     var playbackFPS: Int32 {
         if fps > 0 { return Int32(fps) }
+        return drawThingsFPS
+    }
+
+    /// The frame rate Draw Things itself uses for this model — a port of
+    /// `ModelZoo.framesPerSecondForModel(_:)` in draw-things-community: the model's
+    /// own `frames_per_second` when its spec carries one, otherwise a rate by
+    /// architecture, otherwise 30.
+    ///
+    /// ⚠️ **Port DT's rule; don't reason from family names.** This was a hand-kept
+    /// table where only LTX (measured 2026-09-07) and MiniMax (measured 2026-09-22)
+    /// were right. HunyuanVideo was 16 against DT's 30, Wan 2.2 5B was 16 against
+    /// DT's 24, and the fallback was 16 against DT's 30. The client library's own
+    /// table is wrong on the same two families, so it is not the reference either.
+    ///
+    /// The per-model rules come first because a family can't express them:
+    ///   - **SkyReels is 24 whatever it's built on** — v1 is HunyuanVideo, v2 is
+    ///     Wan 2.1, and DT overrides both. Neither name matches its base family here.
+    ///   - **ChronoEdit is Wan 2.1 14B** (16), but its filename never says "wan".
+    ///   - **Wan 2.2 5B is 24**; every other Wan is 16.
+    ///   - CogVideo, Mochi and AnimateDiff are not Draw Things architectures at
+    ///     all. DT answers 30 for a model it has no spec for, and so does this.
+    ///
+    /// `PlaybackFPSTests.testMatchesDrawThingsForEveryOfficialVideoModel` checks
+    /// every official video model DT ships — its `ModelZoo.swift` and
+    /// `MediaGenerationKit/Resources/models.json` at upstream `d4009bc6`,
+    /// 2026-09-23. A model DT adds later is only covered once that list is
+    /// re-extracted; the test says how.
+    ///
+    /// `StoryFlowEngine.clipFPS` delegates here too. Two copies of this switch is
+    /// how MiniMax once had to be fixed in two places.
+    var drawThingsFPS: Int32 {
+        let lower = model.lowercased()
+        if lower.contains("skyreels")   { return 24 }
+        if lower.contains("chronoedit") { return 16 }
+        if lower.contains("longcat")    { return 25 }
         switch modelFamily {
         case .ltx:     return 25
         case .miniMax: return 24
-        case .wan, .hunyuan, .cogVideo, .mochi, .animateDiff: return 16
-        default:       return 16
+        case .hunyuan: return 30
+        case .wan:     return lower.contains("_5b_") ? 24 : 16
+        default:       return 30
         }
     }
 

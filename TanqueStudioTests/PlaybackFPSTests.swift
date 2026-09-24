@@ -36,15 +36,16 @@ final class PlaybackFPSTests: XCTestCase {
         XCTAssertEqual(config("wan_v2.2_a14b_hne_t2v_q6p_svd.ckpt", fps: 12).playbackFPS, 12)
     }
 
-    /// The LTX case is measured against Draw Things' own recorded rate. The
-    /// others are unmeasured presentation defaults — if one of them is ever
-    /// settled the same way, change it here and say what was measured.
+    /// Spot checks, one per rule. The exhaustive check against Draw Things' own data
+    /// is `testMatchesDrawThingsForEveryOfficialVideoModel`.
     func testFamilyDefaults() {
         XCTAssertEqual(config("ltx_2.3_22b_distilled_q8p.ckpt").playbackFPS, 25,
                        "Draw Things records 25.000 for every LTX clip it writes")
         XCTAssertEqual(config("wan_v2.1_14b_720p_q6p_svd.ckpt").playbackFPS, 16)
-        XCTAssertEqual(config("hunyuan_video_t2v_720p_q5p_svd.ckpt").playbackFPS, 16)
-        XCTAssertEqual(config("krea_2_turbo_q6p.ckpt").playbackFPS, 16, "stills fall through to the default")
+        XCTAssertEqual(config("hunyuan_video_t2v_720p_q5p_svd.ckpt").playbackFPS, 30,
+                       "DT: .hunyuanVideo -> 30. This said 16, and the client library says 24")
+        XCTAssertEqual(config("krea_2_turbo_q6p.ckpt").playbackFPS, 30,
+                       "DT answers 30 for every image architecture, not 16")
     }
 
     /// All three LTX checkpoints found in the measured databases resolve to the
@@ -117,14 +118,126 @@ final class PlaybackFPSTests: XCTestCase {
         }
     }
 
-    /// The families with no local clips keep the documented guess. This is here so
-    /// that changing one is a deliberate act with evidence attached, not a drift.
-    func testStillUnmeasuredFamiliesKeepTheDocumentedFallback() {
-        for model in ["wan_v2.2_a14b_hne_t2v_q6p_svd.ckpt", "hunyuan_video_720p_q6p.ckpt",
-                      "cogvideo_x_5b_q6p.ckpt", "mochi_1_preview_q6p.ckpt",
-                      "animatediff_v3_q6p.ckpt"] {
-            XCTAssertEqual(config(model).playbackFPS, 16,
-                           "\(model) changed without a measurement recorded")
+    /// ⚠️ **Every official video model Draw Things ships, against DT's own answer.**
+    ///
+    /// Generated, not hand-written: each file below is from draw-things-community at
+    /// upstream `d4009bc6` (2026-09-23) — `Libraries/ModelZoo/Sources/ModelZoo.swift`
+    /// plus `Libraries/MediaGenerationKit/Resources/models.json` — and its expected
+    /// rate is what `ModelZoo.framesPerSecondForModel` returns for it: the model's
+    /// own `frames_per_second` if its spec has one, otherwise the rate for its
+    /// `version`. 82 files: 41 at 16, 16 at 24, 15 at 25, 10 at 30.
+    ///
+    /// This replaced a test that pinned HunyuanVideo, CogVideo, Mochi and AnimateDiff
+    /// at 16 as "unmeasured, keep the documented guess". They were never unmeasured:
+    /// DT's source had the answer all along. Two of the five were wrong.
+    ///
+    /// **To refresh when DT adds a model:** extract every `Specification` whose
+    /// `version` is a video architecture from `ModelZoo.swift`, and every entry with a
+    /// video `version` from `models.json`, then resolve each through
+    /// `framesPerSecondForModel`'s switch. Don't hand-add rows from memory.
+    func testMatchesDrawThingsForEveryOfficialVideoModel() {
+        let drawThings: [(file: String, fps: Int32)] = [
+        ("animatelcm_svd_xt_v1.1_f16.ckpt", 30),
+        ("animatelcm_svd_xt_v1.1_q6p_q8p.ckpt", 30),
+        ("anisora_v3.2_i2v_wan_2.2_a14b_hne_q6p_svd.ckpt", 16),
+        ("anisora_v3.2_i2v_wan_2.2_a14b_hne_q8p.ckpt", 16),
+        ("anisora_v3.2_i2v_wan_2.2_a14b_lne_q6p_svd.ckpt", 16),
+        ("anisora_v3.2_i2v_wan_2.2_a14b_lne_q8p.ckpt", 16),
+        ("chronoedit_14b_q6p_svd.ckpt", 16),
+        ("chronoedit_14b_q8p.ckpt", 16),
+        ("hunyuan_video_t2v_720p_q5p_svd.ckpt", 30),
+        ("hunyuan_video_t2v_720p_q8p.ckpt", 30),
+        ("ltx_2.3_22b_dev_f16.ckpt", 25),
+        ("ltx_2.3_22b_dev_i8x.ckpt", 25),
+        ("ltx_2.3_22b_dev_q6p.ckpt", 25),
+        ("ltx_2.3_22b_dev_q8p.ckpt", 25),
+        ("ltx_2.3_22b_distilled_1.1_i8x.ckpt", 25),
+        ("ltx_2.3_22b_distilled_1.1_q6p.ckpt", 25),
+        ("ltx_2.3_22b_distilled_1.1_q8p.ckpt", 25),
+        ("ltx_2.3_22b_distilled_f16.ckpt", 25),
+        ("ltx_2.3_22b_distilled_i8x.ckpt", 25),
+        ("ltx_2.3_22b_distilled_q6p.ckpt", 25),
+        ("ltx_2.3_22b_distilled_q8p.ckpt", 25),
+        ("ltx_2_19b_dev_q6p.ckpt", 25),
+        ("ltx_2_19b_dev_q8p.ckpt", 25),
+        ("ltx_2_19b_distilled_q6p.ckpt", 25),
+        ("ltx_2_19b_distilled_q8p.ckpt", 25),
+        ("skyreels_v1_hunyuan_i2v_q5p_svd.ckpt", 24),
+        ("skyreels_v1_hunyuan_i2v_q8p.ckpt", 24),
+        ("skyreels_v1_hunyuan_t2v_q5p_svd.ckpt", 24),
+        ("skyreels_v1_hunyuan_t2v_q8p.ckpt", 24),
+        ("skyreels_v2_i2v_1.3b_540p_f16.ckpt", 24),
+        ("skyreels_v2_i2v_1.3b_540p_q8p.ckpt", 24),
+        ("skyreels_v2_i2v_14b_540p_q6p_svd.ckpt", 24),
+        ("skyreels_v2_i2v_14b_540p_q8p.ckpt", 24),
+        ("skyreels_v2_i2v_14b_720p_q6p_svd.ckpt", 24),
+        ("skyreels_v2_i2v_14b_720p_q8p.ckpt", 24),
+        ("skyreels_v2_t2v_14b_540p_q6p_svd.ckpt", 24),
+        ("skyreels_v2_t2v_14b_540p_q8p.ckpt", 24),
+        ("skyreels_v2_t2v_14b_720p_q6p_svd.ckpt", 24),
+        ("skyreels_v2_t2v_14b_720p_q8p.ckpt", 24),
+        ("svd_i2v_1.0_f16.ckpt", 30),
+        ("svd_i2v_1.0_q6p_q8p.ckpt", 30),
+        ("svd_i2v_xt_1.0_f16.ckpt", 30),
+        ("svd_i2v_xt_1.0_q6p_q8p.ckpt", 30),
+        ("svd_i2v_xt_1.1_f16.ckpt", 30),
+        ("svd_i2v_xt_1.1_q6p_q8p.ckpt", 30),
+        ("wan_2.1_1.3b_fun_inp_f16.ckpt", 16),
+        ("wan_2.1_1.3b_fun_inp_q8p.ckpt", 16),
+        ("wan_2.1_1.3b_v1.1_fun_inp_f16.ckpt", 16),
+        ("wan_2.1_1.3b_v1.1_fun_inp_q8p.ckpt", 16),
+        ("wan_2.1_14b_fun_inp_q6p_svd.ckpt", 16),
+        ("wan_2.1_14b_fun_inp_q8p.ckpt", 16),
+        ("wan_2.1_14b_i2v_fusionx_q6p_svd.ckpt", 16),
+        ("wan_2.1_14b_i2v_fusionx_q8p.ckpt", 16),
+        ("wan_2.1_14b_t2v_fusionx_q6p_svd.ckpt", 16),
+        ("wan_2.1_14b_t2v_fusionx_q8p.ckpt", 16),
+        ("wan_2.1_14b_v1.1_fun_inp_q6p_svd.ckpt", 16),
+        ("wan_2.1_14b_v1.1_fun_inp_q8p.ckpt", 16),
+        ("wan_v2.1_1.3b_480p_f16.ckpt", 16),
+        ("wan_v2.1_1.3b_480p_q8p.ckpt", 16),
+        ("wan_v2.1_14b_720p_q5p_svd.ckpt", 16),
+        ("wan_v2.1_14b_720p_q6p_svd.ckpt", 16),
+        ("wan_v2.1_14b_720p_q8p.ckpt", 16),
+        ("wan_v2.1_14b_i2v_480p_q6p_svd.ckpt", 16),
+        ("wan_v2.1_14b_i2v_480p_q8p.ckpt", 16),
+        ("wan_v2.1_14b_i2v_720p_q6p_svd.ckpt", 16),
+        ("wan_v2.1_14b_i2v_720p_q8p.ckpt", 16),
+        ("wan_v2.2_5b_ti2v_f16.ckpt", 24),
+        ("wan_v2.2_5b_ti2v_q8p.ckpt", 24),
+        ("wan_v2.2_a14b_hne_i2v_i8x.ckpt", 16),
+        ("wan_v2.2_a14b_hne_i2v_q6p_svd.ckpt", 16),
+        ("wan_v2.2_a14b_hne_i2v_q8p.ckpt", 16),
+        ("wan_v2.2_a14b_hne_t2v_i8x.ckpt", 16),
+        ("wan_v2.2_a14b_hne_t2v_lightning_250928_q6p_svd.ckpt", 16),
+        ("wan_v2.2_a14b_hne_t2v_lightning_250928_q8p.ckpt", 16),
+        ("wan_v2.2_a14b_hne_t2v_q6p_svd.ckpt", 16),
+        ("wan_v2.2_a14b_hne_t2v_q8p.ckpt", 16),
+        ("wan_v2.2_a14b_lne_i2v_i8x.ckpt", 16),
+        ("wan_v2.2_a14b_lne_i2v_q6p_svd.ckpt", 16),
+        ("wan_v2.2_a14b_lne_i2v_q8p.ckpt", 16),
+        ("wan_v2.2_a14b_lne_t2v_i8x.ckpt", 16),
+        ("wan_v2.2_a14b_lne_t2v_q6p_svd.ckpt", 16),
+        ("wan_v2.2_a14b_lne_t2v_q8p.ckpt", 16),
+        ]
+        var wrong: [String] = []
+        for (file, expected) in drawThings {
+            let got = config(file).playbackFPS
+            if got != expected { wrong.append("\(file): DT \(expected), ours \(got)") }
+            XCTAssertEqual(StoryFlowEngine.clipFPS(for: config(file), framesDialogFPS: nil), got,
+                           "\(file): the two fps rules disagree")
+        }
+        XCTAssertTrue(wrong.isEmpty,
+                      "\(wrong.count) of \(drawThings.count) disagree with Draw Things:\n"
+                      + wrong.joined(separator: "\n"))
+    }
+
+    /// CogVideo, Mochi and AnimateDiff are not Draw Things architectures. DT gives a
+    /// model it has no spec for 30, so a name that happens to contain one of those
+    /// words gets 30 here too — not the 16 this used to guess.
+    func testFamiliesDrawThingsDoesNotHaveGetItsUnknownModelRate() {
+        for model in ["cogvideo_x_5b_q6p.ckpt", "mochi_1_preview_q6p.ckpt", "animatediff_v3_q6p.ckpt"] {
+            XCTAssertEqual(config(model).playbackFPS, 30, model)
         }
     }
 }
