@@ -136,11 +136,19 @@ struct PromptSection: View {
     /// matching every other per-view layout preference in this app.
     @State private var promptHeight: CGFloat = 60
     @State private var negativePromptHeight: CGFloat = 44
+    @State private var showComposer = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack {
+            HStack(spacing: 14) {
                 Spacer()
+                Button { showComposer = true } label: {
+                    Label("Compose", systemImage: "square.stack.3d.up")
+                        .font(TanqueDS.Font.mono(10.5))
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(DashboardDS.brass)
+                .help("Build this prompt from sections — subject, lighting, style, negatives — as tags or LLM-written prose.")
                 Button { vm.requestLLMTrigger() } label: {
                     Label("Assist", systemImage: "sparkles")
                         .font(TanqueDS.Font.mono(10.5))
@@ -165,6 +173,9 @@ struct PromptSection: View {
                 .padding(8)
                 .background(DashboardDS.surf2, in: RoundedRectangle(cornerRadius: 7))
                 .overlay(RoundedRectangle(cornerRadius: 7).strokeBorder(DashboardDS.border, lineWidth: 1))
+        }
+        .sheet(isPresented: $showComposer) {
+            PromptComposerSheet(vm: vm)
         }
     }
 }

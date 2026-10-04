@@ -345,6 +345,11 @@ final class GenerateViewModel {
         pendingLLMTrigger = true
     }
 
+    // MARK: — Prompt Composer
+    /// The Compose sheet's sections. Held here so they outlive the sheet and the
+    /// collapsible Prompt section; not persisted across launches.
+    var composition = PromptComposition()
+
     // MARK: — Gallery selection
     var selectedGalleryID: UUID?
 
