@@ -60,7 +60,10 @@ group's `membershipExceptions`, or it is copied flat into the bundle root as wel
 `Resources/LLMOperations/07-tags-to-prose.md` is an ordinary Assist operation, so it also
 rewrites any tag prompt from the Assist section. Compose looks it up by id in the user's
 operations folder and falls back to the bundled copy if the user has deleted or renamed it.
-Prose uses the shared Settings → LLM model; Compose has no model setting of its own.
+Prose uses the shared Settings → LLM model; Compose has no model setting of its own. In Prose
+mode the sheet shows `LLMModelPicker` — the MODEL row extracted from Assist (2026-10-05, Ned) —
+bound to that same setting, so a pick in Compose or Assist changes both. Assist now reads the
+setting live instead of copying it in on appear.
 
 ## Contract
 
@@ -74,7 +77,10 @@ Prose uses the shared Settings → LLM model; Compose has no model setting of it
 `tanqueStudio.promptFragmentSeededFiles`), `TanqueStudio.xcodeproj/project.pbxproj` (folder
 reference + exceptions), `Resources/Help/generate.md`.
 
-**Not touched:** `StoryPromptAssembler`, `AssistTabView`, `LLMService`, `LLMOperationLoader`
+**Added 2026-10-05:** `LLMModelPicker.swift` (shared MODEL row); `AssistTabView.swift` now uses
+it in place of its private copy.
+
+**Not touched:** `StoryPromptAssembler`, `LLMService`, `LLMOperationLoader`
 (its existing `filesToSeed` is called, not changed), Render Queue, Story Studio.
 
 **Rollback:** revert the branch. Seeded library files left in Application Support are inert.

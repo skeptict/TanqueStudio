@@ -24,15 +24,18 @@ struct AssistTabView: View {
     @State private var resultText: String? = nil
     @State private var isProcessing: Bool = false
     @State private var errorText: String? = nil
-    @State private var localModelName: String = AppSettings.shared.llmModelName
-    @State private var availableModels: [String] = []
-    @State private var isFetchingModels: Bool = false
-    @State private var modelFetchHint: String? = nil
     /// User's override of the operation's default image source. Reset whenever the
     /// operation changes so each one opens on the source its author intended.
     @State private var imageSourceOverride: LLMImageSource? = nil
 
     private var currentOp: LLMOperation? { selectedOperation ?? operations.first }
+
+    /// The shared LLM model setting — the same one Compose's picker writes, so it is
+    /// read live rather than copied in on appear.
+    private var modelName: Binding<String> {
+        Binding(get: { AppSettings.shared.llmModelName },
+                set: { AppSettings.shared.llmModelName = $0 })
+    }
 
     // MARK: — Image source
 
@@ -115,7 +118,7 @@ struct AssistTabView: View {
                 Divider()
 
                 // — Model override
-                modelRow
+                LLMModelPicker(modelName: modelName)
 
                 // — Footer links
                 footerLinks
@@ -123,18 +126,11 @@ struct AssistTabView: View {
             .padding(12)
         }
         .onAppear {
-            localModelName = AppSettings.shared.llmModelName
             if operations.isEmpty {
                 operations = LLMOperationLoader.loadAll()
             }
             refreshInput()
             checkPendingTrigger()
-            if availableModels.isEmpty && !isFetchingModels {
-                fetchAvailableModels()
-            }
-        }
-        .onChange(of: localModelName) { _, newValue in
-            AppSettings.shared.llmModelName = newValue
         }
         .onReceive(NotificationCenter.default.publisher(for: .tanqueLLMOperationsFolderChanged)) { _ in
             operations = LLMOperationLoader.loadAll()
@@ -478,43 +474,9 @@ struct AssistTabView: View {
     /// notes, so the usual non-empty-input requirement would wrongly block it.
     private var canRun: Bool {
         guard let op = currentOp,
-              !localModelName.trimmingCharacters(in: .whitespaces).isEmpty else { return false }
+              !modelName.wrappedValue.trimmingCharacters(in: .whitespaces).isEmpty else { return false }
         if op.usesImage { return !resolvedImages.isEmpty }
         return !inputText.trimmingCharacters(in: .whitespaces).isEmpty
-    }
-
-    // MARK: — Model row
-
-    private var modelRow: some View {
-        VStack(alignment: .leading, spacing: 3) {
-            HStack {
-                Text("MODEL")
-                    .font(.system(size: 9, weight: .semibold))
-                    .foregroundStyle(.secondary)
-                Spacer()
-                RefreshButton(isFetching: isFetchingModels) {
-                    fetchAvailableModels()
-                }
-            }
-            if availableModels.isEmpty {
-                TextField("llama3, mistral…", text: $localModelName)
-                    .textFieldStyle(.roundedBorder)
-                    .font(.caption)
-            } else {
-                Picker("", selection: $localModelName) {
-                    ForEach(availableModels, id: \.self) { Text($0).tag($0) }
-                }
-                .labelsHidden()
-                .pickerStyle(.menu)
-                .frame(maxWidth: .infinity)
-            }
-            if let hint = modelFetchHint, !isFetchingModels {
-                Text(hint)
-                    .font(.system(size: 9))
-                    .foregroundStyle(.orange)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-        }
     }
 
     // MARK: — Footer
@@ -547,32 +509,6 @@ struct AssistTabView: View {
 
     // MARK: — Logic
 
-    private func fetchAvailableModels() {
-        guard !isFetchingModels else { return }
-        isFetchingModels = true
-        let baseURL = AppSettings.shared.llmEffectiveBaseURL
-        let provider = AppSettings.shared.llmProvider
-        let apiKey = AppSettings.shared.llmAPIKey
-        Task { @MainActor in
-            defer { isFetchingModels = false }
-            do {
-                let models = try await LLMService.fetchModels(
-                    baseURL: baseURL, provider: provider, apiKey: apiKey
-                )
-                availableModels = models
-                if models.isEmpty {
-                    modelFetchHint = "No \(provider.displayName) models found — pull one (e.g. `ollama pull llama3`), then refresh."
-                } else {
-                    modelFetchHint = nil
-                    if !models.contains(localModelName) { localModelName = models[0] }
-                }
-            } catch {
-                availableModels = []
-                modelFetchHint = "Couldn't reach \(provider.displayName) at \(baseURL). Make sure it's running and the host is correct in Settings, then refresh."
-            }
-        }
-    }
-
     private func refreshInput() {
         guard let op = currentOp else { return }
         guard op.usesCurrentPrompt else { inputText = ""; return }
@@ -597,7 +533,7 @@ struct AssistTabView: View {
         guard let op = currentOp, canRun else { return }
         let input = inputText.trimmingCharacters(in: .whitespaces)
         let images = op.usesImage ? resolvedImages : []
-        let model   = localModelName.trimmingCharacters(in: .whitespaces)
+        let model   = modelName.wrappedValue.trimmingCharacters(in: .whitespaces)
         let baseURL = AppSettings.shared.llmEffectiveBaseURL
         let provider = AppSettings.shared.llmProvider
 
@@ -621,37 +557,6 @@ struct AssistTabView: View {
                 errorText = error.localizedDescription
             }
             isProcessing = false
-        }
-    }
-}
-
-// MARK: - Refresh Button
-
-/// Spinning refresh button with stable animation state — extracted into its own struct so the
-/// repeatForever animation survives parent view re-renders without resetting to 0°.
-private struct RefreshButton: View {
-    let isFetching: Bool
-    let action: () -> Void
-
-    @State private var rotation: Double = 0
-
-    var body: some View {
-        Button(action: action) {
-            Image(systemName: "arrow.clockwise")
-                .font(.system(size: 9))
-                .rotationEffect(.degrees(rotation))
-        }
-        .buttonStyle(.plain)
-        .foregroundStyle(.tertiary)
-        .disabled(isFetching)
-        .onChange(of: isFetching) { _, fetching in
-            if fetching {
-                withAnimation(.linear(duration: 1).repeatForever(autoreverses: false)) {
-                    rotation = 360
-                }
-            } else {
-                withAnimation(.default) { rotation = 0 }
-            }
         }
     }
 }

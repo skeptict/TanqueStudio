@@ -236,6 +236,14 @@ struct PromptComposerSheet: View {
                 .font(TanqueDS.Font.mono(10.5))
                 .foregroundStyle(DashboardDS.muted)
                 .fixedSize(horizontal: false, vertical: true)
+            if style == .prose {
+                // The same row and setting as Assist's — a pick here is a pick there.
+                LLMModelPicker(modelName: Binding(
+                    get: { AppSettings.shared.llmModelName },
+                    set: { AppSettings.shared.llmModelName = $0 }
+                ))
+                .padding(.top, 4)
+            }
 
             ComposerLabel("Prompt")
                 .padding(.top, 6)
