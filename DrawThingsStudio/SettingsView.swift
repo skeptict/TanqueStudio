@@ -497,8 +497,27 @@ struct SettingsView: View {
                 VStack(alignment: .leading, spacing: TanqueDS.Spacing.sm) {
                     Text("APPEARANCE").settingsSectionLabel()
                     VStack(spacing: 0) {
-                        Text("More options coming")
-                            .font(TanqueDS.Font.body)
+                        HStack {
+                            Text("Screen transitions")
+                                .font(TanqueDS.Font.body)
+                                .foregroundStyle(DashboardDS.muted2)
+                            Spacer()
+                            Picker("", selection: $settings.screenTransition) {
+                                ForEach(ScreenTransitionStyle.allCases) { style in
+                                    Text(style.displayName).tag(style)
+                                }
+                            }
+                            .labelsHidden()
+                            .pickerStyle(.menu)
+                        }
+                        .padding(.horizontal, TanqueDS.Spacing.md)
+                        .padding(.vertical, TanqueDS.Spacing.sm)
+                        .background(DashboardDS.surf1)
+
+                        Rectangle().fill(DashboardDS.border).frame(height: 1)
+
+                        Text("How screens animate between the Dashboard and its sections. Slide and Push become a fade when Reduce Motion is on.")
+                            .font(TanqueDS.Font.bodySmall)
                             .foregroundStyle(DashboardDS.muted)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(.horizontal, TanqueDS.Spacing.md)
