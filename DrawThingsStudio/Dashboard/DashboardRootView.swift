@@ -70,16 +70,20 @@ struct DashboardRootView: View {
     var body: some View {
         VStack(spacing: 0) {
             DashboardTopBar(mode: mode, crumb: breadcrumb, isConnected: generateVM.lastConnectionSucceeded, onNavigate: { navigate(to: $0) })
+                // Only the screen below animates. The breadcrumb changes width with
+                // the mode, and under the screen's animation the nav labels slid
+                // sideways to follow it — which read as the transition itself.
+                .transaction { $0.animation = nil }
             ZStack {
                 DashboardDS.bg.ignoresSafeArea()
                 content
                     .id(mode)
                     .transition(transitionStyle.transition(for: transitionDirection))
-                    // Sections sit above the Dashboard, so the screen that moves is
+                    // Later screens sit above earlier ones, so the screen that moves is
                     // always the one on top — entering going forward, leaving going back.
                     // +1 keeps every screen above the background: at an equal zIndex a
                     // departing Dashboard was drawn behind it and vanished instantly.
-                    .zIndex(Double(ScreenTransitionStyle.depth(of: mode) + 1))
+                    .zIndex(Double(ScreenTransitionStyle.order(of: mode) + 1))
             }
         }
         .background(DashboardDS.bg)

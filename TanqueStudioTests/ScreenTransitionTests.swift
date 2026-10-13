@@ -13,9 +13,17 @@ final class ScreenTransitionTests: XCTestCase {
         XCTAssertEqual(ScreenTransitionStyle.direction(from: .focus, to: .dashboard), .back)
     }
 
-    func testSectionToSectionIsLateral() {
-        XCTAssertEqual(ScreenTransitionStyle.direction(from: .focus, to: .labs), .lateral)
-        XCTAssertEqual(ScreenTransitionStyle.direction(from: .settings, to: .projects), .lateral)
+    func testSectionToSectionFollowsTheTopBarOrder() {
+        XCTAssertEqual(ScreenTransitionStyle.direction(from: .focus, to: .labs), .forward)
+        XCTAssertEqual(ScreenTransitionStyle.direction(from: .settings, to: .projects), .back)
+        XCTAssertEqual(ScreenTransitionStyle.direction(from: .projects, to: .settings), .forward)
+    }
+
+    func testTheDashboardComesFirst() {
+        for mode in [DashboardMode.focus, .projects, .labs, .settings] {
+            XCTAssertEqual(ScreenTransitionStyle.direction(from: .dashboard, to: mode), .forward)
+            XCTAssertEqual(ScreenTransitionStyle.direction(from: mode, to: .dashboard), .back)
+        }
     }
 
     func testOffHasNoAnimation() {

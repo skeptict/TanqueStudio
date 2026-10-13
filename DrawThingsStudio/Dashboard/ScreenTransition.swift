@@ -2,10 +2,9 @@ import SwiftUI
 
 // MARK: - Screen transitions
 
-/// Which way a navigation moves through the Dashboard's two-level hierarchy:
-/// the Dashboard is the hub (depth 0) and every section is one level down.
+/// Which way a navigation moves along `ScreenTransitionStyle.order(of:)`.
 enum ScreenTransitionDirection {
-    case forward, back, lateral
+    case forward, back
 }
 
 /// How `DashboardRootView` animates between the Dashboard and its sections.
@@ -43,14 +42,21 @@ enum ScreenTransitionStyle: String, CaseIterable, Identifiable {
     }
 
     static func direction(from: DashboardMode, to: DashboardMode) -> ScreenTransitionDirection {
-        let delta = depth(of: to) - depth(of: from)
-        if delta > 0 { return .forward }
-        if delta < 0 { return .back }
-        return .lateral
+        order(of: to) > order(of: from) ? .forward : .back
     }
 
-    static func depth(of mode: DashboardMode) -> Int {
-        mode == .dashboard ? 0 : 1
+    /// Screens read left to right: the Dashboard, then the sections in the top
+    /// bar's own order. Moving right is forward, so the style applies between
+    /// sections too — Generate → Labs pushes in from the right, Labs → Generate
+    /// comes back from the left.
+    static func order(of mode: DashboardMode) -> Int {
+        switch mode {
+        case .dashboard: 0
+        case .focus:     1
+        case .projects:  2
+        case .labs:      3
+        case .settings:  4
+        }
     }
 
     /// `nil` for `.off`, so navigation stays a plain, unanimated state change.
@@ -68,7 +74,7 @@ enum ScreenTransitionStyle: String, CaseIterable, Identifiable {
         switch (self, direction) {
         case (.off, _):
             return .identity
-        case (.fade, _), (_, .lateral):
+        case (.fade, _):
             insertion = .init(opacity: 0)
             removal = .init(opacity: 0)
         case (.slide, .forward):
