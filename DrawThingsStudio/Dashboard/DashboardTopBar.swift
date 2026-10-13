@@ -35,7 +35,7 @@ struct DashboardTopBar: View {
                     }
                 }
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.dashboardPlain)
             .help("Go to Dashboard")
 
             breadcrumbView
@@ -78,7 +78,7 @@ struct DashboardTopBar: View {
                         .foregroundStyle(DashboardDS.text)
                 } else {
                     Button(segment.label) { onNavigate(segment.id) }
-                        .buttonStyle(.plain)
+                        .buttonStyle(.dashboardPlain)
                         .font(TanqueDS.Font.mono(12))
                         .foregroundStyle(DashboardDS.muted)
                         .help("Go to \(segment.label)")
@@ -106,8 +106,15 @@ struct DashboardTopBar: View {
                 Text(label)
                 if badge { DashboardLabsBadge() }
             }
+            // A 14pt-tall label is a precision click. The padding makes the
+            // target ~24pt; the matching negative padding outside gives the
+            // space back, so nothing in the bar moves.
+            .padding(.vertical, 5)
+            .padding(.horizontal, 6)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.dashboardPlain)
+        .padding(.vertical, -5)
+        .padding(.horizontal, -6)
         .font(TanqueDS.Font.mono(12))
         .foregroundStyle(mode == target ? DashboardDS.brass : DashboardDS.muted2)
     }
