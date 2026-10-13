@@ -281,7 +281,7 @@ struct DashboardHomeView: View {
                     }
                     .padding(.vertical, 8)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.dashboardPlain)
                 .overlay(alignment: .bottom) {
                     Rectangle().fill(DashboardDS.border).frame(height: 1)
                 }
@@ -323,7 +323,7 @@ struct DashboardHomeView: View {
             }
             .padding(.vertical, 8)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.dashboardPlain)
         .overlay(alignment: .bottom) {
             Rectangle().fill(DashboardDS.border).frame(height: 1)
         }

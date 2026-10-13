@@ -61,16 +61,29 @@ struct DashboardRootView: View {
     // just populates a beat later.
     @State private var dtProjectsVM: DTProjectBrowserViewModel?
     @State private var mode: DashboardMode = .dashboard
+    @State private var transitionDirection: ScreenTransitionDirection = .forward
     @State private var toast: DashboardToast?
     @State private var showWelcome = !AppSettings.shared.welcomeSeen
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         VStack(spacing: 0) {
-            DashboardTopBar(mode: mode, crumb: breadcrumb, isConnected: generateVM.lastConnectionSucceeded, onNavigate: { mode = $0 })
+            DashboardTopBar(mode: mode, crumb: breadcrumb, isConnected: generateVM.lastConnectionSucceeded, onNavigate: { navigate(to: $0) })
+                // Only the screen below animates. The breadcrumb changes width with
+                // the mode, and under the screen's animation the nav labels slid
+                // sideways to follow it — which read as the transition itself.
+                .transaction { $0.animation = nil }
             ZStack {
                 DashboardDS.bg.ignoresSafeArea()
                 content
+                    .id(mode)
+                    .transition(transitionStyle.transition(for: transitionDirection))
+                    // Later screens sit above earlier ones, so the screen that moves is
+                    // always the one on top — entering going forward, leaving going back.
+                    // +1 keeps every screen above the background: at an equal zIndex a
+                    // departing Dashboard was drawn behind it and vanished instantly.
+                    .zIndex(Double(ScreenTransitionStyle.order(of: mode) + 1))
             }
         }
         .background(DashboardDS.bg)
@@ -84,11 +97,11 @@ struct DashboardRootView: View {
         // text is 4.5:1, so those controls are genuinely unreadable, which is
         // what a beta tester reported on 0.9.28.
         //
-        // Pinning light matches what every other view here already does for its
-        // own theme (SettingsView, HelpWindow, WelcomeSheet and
-        // GenerateRightPanel all pin .dark; DTProjectBrowserView used to, and is
-        // on the paper palette as of 2026-07-26). The alternative — making
-        // DashboardDS appearance-aware — is a real design project, not a fix.
+        // HelpWindow, WelcomeSheet and GenerateRightPanel pin .dark for their own
+        // theme. SettingsView and DTProjectBrowserView used to, and are both on
+        // the paper palette now, so no screen in `content` flips scheme mid-
+        // transition. The alternative — making DashboardDS appearance-aware — is
+        // a real design project, not a fix.
         .preferredColorScheme(.light)
         .overlay(alignment: .bottomTrailing) {
             if let toast {
@@ -105,7 +118,7 @@ struct DashboardRootView: View {
         // once via AppSettings.welcomeSeen) and Help menu's reopen command —
         // ContentView is gone, this is the only place either still works.
         .sheet(isPresented: $showWelcome) {
-            WelcomeSheet(onOpenSettings: { mode = .settings })
+            WelcomeSheet(onOpenSettings: { navigate(to: .settings) })
         }
         .onReceive(NotificationCenter.default.publisher(for: .tanqueShowWelcome)) { _ in
             showWelcome = true
@@ -144,24 +157,39 @@ struct DashboardRootView: View {
             DashboardHomeView(
                 vm: generateVM,
                 dtProjectsVM: dtProjectsVM,
-                onEnterFocus: { mode = .focus },
+                onEnterFocus: { navigate(to: .focus) },
                 onSelectImage: { image in
                     selectGalleryImage(image)
-                    mode = .focus
+                    navigate(to: .focus)
                 },
-                onNavigate: { mode = $0 }
+                onNavigate: { navigate(to: $0) }
             )
         case .focus:
             FocusRoomView(vm: generateVM, modelContext: modelContext, onSelectImage: selectGalleryImage)
         case .projects:
-            DTProjectBrowserView(vm: generateVM, onNavigateToGenerate: { mode = .focus })
+            DTProjectBrowserView(vm: generateVM, onNavigateToGenerate: { navigate(to: .focus) })
         case .labs:
             DashboardLabsPage(storyFlowVM: storyFlowVM,
                               generateVM: generateVM,
-                              onNavigateToGenerate: { mode = .focus })
+                              onNavigateToGenerate: { navigate(to: .focus) })
         case .settings:
             SettingsView()
         }
+    }
+
+    private var transitionStyle: ScreenTransitionStyle {
+        AppSettings.shared.screenTransition.resolved(reduceMotion: reduceMotion)
+    }
+
+    /// The only place `mode` changes.
+    private func navigate(to target: DashboardMode) {
+        guard target != mode else { return }
+        guard let animation = transitionStyle.animation else {
+            mode = target
+            return
+        }
+        transitionDirection = ScreenTransitionStyle.direction(from: mode, to: target)
+        withAnimation(animation) { mode = target }
     }
 
     private var breadcrumb: [DashboardCrumb] {

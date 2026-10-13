@@ -109,6 +109,9 @@ struct FocusRoomDrawer: View {
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 10)
             }
+            // The fill below is painted outside the Button, so without this only
+            // the word "Generate" responded, not the bar around it.
+            .contentShape(RoundedRectangle(cornerRadius: 9))
         }
         .buttonStyle(.plain)
         .foregroundStyle(DashboardDS.brass)
@@ -233,6 +236,8 @@ struct ModelSection: View {
                     .background(selected ? DashboardDS.brassSubtle : .clear, in: RoundedRectangle(cornerRadius: 9))
                     .overlay(RoundedRectangle(cornerRadius: 9)
                         .strokeBorder(selected ? DashboardDS.brass : DashboardDS.border, lineWidth: 1))
+                    // An unselected row's fill is clear, which isn't hit-testable.
+                    .contentShape(RoundedRectangle(cornerRadius: 9))
                 }
                 .buttonStyle(.plain)
                 .help(model.name)
@@ -1142,7 +1147,7 @@ struct LoRAsSection: View {
                         }
                         .padding(.vertical, 3)
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.dashboardPlain)
                     .help(catalog.name)
                 }
             }

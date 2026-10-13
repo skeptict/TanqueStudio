@@ -75,12 +75,17 @@ struct DashboardLabsPage: View {
         HStack(spacing: 2) {
             ForEach(LabsTab.allCases, id: \.self) { tab in
                 let active = tab == selectedTab
-                Button(tab.rawValue) { selectedTab = tab }
-                    .buttonStyle(.plain)
-                    .font(TanqueDS.Font.mono(11))
-                    .foregroundStyle(active ? DashboardDS.onBrass : DashboardDS.muted2)
-                    .padding(.horizontal, 14).padding(.vertical, 6)
-                    .background(active ? DashboardDS.brass : .clear, in: RoundedRectangle(cornerRadius: 6))
+                // Padding and fill live inside the label: applied to the Button
+                // itself they sat outside its hit area, so only the text responded.
+                Button { selectedTab = tab } label: {
+                    Text(tab.rawValue)
+                        .padding(.horizontal, 14).padding(.vertical, 6)
+                        .background(active ? DashboardDS.brass : .clear, in: RoundedRectangle(cornerRadius: 6))
+                        .contentShape(RoundedRectangle(cornerRadius: 6))
+                }
+                .buttonStyle(.plain)
+                .font(TanqueDS.Font.mono(11))
+                .foregroundStyle(active ? DashboardDS.onBrass : DashboardDS.muted2)
             }
         }
         .padding(4)

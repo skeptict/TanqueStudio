@@ -139,6 +139,12 @@ final class AppSettings {
         }
     }
 
+    // MARK: - Appearance
+
+    var screenTransition: ScreenTransitionStyle {
+        didSet { UserDefaults.standard.set(screenTransition.rawValue, forKey: "tanqueStudio.screenTransition") }
+    }
+
     // MARK: - Init
 
     private init() {
@@ -189,6 +195,7 @@ final class AppSettings {
         dtHostHistory  = d.stringArray(forKey: "tanqueStudio.dtHostHistory")  ?? []
         llmHostHistory = d.stringArray(forKey: "tanqueStudio.llmHostHistory") ?? []
         storyStudioDefaultConfigName = d.string(forKey: "tanqueStudio.storyStudioDefaultConfigName") ?? ""
+        screenTransition = ScreenTransitionStyle(storedRawValue: d.string(forKey: "tanqueStudio.screenTransition"))
     }
 }
 
