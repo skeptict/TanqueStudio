@@ -49,6 +49,9 @@ struct DashboardToastView: View {
 struct DashboardRootView: View {
     @State private var generateVM = GenerateViewModel()
     @State private var storyFlowVM = StoryFlowViewModel()
+    /// Here rather than in Labs, which `.id(mode)` rebuilds on every visit: a
+    /// running style batch keeps going, and stays controllable, after leaving.
+    @State private var styleBrowser = StyleBrowserController()
     // Deliberately nil until .task below: DTProjectBrowserViewModel's init()
     // synchronously enumerates + stats every bookmarked project folder
     // (DTProjectBrowserViewModel.swift's restoreBookmarks() -> reloadAllProjects()).
@@ -171,7 +174,8 @@ struct DashboardRootView: View {
         case .labs:
             DashboardLabsPage(storyFlowVM: storyFlowVM,
                               generateVM: generateVM,
-                              onNavigateToGenerate: { navigate(to: .focus) })
+                              onNavigateToGenerate: { navigate(to: .focus) },
+                              styleBrowser: styleBrowser)
         case .settings:
             SettingsView()
         }

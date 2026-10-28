@@ -1,0 +1,561 @@
+//
+//  StyleBrowserView.swift
+//  TanqueStudio
+//
+//  Labs → Style Browser: the 414-style library as a grid of preview cards,
+//  rendered on the Draw Things server with one subject, one config and one seed
+//  per set. A native take on lumenastrum/clio-style-preview, whose web gallery
+//  hard-codes its subject.
+//
+
+import SwiftUI
+import AppKit
+
+struct StyleBrowserView: View {
+    /// Owned by DashboardRootView so a batch survives leaving Labs.
+    let controller: StyleBrowserController
+    /// Read to snapshot a new set's config; written only by Send to Generate.
+    let generateVM: GenerateViewModel
+    let onNavigateToGenerate: () -> Void
+
+    @State private var isCreatingSet = false
+    @State private var newSubject = ""
+    @State private var createError: String?
+    @State private var searchText = ""
+    @State private var section: String?
+    @State private var renderedOnly = false
+    @State private var showLargeBatchConfirm = false
+    @State private var detailStyle: StyleEntry?
+
+    private static let largeBatch = 50
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: TanqueDS.Spacing.lg) {
+                setBar
+                if isCreatingSet || controller.sets.isEmpty {
+                    newSetPanel
+                }
+                if let set = controller.selectedSet {
+                    filters
+                    renderControls(set)
+                    grid(set)
+                }
+                credit
+            }
+            .padding(.horizontal, 40)
+            .padding(.bottom, 32)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .background(DashboardDS.bg)
+        .sheet(item: $detailStyle) { style in
+            if let set = controller.selectedSet {
+                StyleDetailSheet(style: style, set: set, controller: controller,
+                                 onSendToGenerate: { sendToGenerate(style, set: set) })
+            }
+        }
+        .confirmationDialog(
+            "Render \(visiblePending.count) styles?",
+            isPresented: $showLargeBatchConfirm, titleVisibility: .visible
+        ) {
+            Button("Render \(visiblePending.count)") { renderVisible() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text(estimateText(for: visiblePending.count))
+        }
+    }
+
+    // MARK: - Sets
+
+    private var setBar: some View {
+        HStack(spacing: TanqueDS.Spacing.sm) {
+            Text("SET").font(TanqueDS.Font.monoSemiBold(11)).foregroundStyle(DashboardDS.muted)
+            if !controller.sets.isEmpty {
+                Menu {
+                    ForEach(controller.sets) { set in
+                        Button(Self.menuLabel(for: set)) { controller.selectedSetID = set.id }
+                    }
+                } label: {
+                    Text(controller.selectedSet.map(Self.menuLabel) ?? "Choose a set")
+                        .font(TanqueDS.Font.body)
+                        .foregroundStyle(DashboardDS.text)
+                        .lineLimit(1)
+                }
+                .menuStyle(.borderlessButton)
+                .fixedSize()
+                .padding(.horizontal, 10).padding(.vertical, 6)
+                .background(DashboardDS.surf1, in: RoundedRectangle(cornerRadius: 6))
+                .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(DashboardDS.border, lineWidth: 1))
+                .disabled(controller.isRunning)
+                .help(controller.isRunning ? "Switch sets once the batch finishes." : "Saved sets, newest first.")
+            }
+            Spacer()
+            if !controller.sets.isEmpty {
+                Button(isCreatingSet ? "Close" : "New set") { isCreatingSet.toggle() }
+                    .buttonStyle(DashboardGhostButtonStyle())
+                    .fixedSize()
+            }
+        }
+    }
+
+    private static func menuLabel(for set: StyleBrowserSet) -> String {
+        let snippet = set.subject.count > 48 ? String(set.subject.prefix(47)) + "…" : set.subject
+        return snippet + " · " + set.createdAt.formatted(date: .abbreviated, time: .shortened)
+    }
+
+    private var newSetPanel: some View {
+        let config = generateVM.config
+        return VStack(alignment: .leading, spacing: TanqueDS.Spacing.sm) {
+            Text("NEW SET").font(TanqueDS.Font.monoSemiBold(11)).foregroundStyle(DashboardDS.muted)
+            TextEditor(text: $newSubject)
+                .font(TanqueDS.Font.body)
+                .foregroundStyle(DashboardDS.text)
+                .frame(minHeight: 60, maxHeight: 110)
+                .scrollContentBackground(.hidden)
+                .padding(6)
+                .background(DashboardDS.surf1, in: RoundedRectangle(cornerRadius: 6))
+                .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(DashboardDS.border, lineWidth: 1))
+            Text("Describe the subject only. Each style brings its own medium.")
+                .font(TanqueDS.Font.bodySmall)
+                .foregroundStyle(DashboardDS.muted)
+            HStack(alignment: .firstTextBaseline) {
+                Text(config.model.isEmpty
+                     ? "Pick a model in Generate first — the set uses Generate's current settings."
+                     : "Uses Generate's current settings: " + Self.summary(of: config, seed: config.seed))
+                    .font(TanqueDS.Font.bodySmall)
+                    .foregroundStyle(config.model.isEmpty ? DashboardDS.red : DashboardDS.muted2)
+                Spacer()
+                Button("Create set") { createSet() }
+                    .buttonStyle(DashboardPrimaryButtonStyle())
+                    .disabled(newSubject.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                              || config.model.isEmpty)
+            }
+            if let createError {
+                Text(createError).font(TanqueDS.Font.bodySmall).foregroundStyle(DashboardDS.red)
+            }
+        }
+        .dashboardCard(padding: 16)
+    }
+
+    private func createSet() {
+        do {
+            try controller.createSet(subject: newSubject, config: generateVM.config,
+                                     negativePrompt: generateVM.negativePrompt)
+            newSubject = ""
+            createError = nil
+            isCreatingSet = false
+        } catch {
+            createError = "Couldn't save the set: \(error.localizedDescription)"
+        }
+    }
+
+    static func summary(of config: DrawThingsGenerationConfig, seed: Int) -> String {
+        "\(config.model) · \(config.width)×\(config.height) · \(config.steps) steps · seed \(seed)"
+    }
+
+    // MARK: - Filters
+
+    private var sections: [String] { StyleLibrary.sections(of: controller.library) }
+
+    private func visibleStyles(in set: StyleBrowserSet) -> [StyleEntry] {
+        let query = searchText.trimmingCharacters(in: .whitespaces)
+        return controller.library.filter { style in
+            (section == nil || style.section == section)
+            && (query.isEmpty || style.name.localizedCaseInsensitiveContains(query)
+                || style.prompt.localizedCaseInsensitiveContains(query))
+            && (!renderedOnly || controller.isRendered(style, in: set))
+        }
+    }
+
+    private var visiblePending: [StyleEntry] {
+        guard let set = controller.selectedSet else { return [] }
+        return controller.store.pending(visibleStyles(in: set), in: set)
+    }
+
+    private var filters: some View {
+        VStack(alignment: .leading, spacing: TanqueDS.Spacing.sm) {
+            HStack(spacing: TanqueDS.Spacing.md) {
+                HStack(spacing: 6) {
+                    Image(systemName: "magnifyingglass").foregroundStyle(DashboardDS.muted)
+                    TextField("", text: $searchText,
+                              prompt: Text("Search names and prose").foregroundStyle(DashboardDS.muted))
+                        .textFieldStyle(.plain)
+                        .font(TanqueDS.Font.body)
+                        .foregroundStyle(DashboardDS.text)
+                }
+                .padding(.horizontal, 10).padding(.vertical, 6)
+                .background(DashboardDS.surf1, in: RoundedRectangle(cornerRadius: 6))
+                .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(DashboardDS.border, lineWidth: 1))
+                .frame(maxWidth: 320)
+
+                // The checkbox style draws only the box, so the label is its own button.
+                HStack(spacing: 6) {
+                    Toggle("", isOn: $renderedOnly).toggleStyle(.dashboardCheckbox).labelsHidden()
+                    Button("Rendered only") { renderedOnly.toggle() }
+                        .buttonStyle(.dashboardPlain)
+                        .font(TanqueDS.Font.bodySmall)
+                        .foregroundStyle(DashboardDS.muted2)
+                }
+                Spacer()
+            }
+            ScrollView(.horizontal, showsIndicators: false) {
+                sectionPills
+            }
+        }
+    }
+
+    private var sectionPills: some View {
+        HStack(spacing: 2) {
+            pill("All", active: section == nil) { section = nil }
+            ForEach(sections, id: \.self) { name in
+                pill(name, active: section == name) { section = name }
+            }
+        }
+        .padding(4)
+        .background(DashboardDS.surf1, in: RoundedRectangle(cornerRadius: 9))
+        .overlay(RoundedRectangle(cornerRadius: 9).strokeBorder(DashboardDS.border, lineWidth: 1))
+        .fixedSize()
+    }
+
+    /// Same look as the Labs tabs.
+    private func pill(_ title: String, active: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title)
+                .padding(.horizontal, 14).padding(.vertical, 6)
+                .background(active ? DashboardDS.brass : .clear, in: RoundedRectangle(cornerRadius: 6))
+                .contentShape(RoundedRectangle(cornerRadius: 6))
+        }
+        .buttonStyle(.plain)
+        .font(TanqueDS.Font.mono(11))
+        .foregroundStyle(active ? DashboardDS.onBrass : DashboardDS.muted2)
+    }
+
+    // MARK: - Render controls
+
+    private func renderControls(_ set: StyleBrowserSet) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: TanqueDS.Spacing.sm) {
+                Text(Self.summary(of: set.config, seed: set.seed))
+                    .font(TanqueDS.Font.bodySmall)
+                    .foregroundStyle(DashboardDS.muted2)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .help("Frozen when the set was created. New settings need a new set.\n\nSubject: \(set.subject)")
+                Spacer()
+                if let progress = progressLine {
+                    Text(progress)
+                        .font(TanqueDS.Font.mono(10.5))
+                        .foregroundStyle(controller.isPaused ? DashboardDS.brass : DashboardDS.muted)
+                        .lineLimit(1)
+                }
+                if controller.isRunning {
+                    Button("Pause") { controller.pause() }
+                        .buttonStyle(DashboardGhostButtonStyle())
+                        .fixedSize()
+                        .help("Stops starting new styles. The one rendering now finishes first.")
+                    Button("Cancel") { controller.cancel() }
+                        .buttonStyle(DashboardGhostButtonStyle())
+                        .fixedSize()
+                        .help("Ends the batch now. The style rendering now is abandoned, not marked failed.")
+                } else if controller.isPaused {
+                    Button("Resume") { controller.resume() }
+                        .buttonStyle(DashboardPrimaryButtonStyle())
+                    Button("Cancel") { controller.cancel() }
+                        .buttonStyle(DashboardGhostButtonStyle())
+                        .fixedSize()
+                } else {
+                    let count = visiblePending.count
+                    Button("Render visible (\(count))") {
+                        if count > Self.largeBatch { showLargeBatchConfirm = true } else { renderVisible() }
+                    }
+                    .buttonStyle(DashboardPrimaryButtonStyle())
+                    .disabled(count == 0)
+                    .help("Renders every unrendered style in the current filter, in library order.")
+                }
+            }
+            if let refusal = controller.refusal {
+                Text(refusal).font(TanqueDS.Font.bodySmall).foregroundStyle(DashboardDS.red)
+            }
+        }
+    }
+
+    private var progressLine: String? {
+        guard controller.isRunning || controller.isPaused, controller.total > 0 else { return nil }
+        var line = "\(controller.completed) / \(controller.total)"
+        if controller.isPaused { line += " · paused" }
+        else if let current = controller.currentStyle { line += " · \(current.name)" }
+        return line
+    }
+
+    private func renderVisible() {
+        guard let set = controller.selectedSet else { return }
+        controller.render(visiblePending, inSet: set.id)
+    }
+
+    private func estimateText(for count: Int) -> String {
+        guard let average = controller.averageRenderSeconds else {
+            return "No timing yet — render a few styles first for an estimate. Each style is one full render on the Draw Things server."
+        }
+        let minutes = Int((average * Double(count) / 60).rounded(.up))
+        let duration = minutes >= 90 ? String(format: "%.1f hours", Double(minutes) / 60) : "\(minutes) min"
+        return "About \(duration), at \(Int(average.rounded())) s per style so far."
+    }
+
+    // MARK: - Grid
+
+    private func grid(_ set: StyleBrowserSet) -> some View {
+        let styles = visibleStyles(in: set)
+        let aspect = CGFloat(max(set.config.width, 1)) / CGFloat(max(set.config.height, 1))
+        return Group {
+            if styles.isEmpty {
+                Text(renderedOnly ? "Nothing rendered in this filter yet." : "No styles match.")
+                    .font(TanqueDS.Font.bodySmall)
+                    .foregroundStyle(DashboardDS.muted)
+            } else {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 170, maximum: 260), spacing: 14)],
+                          alignment: .leading, spacing: 16) {
+                    ForEach(styles) { style in
+                        StyleCard(style: style,
+                                  render: set.renders[style.name],
+                                  thumbURL: thumbURL(for: style, in: set),
+                                  renderedAt: set.renders[style.name]?.renderedAt,
+                                  isRendering: controller.currentStyle == style && controller.isRunning,
+                                  aspect: aspect) {
+                            cardTapped(style, in: set)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private func thumbURL(for style: StyleEntry, in set: StyleBrowserSet) -> URL? {
+        guard controller.isRendered(style, in: set), let thumb = set.renders[style.name]?.thumb else { return nil }
+        return controller.store.url(for: thumb, in: set)
+    }
+
+    private func cardTapped(_ style: StyleEntry, in set: StyleBrowserSet) {
+        if controller.isRendered(style, in: set) {
+            detailStyle = style
+        } else if !controller.isRunning {
+            controller.render([style], inSet: set.id)
+        }
+    }
+
+    private var credit: some View {
+        Text("Style library by u/Dear-Spend-2865 · via lumenastrum/clio-style-preview")
+            .font(TanqueDS.Font.mono(10))
+            .foregroundStyle(DashboardDS.muted)
+            .padding(.top, TanqueDS.Spacing.sm)
+    }
+
+    // MARK: - Send to Generate
+
+    /// The one place the Style Browser writes to the Generate session. Mirrors
+    /// StorySceneRenderPanel.sendToGenerate: the set's whole config, seed
+    /// included, with randomize-seed off so Generate reproduces this render
+    /// rather than rolling a new one.
+    private func sendToGenerate(_ style: StyleEntry, set: StyleBrowserSet) {
+        let config = set.config
+        generateVM.prompt = StyleLibrary.styledPrompt(style: style, subject: set.subject)
+        generateVM.negativePrompt = config.negativePrompt
+        generateVM.config = config
+        generateVM.randomizeSeed = false
+        detailStyle = nil
+        onNavigateToGenerate()
+    }
+}
+
+// MARK: - Card
+
+private struct StyleCard: View {
+    let style: StyleEntry
+    let render: StyleRender?
+    let thumbURL: URL?
+    let renderedAt: Date?
+    let isRendering: Bool
+    let aspect: CGFloat
+    let onTap: () -> Void
+
+    @State private var thumbnail: NSImage?
+
+    var body: some View {
+        Button(action: onTap) {
+            VStack(alignment: .leading, spacing: 6) {
+                preview
+                    .aspectRatio(aspect, contentMode: .fit)
+                    .frame(maxWidth: .infinity)
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(DashboardDS.border, lineWidth: 1))
+                Text(style.name)
+                    .font(TanqueDS.Font.bodyMedium)
+                    .foregroundStyle(DashboardDS.text)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.leading)
+                Text(style.section)
+                    .font(TanqueDS.Font.mono(10))
+                    .foregroundStyle(DashboardDS.muted)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .buttonStyle(.dashboardPlain)
+        .help(helpText)
+        .task(id: StyleThumbnailCache.key(thumbURL, renderedAt)) {
+            thumbnail = await StyleThumbnailCache.image(at: thumbURL, renderedAt: renderedAt)
+        }
+    }
+
+    @ViewBuilder
+    private var preview: some View {
+        if let thumbnail {
+            Image(nsImage: thumbnail).resizable().scaledToFill()
+        } else {
+            ZStack {
+                DashboardDS.surf2
+                VStack(spacing: 6) {
+                    if isRendering {
+                        ProgressView().controlSize(.small)
+                        Text("Rendering…").font(TanqueDS.Font.mono(10)).foregroundStyle(DashboardDS.muted2)
+                    } else if let error = render?.errorMessage {
+                        Image(systemName: "exclamationmark.triangle").foregroundStyle(DashboardDS.red)
+                        Text(error)
+                            .font(TanqueDS.Font.mono(10))
+                            .foregroundStyle(DashboardDS.red)
+                            .lineLimit(3)
+                            .multilineTextAlignment(.center)
+                    } else {
+                        Text(StyleLibrary.displayName(style.name))
+                            .font(TanqueDS.Font.mono(11))
+                            .foregroundStyle(DashboardDS.muted2)
+                            .multilineTextAlignment(.center)
+                    }
+                }
+                .padding(10)
+            }
+        }
+    }
+
+    private var helpText: String {
+        if thumbURL != nil { return "Open \(style.name)" }
+        if let error = render?.errorMessage { return "Failed: \(error)\nClick to try again." }
+        return "Click to render \(style.name)"
+    }
+}
+
+/// Thumbnails read off disk on demand and kept — nothing reads 414 files up front.
+@MainActor
+enum StyleThumbnailCache {
+    private static let cache = NSCache<NSString, NSImage>()
+
+    /// A re-render writes to the same path, so the render time is part of the key.
+    static func key(_ url: URL?, _ renderedAt: Date?) -> String {
+        "\(url?.path ?? "")#\(renderedAt?.timeIntervalSince1970 ?? 0)"
+    }
+
+    static func image(at url: URL?, renderedAt: Date?) async -> NSImage? {
+        guard let url else { return nil }
+        let key = key(url, renderedAt) as NSString
+        if let cached = cache.object(forKey: key) { return cached }
+        let image = await Task.detached(priority: .utility) { NSImage(contentsOf: url) }.value
+        if let image { cache.setObject(image, forKey: key) }
+        return image
+    }
+}
+
+// MARK: - Detail
+
+private struct StyleDetailSheet: View {
+    let style: StyleEntry
+    let set: StyleBrowserSet
+    let controller: StyleBrowserController
+    let onSendToGenerate: () -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var image: NSImage?
+    @State private var copied: String?
+
+    private var currentSet: StyleBrowserSet { controller.sets.first { $0.id == set.id } ?? set }
+    private var render: StyleRender? { currentSet.renders[style.name] }
+    private var imageURL: URL? {
+        guard controller.isRendered(style, in: currentSet), let file = render?.file else { return nil }
+        return controller.store.url(for: file, in: currentSet)
+    }
+    private var isRendering: Bool { controller.isRunning && controller.currentStyle == style }
+
+    var body: some View {
+        HStack(alignment: .top, spacing: TanqueDS.Spacing.lg) {
+            ZStack {
+                DashboardDS.surf2
+                if let image {
+                    Image(nsImage: image).resizable().scaledToFit()
+                } else if isRendering {
+                    ProgressView().controlSize(.small)
+                }
+            }
+            .frame(minWidth: 420, maxWidth: .infinity, minHeight: 420, maxHeight: .infinity)
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+            .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(DashboardDS.border, lineWidth: 1))
+
+            VStack(alignment: .leading, spacing: TanqueDS.Spacing.sm) {
+                Text(style.name).font(TanqueDS.Font.monoSemiBold(15)).foregroundStyle(DashboardDS.text)
+                Text(style.section).font(TanqueDS.Font.mono(11)).foregroundStyle(DashboardDS.muted)
+                ScrollView {
+                    Text(style.prompt)
+                        .font(TanqueDS.Font.body)
+                        .foregroundStyle(DashboardDS.muted2)
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                if let error = render?.errorMessage {
+                    Text("Last attempt failed: \(error)")
+                        .font(TanqueDS.Font.bodySmall).foregroundStyle(DashboardDS.red)
+                }
+                if let copied {
+                    Text(copied).font(TanqueDS.Font.bodySmall).foregroundStyle(DashboardDS.green)
+                }
+                HStack(spacing: TanqueDS.Spacing.sm) {
+                    Button("Copy style") { copy(style.prompt, as: "Style copied") }
+                        .buttonStyle(DashboardGhostButtonStyle())
+                    Button("Copy prompt") {
+                        copy(StyleLibrary.styledPrompt(style: style, subject: set.subject), as: "Prompt copied")
+                    }
+                    .buttonStyle(DashboardGhostButtonStyle())
+                }
+                HStack(spacing: TanqueDS.Spacing.sm) {
+                    Button(isRendering ? "Rendering…" : "Re-render") {
+                        controller.render([style], inSet: set.id, force: true)
+                    }
+                    .buttonStyle(DashboardGhostButtonStyle())
+                    .disabled(controller.isRunning)
+                    .help(controller.isRunning ? "Wait for the batch to finish." : "Render this style again with the set's seed and settings.")
+                    Button("Send to Generate", action: onSendToGenerate)
+                        .buttonStyle(DashboardPrimaryButtonStyle())
+                }
+                HStack {
+                    Spacer()
+                    Button("Close") { dismiss() }
+                        .buttonStyle(.dashboardPlain)
+                        .font(TanqueDS.Font.bodySmall)
+                        .foregroundStyle(DashboardDS.muted2)
+                        .keyboardShortcut(.cancelAction)
+                }
+            }
+            .frame(width: 320)
+        }
+        .padding(TanqueDS.Spacing.lg)
+        .frame(minWidth: 820, minHeight: 520)
+        .background(DashboardDS.bg)
+        .environment(\.colorScheme, .light)
+        // Keyed on the render time so a Re-render swaps the image in place.
+        .task(id: render?.renderedAt) {
+            guard let url = imageURL else { image = nil; return }
+            image = await Task.detached(priority: .userInitiated) { NSImage(contentsOf: url) }.value
+        }
+    }
+
+    private func copy(_ text: String, as confirmation: String) {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
+        copied = confirmation
+    }
+}

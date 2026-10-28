@@ -13,6 +13,9 @@ struct DashboardLabsPage: View {
     /// Switch the app to the Focus Room. Story Studio calls this immediately
     /// after populating `generateVM`.
     let onNavigateToGenerate: () -> Void
+    /// Owned by DashboardRootView: this page is rebuilt every time Labs is
+    /// entered, and a style batch has to outlive that.
+    let styleBrowser: StyleBrowserController
     @State private var selectedTab: LabsTab = .storyFlow
     /// Owned here rather than passed in, so the open project folder and any unsaved cast edits
     /// survive a switch to another Labs tab and back.
@@ -23,6 +26,7 @@ struct DashboardLabsPage: View {
         case castStaging = "Cast & Staging"
         case storyStudio = "Story Studio"
         case renderQueue = "Render Queue"
+        case styleBrowser = "Style Browser"
     }
 
     var body: some View {
@@ -65,6 +69,10 @@ struct DashboardLabsPage: View {
                                     onNavigateToGenerate: onNavigateToGenerate)
                 case .renderQueue:
                     RenderQueueView()
+                case .styleBrowser:
+                    StyleBrowserView(controller: styleBrowser,
+                                     generateVM: generateVM,
+                                     onNavigateToGenerate: onNavigateToGenerate)
                 }
             }
         }
