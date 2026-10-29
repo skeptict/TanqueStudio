@@ -61,6 +61,23 @@ struct StyleBrowserSet: Codable, Identifiable {
     }
 }
 
+/// A named list of styles — Favorites, or one of the user's own. Shared by every set:
+/// it's about which styles, not which subject. Keyed by full style name, which is
+/// stable while the bundled library stays byte-identical to upstream.
+struct StyleCollection: Codable, Identifiable, Hashable {
+    let id: UUID
+    var name: String
+    var styleNames: [String]
+
+    /// Favorites always exists and can't be renamed or deleted.
+    static let favoritesID = UUID(uuidString: "00000000-0000-0000-0000-00000000F4A5")!
+    var isFavorites: Bool { id == Self.favoritesID }
+
+    static func favorites() -> StyleCollection {
+        StyleCollection(id: favoritesID, name: "Favorites", styleNames: [])
+    }
+}
+
 struct StyleRender: Codable, Hashable {
     /// Relative to the set's folder. Nil when the render failed.
     var file: String?
@@ -130,6 +147,24 @@ struct StyleBrowserStore {
     /// The styles still to render, in library order.
     func pending(_ styles: [StyleEntry], in set: StyleBrowserSet) -> [StyleEntry] {
         styles.filter { !isRendered($0, in: set) }
+    }
+
+    // MARK: - Collections
+
+    private var collectionsURL: URL { root.appendingPathComponent("collections.json") }
+
+    /// Favorites first, then the user's collections in the order they were made.
+    /// A missing or unreadable file gives just an empty Favorites.
+    func loadCollections() -> [StyleCollection] {
+        let saved = (try? Data(contentsOf: collectionsURL))
+            .flatMap { try? Self.decoder.decode([StyleCollection].self, from: $0) } ?? []
+        let favorites = saved.first(where: \.isFavorites) ?? .favorites()
+        return [favorites] + saved.filter { !$0.isFavorites }
+    }
+
+    func saveCollections(_ collections: [StyleCollection]) throws {
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        try Self.encoder.encode(collections).write(to: collectionsURL, options: .atomic)
     }
 
     /// Writes the PNG (prompt and config embedded) and its thumbnail.

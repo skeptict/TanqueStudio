@@ -23,6 +23,21 @@ struct StyleBrowserView: View {
     @State private var createError: String?
     @State private var showLargeBatchConfirm = false
     @State private var detailStyle: StyleEntry?
+    /// Naming a new collection (optionally seeded with a style), or renaming one.
+    @State private var namePrompt: CollectionNamePrompt?
+    @State private var collectionName = ""
+    @State private var collectionPendingDelete: StyleCollection?
+
+    private enum CollectionNamePrompt: Identifiable {
+        case new(seed: StyleEntry?)
+        case rename(StyleCollection)
+        var id: String {
+            switch self {
+            case .new(let seed): return "new-\(seed?.name ?? "")"
+            case .rename(let c): return "rename-\(c.id)"
+            }
+        }
+    }
 
     private static let largeBatch = 50
 
@@ -63,6 +78,27 @@ struct StyleBrowserView: View {
                 .keyboardShortcut(.defaultAction)
         } message: {
             Text(estimateText(for: visiblePending.count))
+        }
+        .alert(namePromptTitle, isPresented: Binding(get: { namePrompt != nil },
+                                                     set: { if !$0 { namePrompt = nil } })) {
+            TextField("Name", text: $collectionName)
+            Button(namePromptAction) { commitNamePrompt() }
+            Button("Cancel", role: .cancel) { namePrompt = nil }
+        }
+        .confirmationDialog(
+            "Delete \u{201C}\(collectionPendingDelete?.name ?? "")\u{201D}?",
+            isPresented: Binding(get: { collectionPendingDelete != nil },
+                                 set: { if !$0 { collectionPendingDelete = nil } }),
+            titleVisibility: .visible
+        ) {
+            Button("Delete Collection", role: .destructive) {
+                if let c = collectionPendingDelete { controller.deleteCollection(c.id) }
+                collectionPendingDelete = nil
+            }
+            Button("Cancel", role: .cancel) { collectionPendingDelete = nil }
+                .keyboardShortcut(.defaultAction)
+        } message: {
+            Text("Only the list goes. The styles, and anything rendered from them, stay.")
         }
     }
 
@@ -165,8 +201,10 @@ struct StyleBrowserView: View {
 
     private func visibleStyles(in set: StyleBrowserSet) -> [StyleEntry] {
         let query = controller.searchText.trimmingCharacters(in: .whitespaces)
+        let members = controller.selectedCollection.map { Set($0.styleNames) }
         return controller.library.filter { style in
-            (controller.section == nil || style.section == controller.section)
+            (members?.contains(style.name) ?? true)
+            && (controller.section == nil || style.section == controller.section)
             && (query.isEmpty || style.name.localizedCaseInsensitiveContains(query)
                 || style.prompt.localizedCaseInsensitiveContains(query))
             && (!controller.renderedOnly || controller.isRendered(style, in: set))
@@ -203,11 +241,122 @@ struct StyleBrowserView: View {
                         .foregroundStyle(DashboardDS.muted2)
                 }
                 Spacer()
+                collectionMenu
             }
             ScrollView(.horizontal, showsIndicators: false) {
                 sectionPills
             }
+            if let collection = controller.selectedCollection,
+               case let missing = controller.missingStyles(in: collection), !missing.isEmpty {
+                Text("\(missing.count) style\(missing.count == 1 ? "" : "s") in \u{201C}\(collection.name)\u{201D} "
+                     + "\(missing.count == 1 ? "is" : "are") no longer in the library: \(missing.joined(separator: ", "))")
+                    .font(TanqueDS.Font.bodySmall)
+                    .foregroundStyle(DashboardDS.orange)
+            }
+            if let error = controller.collectionsSaveError {
+                Text(error).font(TanqueDS.Font.bodySmall).foregroundStyle(DashboardDS.red)
+            }
         }
+    }
+
+    // MARK: - Collections
+
+    private var collectionMenu: some View {
+        Menu {
+            Picker("Collection", selection: $controller.selectedCollectionID) {
+                Text("All styles").tag(UUID?.none)
+                ForEach(controller.collections) { collection in
+                    Text("\(collection.name) (\(collection.styleNames.count))").tag(UUID?.some(collection.id))
+                }
+            }
+            .pickerStyle(.inline)
+            .labelsHidden()
+            Divider()
+            Button("New Collection…") { beginNaming(.new(seed: nil)) }
+            if let collection = controller.selectedCollection, !collection.isFavorites {
+                Button("Rename \u{201C}\(collection.name)\u{201D}…") { beginNaming(.rename(collection)) }
+                Button("Delete \u{201C}\(collection.name)\u{201D}…", role: .destructive) {
+                    collectionPendingDelete = collection
+                }
+            }
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: controller.selectedCollection?.isFavorites == true ? "star.fill" : "rectangle.stack")
+                    .foregroundStyle(controller.selectedCollection == nil ? DashboardDS.muted : DashboardDS.brass)
+                Text(controller.selectedCollection?.name ?? "All styles")
+                    .font(TanqueDS.Font.body)
+                    .foregroundStyle(DashboardDS.text)
+            }
+        }
+        .menuStyle(.borderlessButton)
+        .fixedSize()
+        .padding(.horizontal, 10).padding(.vertical, 6)
+        .background(DashboardDS.surf1, in: RoundedRectangle(cornerRadius: 6))
+        .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(DashboardDS.border, lineWidth: 1))
+        .help("Show one collection. Star a card for Favorites, or right-click it to add it to a collection.")
+    }
+
+    private func beginNaming(_ prompt: CollectionNamePrompt) {
+        if case .rename(let collection) = prompt { collectionName = collection.name } else { collectionName = "" }
+        namePrompt = prompt
+    }
+
+    private var namePromptTitle: String {
+        if case .rename = namePrompt { return "Rename Collection" }
+        return "New Collection"
+    }
+
+    private var namePromptAction: String {
+        if case .rename = namePrompt { return "Rename" }
+        return "Create"
+    }
+
+    private func commitNamePrompt() {
+        switch namePrompt {
+        case .new(let seed):
+            if let created = controller.createCollection(named: collectionName, with: seed), seed == nil {
+                controller.selectedCollectionID = created.id
+            }
+        case .rename(let collection):
+            controller.renameCollection(collection.id, to: collectionName)
+        case nil:
+            break
+        }
+        namePrompt = nil
+    }
+
+    /// Right-click on a card: Favorites, the user's collections, or a new one with this style in it.
+    @ViewBuilder
+    private func collectionMenuItems(for style: StyleEntry) -> some View {
+        Button(controller.isFavorite(style) ? "Remove from Favorites" : "Add to Favorites") {
+            controller.toggleFavorite(style)
+        }
+        Menu("Collections") {
+            ForEach(controller.collections.filter { !$0.isFavorites }) { collection in
+                Toggle(collection.name, isOn: Binding(
+                    get: { controller.contains(style, in: collection.id) },
+                    set: { _ in controller.toggle(style, in: collection.id) }))
+            }
+            if controller.collections.count > 1 { Divider() }
+            Button("New Collection with This Style…") { beginNaming(.new(seed: style)) }
+        }
+    }
+
+    /// Sits over the card rather than inside it: a button nested in the card's own
+    /// button gets unreliable clicks on macOS.
+    private func favoriteStar(_ style: StyleEntry) -> some View {
+        let on = controller.isFavorite(style)
+        return Button { controller.toggleFavorite(style) } label: {
+            Image(systemName: on ? "star.fill" : "star")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(on ? DashboardDS.brass : DashboardDS.muted2)
+                .frame(width: 26, height: 26)
+                .background(DashboardDS.surf1.opacity(0.9), in: Circle())
+                .overlay(Circle().strokeBorder(DashboardDS.border, lineWidth: 1))
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .help(on ? "Remove from Favorites" : "Add to Favorites")
     }
 
     private var sectionPills: some View {
@@ -320,7 +469,7 @@ struct StyleBrowserView: View {
         let aspect = CGFloat(max(set.config.width, 1)) / CGFloat(max(set.config.height, 1))
         return Group {
             if styles.isEmpty {
-                Text(controller.renderedOnly ? "Nothing rendered in this filter yet." : "No styles match.")
+                Text(emptyGridMessage)
                     .font(TanqueDS.Font.bodySmall)
                     .foregroundStyle(DashboardDS.muted)
             } else {
@@ -337,10 +486,19 @@ struct StyleBrowserView: View {
                                   aspect: aspect) {
                             cardTapped(style, in: set)
                         }
+                        .overlay(alignment: .topTrailing) { favoriteStar(style).padding(6) }
+                        .contextMenu { collectionMenuItems(for: style) }
                     }
                 }
             }
         }
+    }
+
+    private var emptyGridMessage: String {
+        if let collection = controller.selectedCollection, collection.styleNames.isEmpty {
+            return "Nothing in \u{201C}\(collection.name)\u{201D} yet. Star a card, or right-click it to add it to a collection."
+        }
+        return controller.renderedOnly ? "Nothing rendered in this filter yet." : "No styles match."
     }
 
     private func thumbURL(for style: StyleEntry, in set: StyleBrowserSet) -> URL? {
@@ -487,6 +645,8 @@ private struct StyleDetailSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var image: NSImage?
     @State private var copied: String?
+    @State private var showCollections = false
+    @State private var newCollectionName = ""
 
     private var currentSet: StyleBrowserSet { controller.sets.first { $0.id == set.id } ?? set }
     private var render: StyleRender? { currentSet.renders[style.name] }
@@ -531,6 +691,21 @@ private struct StyleDetailSheet: View {
                     Text(copied).font(TanqueDS.Font.bodySmall).foregroundStyle(DashboardDS.green)
                 }
                 HStack(spacing: TanqueDS.Spacing.sm) {
+                    let favorite = controller.isFavorite(style)
+                    Button { controller.toggleFavorite(style) } label: {
+                        Label(favorite ? "Favorite" : "Add to Favorites",
+                              systemImage: favorite ? "star.fill" : "star")
+                    }
+                    .buttonStyle(DashboardGhostButtonStyle())
+                    // A button and popover, not a Menu: an AppKit-backed menu button only
+                    // takes clicks on its title, so most of an outlined menu was dead.
+                    Button("Collections") { showCollections = true }
+                        .buttonStyle(DashboardGhostButtonStyle())
+                        .popover(isPresented: $showCollections, arrowEdge: .bottom) {
+                            collectionsPopover
+                        }
+                }
+                HStack(spacing: TanqueDS.Spacing.sm) {
                     Button("Copy style") { copy(style.prompt, as: "Style copied") }
                         .buttonStyle(DashboardGhostButtonStyle())
                     Button("Copy prompt") {
@@ -568,6 +743,57 @@ private struct StyleDetailSheet: View {
             guard let url = imageURL else { image = nil; return }
             image = await Task.detached(priority: .userInitiated) { NSImage(contentsOf: url) }.value
         }
+    }
+
+    private var collectionsPopover: some View {
+        let own = controller.collections.filter { !$0.isFavorites }
+        return VStack(alignment: .leading, spacing: TanqueDS.Spacing.sm) {
+            Text("COLLECTIONS").font(TanqueDS.Font.monoSemiBold(10.5)).foregroundStyle(DashboardDS.muted)
+            if own.isEmpty {
+                Text("None yet — name one below.")
+                    .font(TanqueDS.Font.bodySmall).foregroundStyle(DashboardDS.muted)
+            }
+            ForEach(own) { collection in
+                let on = controller.contains(style, in: collection.id)
+                Button { controller.toggle(style, in: collection.id) } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: on ? "checkmark.square.fill" : "square")
+                            .foregroundStyle(on ? DashboardDS.brass : DashboardDS.muted2)
+                        Text(collection.name).font(TanqueDS.Font.body).foregroundStyle(DashboardDS.text)
+                        Spacer(minLength: 0)
+                    }
+                    .padding(.vertical, 3)
+                }
+                .buttonStyle(.dashboardPlain)
+            }
+            Divider()
+            HStack(spacing: 6) {
+                TextField("", text: $newCollectionName,
+                          prompt: Text("New collection").foregroundStyle(DashboardDS.muted))
+                    .textFieldStyle(.plain)
+                    .font(TanqueDS.Font.body)
+                    .foregroundStyle(DashboardDS.text)
+                    .padding(.horizontal, 8).padding(.vertical, 5)
+                    .background(DashboardDS.surf1, in: RoundedRectangle(cornerRadius: 6))
+                    .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(DashboardDS.border, lineWidth: 1))
+                    .onSubmit(addToNewCollection)
+                let blank = newCollectionName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                Button("Add", action: addToNewCollection)
+                    .buttonStyle(DashboardPrimaryButtonStyle())
+                    .disabled(blank)
+                    .opacity(blank ? 0.45 : 1)
+            }
+        }
+        .padding(TanqueDS.Spacing.md)
+        .frame(width: 260)
+        .background(DashboardDS.bg)
+        .environment(\.colorScheme, .light)
+    }
+
+    /// Makes the collection with this style already in it.
+    private func addToNewCollection() {
+        guard controller.createCollection(named: newCollectionName, with: style) != nil else { return }
+        newCollectionName = ""
     }
 
     private func copy(_ text: String, as confirmation: String) {

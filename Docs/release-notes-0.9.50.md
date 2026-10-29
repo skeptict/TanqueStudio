@@ -35,3 +35,28 @@ default.
 **Verified in the app:** the Generate model and canvas size came back after quitting and
 relaunching; Labs reopened on Style Browser with a section filter and search intact after a
 trip to the Dashboard; and the confirmation now shows Cancel as the default.
+
+## Style Browser: Favorites and your own collections
+
+Star a style to add it to **Favorites**, or gather styles into collections of your own —
+"Portraits", "Golden Age", whatever suits. Collections are shared across every set, so
+the same list works whatever subject you're rendering.
+
+- **☆ on any card** adds it to Favorites or takes it out again.
+- **Right-click a card** to add it to a collection or start a new one with it.
+- In a style's detail view, **Favorite** and **Collections** do the same, and you can
+  name a new collection right there.
+- **The Collection menu**, beside the search field, filters the grid to one collection.
+  It combines with the section, the search and **Rendered only** — so **Render visible**
+  renders exactly that collection.
+- The same menu creates, renames and deletes collections. Deleting asks first, and only
+  removes the list; the styles and anything rendered from them stay. Favorites can't be
+  renamed or deleted.
+
+Collections are saved alongside your sets in Tanque Studio's own folder.
+
+**Verified in the app:** stars toggle and stay put after a relaunch, without starting a
+render on the card underneath; the detail view's Favorite button and the card's star
+agree; the detail view's Collections button opens its list. Checked by hand by Ned: choosing a
+collection from the Collection menu and rendering it, creating, renaming and deleting
+collections, right-clicking a card, and naming a new collection in the detail view.

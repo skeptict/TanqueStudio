@@ -47,6 +47,14 @@ final class StyleBrowserController {
     var searchText = ""
     var section: String?
     var renderedOnly = false
+    /// The collection the grid is filtered to, or nil for every style.
+    var selectedCollectionID: UUID?
+
+    /// Favorites first, then the user's own. Never empty.
+    private(set) var collections: [StyleCollection] = []
+    /// Set when collections.json couldn't be written — the change holds for this
+    /// session but would be lost on relaunch, so the view says so.
+    private(set) var collectionsSaveError: String?
 
     private(set) var isRunning = false
     private(set) var isPaused = false
@@ -81,6 +89,7 @@ final class StyleBrowserController {
         self.store = store
         self.makeClient = makeClient
         reloadSets()
+        collections = store.loadCollections()
     }
 
     var selectedSet: StyleBrowserSet? {
@@ -89,6 +98,79 @@ final class StyleBrowserController {
 
     func reloadSets() {
         sets = store.loadSets()
+    }
+
+    // MARK: - Collections
+
+    var favorites: StyleCollection { collections.first(where: \.isFavorites) ?? .favorites() }
+
+    var selectedCollection: StyleCollection? {
+        collections.first { $0.id == selectedCollectionID }
+    }
+
+    func contains(_ style: StyleEntry, in collectionID: UUID) -> Bool {
+        collections.first { $0.id == collectionID }?.styleNames.contains(style.name) ?? false
+    }
+
+    func isFavorite(_ style: StyleEntry) -> Bool { contains(style, in: StyleCollection.favoritesID) }
+
+    func toggleFavorite(_ style: StyleEntry) { toggle(style, in: StyleCollection.favoritesID) }
+
+    /// Adds the style if it isn't in the collection, removes it if it is.
+    func toggle(_ style: StyleEntry, in collectionID: UUID) {
+        guard let index = collections.firstIndex(where: { $0.id == collectionID }) else { return }
+        if let at = collections[index].styleNames.firstIndex(of: style.name) {
+            collections[index].styleNames.remove(at: at)
+        } else {
+            collections[index].styleNames.append(style.name)
+        }
+        saveCollections()
+    }
+
+    /// Names in a collection that aren't in the library — only possible if the
+    /// bundled library ever changes. Shown, never silently dropped.
+    func missingStyles(in collection: StyleCollection) -> [String] {
+        let known = Set(library.map(\.name))
+        return collection.styleNames.filter { !known.contains($0) }
+    }
+
+    /// Returns nil for a blank name. Optionally starts with one style in it.
+    @discardableResult
+    func createCollection(named name: String, with style: StyleEntry? = nil) -> StyleCollection? {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        let collection = StyleCollection(id: UUID(), name: trimmed, styleNames: style.map { [$0.name] } ?? [])
+        collections.append(collection)
+        saveCollections()
+        return collection
+    }
+
+    /// Favorites keeps its name.
+    func renameCollection(_ id: UUID, to name: String) {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, id != StyleCollection.favoritesID,
+              let index = collections.firstIndex(where: { $0.id == id }) else { return }
+        collections[index].name = trimmed
+        saveCollections()
+    }
+
+    /// Favorites can't be deleted. The styles and their renders are untouched —
+    /// only the list goes.
+    func deleteCollection(_ id: UUID) {
+        guard id != StyleCollection.favoritesID else { return }
+        collections.removeAll { $0.id == id }
+        if selectedCollectionID == id { selectedCollectionID = nil }
+        saveCollections()
+    }
+
+    private func saveCollections() {
+        do {
+            try store.saveCollections(collections)
+            collectionsSaveError = nil
+        } catch {
+            collectionsSaveError = "Couldn't save collections: \(error.localizedDescription)"
+            logger.error("Couldn't save style collections: \(error.localizedDescription, privacy: .public)")
+        }
     }
 
     // MARK: - Sets

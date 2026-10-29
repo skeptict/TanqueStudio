@@ -155,6 +155,7 @@ A library of 414 art-style prompts across ten traditions (Photography, 3D Render
 - Render one card, a filtered section, or the whole library; pause, resume, or cancel; a style that fails never stops the rest. A batch keeps running if you leave Labs
 - Each preview is a PNG with its prompt and config embedded, so it drags straight into Draw Things. Copy the style or the full prompt, re-render, or **Send to Generate** to carry the prompt, model, size and seed to the Focus Room
 - Previews live in the app's own Application Support folder — they never appear in Recent Generations or the filmstrip
+- Star styles into **Favorites** or your own named **collections**, then filter the grid to one and render just that
 
 ---
 
