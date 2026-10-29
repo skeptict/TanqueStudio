@@ -13,7 +13,7 @@ import AppKit
 
 struct StyleBrowserView: View {
     /// Owned by DashboardRootView so a batch survives leaving Labs.
-    let controller: StyleBrowserController
+    @Bindable var controller: StyleBrowserController
     /// Read to snapshot a new set's config; written only by Send to Generate.
     let generateVM: GenerateViewModel
     let onNavigateToGenerate: () -> Void
@@ -21,9 +21,6 @@ struct StyleBrowserView: View {
     @State private var isCreatingSet = false
     @State private var newSubject = ""
     @State private var createError: String?
-    @State private var searchText = ""
-    @State private var section: String?
-    @State private var renderedOnly = false
     @State private var showLargeBatchConfirm = false
     @State private var detailStyle: StyleEntry?
 
@@ -61,7 +58,9 @@ struct StyleBrowserView: View {
             isPresented: $showLargeBatchConfirm, titleVisibility: .visible
         ) {
             Button("Render \(visiblePending.count)") { renderVisible() }
+            // Cancel is the default: Return must not start hours of rendering.
             Button("Cancel", role: .cancel) {}
+                .keyboardShortcut(.defaultAction)
         } message: {
             Text(estimateText(for: visiblePending.count))
         }
@@ -165,12 +164,12 @@ struct StyleBrowserView: View {
     private var sections: [String] { StyleLibrary.sections(of: controller.library) }
 
     private func visibleStyles(in set: StyleBrowserSet) -> [StyleEntry] {
-        let query = searchText.trimmingCharacters(in: .whitespaces)
+        let query = controller.searchText.trimmingCharacters(in: .whitespaces)
         return controller.library.filter { style in
-            (section == nil || style.section == section)
+            (controller.section == nil || style.section == controller.section)
             && (query.isEmpty || style.name.localizedCaseInsensitiveContains(query)
                 || style.prompt.localizedCaseInsensitiveContains(query))
-            && (!renderedOnly || controller.isRendered(style, in: set))
+            && (!controller.renderedOnly || controller.isRendered(style, in: set))
         }
     }
 
@@ -184,7 +183,7 @@ struct StyleBrowserView: View {
             HStack(spacing: TanqueDS.Spacing.md) {
                 HStack(spacing: 6) {
                     Image(systemName: "magnifyingglass").foregroundStyle(DashboardDS.muted)
-                    TextField("", text: $searchText,
+                    TextField("", text: $controller.searchText,
                               prompt: Text("Search names and prose").foregroundStyle(DashboardDS.muted))
                         .textFieldStyle(.plain)
                         .font(TanqueDS.Font.body)
@@ -197,8 +196,8 @@ struct StyleBrowserView: View {
 
                 // The checkbox style draws only the box, so the label is its own button.
                 HStack(spacing: 6) {
-                    Toggle("", isOn: $renderedOnly).toggleStyle(.dashboardCheckbox).labelsHidden()
-                    Button("Rendered only") { renderedOnly.toggle() }
+                    Toggle("", isOn: $controller.renderedOnly).toggleStyle(.dashboardCheckbox).labelsHidden()
+                    Button("Rendered only") { controller.renderedOnly.toggle() }
                         .buttonStyle(.dashboardPlain)
                         .font(TanqueDS.Font.bodySmall)
                         .foregroundStyle(DashboardDS.muted2)
@@ -213,9 +212,9 @@ struct StyleBrowserView: View {
 
     private var sectionPills: some View {
         HStack(spacing: 2) {
-            pill("All", active: section == nil) { section = nil }
+            pill("All", active: controller.section == nil) { controller.section = nil }
             ForEach(sections, id: \.self) { name in
-                pill(name, active: section == name) { section = name }
+                pill(name, active: controller.section == name) { controller.section = name }
             }
         }
         .padding(4)
@@ -321,7 +320,7 @@ struct StyleBrowserView: View {
         let aspect = CGFloat(max(set.config.width, 1)) / CGFloat(max(set.config.height, 1))
         return Group {
             if styles.isEmpty {
-                Text(renderedOnly ? "Nothing rendered in this filter yet." : "No styles match.")
+                Text(controller.renderedOnly ? "Nothing rendered in this filter yet." : "No styles match.")
                     .font(TanqueDS.Font.bodySmall)
                     .foregroundStyle(DashboardDS.muted)
             } else {

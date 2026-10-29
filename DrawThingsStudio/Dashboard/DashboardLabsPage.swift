@@ -18,12 +18,14 @@ struct DashboardLabsPage: View {
     let styleBrowser: StyleBrowserController
     /// Root-owned for the same reason.
     let renderQueue: RenderQueueController
-    @State private var selectedTab: LabsTab = .storyFlow
+    /// Held by DashboardRootView so Labs reopens on the tab it was left on —
+    /// this page itself is rebuilt on every visit.
+    @Binding var selectedTab: LabsTab
     /// Owned here rather than passed in, so the open project folder and any unsaved cast edits
     /// survive a switch to another Labs tab and back.
     @State private var castVM = StoryFlowCastViewModel()
 
-    private enum LabsTab: String, CaseIterable {
+    enum LabsTab: String, CaseIterable {
         case storyFlow = "StoryFlow"
         case castStaging = "Cast & Staging"
         case storyStudio = "Story Studio"

@@ -42,6 +42,11 @@ final class StyleBrowserController {
     let library: [StyleEntry]
     private(set) var sets: [StyleBrowserSet] = []
     var selectedSetID: UUID?
+    /// The grid's filters. Kept here rather than in the view so they survive leaving
+    /// Labs, like the selected set and the batch itself.
+    var searchText = ""
+    var section: String?
+    var renderedOnly = false
 
     private(set) var isRunning = false
     private(set) var isPaused = false

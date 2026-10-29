@@ -47,12 +47,14 @@ struct DashboardToastView: View {
 // design_handoff_dashboard_final/README.md.
 
 struct DashboardRootView: View {
-    @State private var generateVM = GenerateViewModel()
+    /// The one Generate session that persists its config between launches.
+    @State private var generateVM = GenerateViewModel(configStore: .standard)
     @State private var storyFlowVM = StoryFlowViewModel()
     /// Here rather than in Labs, which `.id(mode)` rebuilds on every visit: a
     /// running style batch keeps going, and stays controllable, after leaving.
     @State private var styleBrowser = StyleBrowserController()
     @State private var renderQueue = RenderQueueController()
+    @State private var labsTab: DashboardLabsPage.LabsTab = .storyFlow
     // Deliberately nil until .task below: DTProjectBrowserViewModel's init()
     // synchronously enumerates + stats every bookmarked project folder
     // (DTProjectBrowserViewModel.swift's restoreBookmarks() -> reloadAllProjects()).
@@ -177,7 +179,8 @@ struct DashboardRootView: View {
                               generateVM: generateVM,
                               onNavigateToGenerate: { navigate(to: .focus) },
                               styleBrowser: styleBrowser,
-                              renderQueue: renderQueue)
+                              renderQueue: renderQueue,
+                              selectedTab: $labsTab)
         case .settings:
             SettingsView()
         }
