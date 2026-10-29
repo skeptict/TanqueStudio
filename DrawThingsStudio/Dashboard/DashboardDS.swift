@@ -93,6 +93,10 @@ struct DashboardGhostButtonStyle: ButtonStyle {
         configuration.label
             .font(TanqueDS.Font.monoSemiBold(11.5))
             .foregroundStyle(DashboardDS.muted2)
+            // Without side padding, a compact use (`.fixedSize()`) drew its outline
+            // against the letters. A full-width use looks the same: this only sets
+            // the minimum width.
+            .padding(.horizontal, 14)
             .padding(.vertical, 8)
             .frame(maxWidth: .infinity)
             .background(Color.clear)

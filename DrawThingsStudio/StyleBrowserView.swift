@@ -159,7 +159,7 @@ struct StyleBrowserView: View {
 
                 if let set = controller.selectedSet {
                     Button { setPendingDelete = set } label: {
-                        Image(systemName: "trash").padding(.horizontal, 10)
+                        Image(systemName: "trash")
                     }
                     .buttonStyle(DashboardGhostButtonStyle())
                     .fixedSize()
@@ -825,10 +825,13 @@ private struct StyleDetailSheet: View {
                 HStack(spacing: TanqueDS.Spacing.sm) {
                     let favorite = controller.isFavorite(style)
                     Button { controller.toggleFavorite(style) } label: {
-                        Label(favorite ? "Favorite" : "Add to Favorites",
+                        // One word, so it fits half the row; the star shows the state.
+                        Label(favorite ? "Favorited" : "Favorite",
                               systemImage: favorite ? "star.fill" : "star")
+                            .lineLimit(1)
                     }
                     .buttonStyle(DashboardGhostButtonStyle())
+                    .help(favorite ? "Remove from Favorites" : "Add to Favorites")
                     // A button and popover, not a Menu: an AppKit-backed menu button only
                     // takes clicks on its title, so most of an outlined menu was dead.
                     Button("Collections") { showCollections = true }
