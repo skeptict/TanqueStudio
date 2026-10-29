@@ -23,6 +23,7 @@ final class StyleBrowserController {
         case noModel
         case videoModel(String)
         case noImageReturned
+        case otherSetBusy
         case returnedAClip(Int)
 
         var errorDescription: String? {
@@ -33,6 +34,8 @@ final class StyleBrowserController {
                 return "\(model) is a video model. Style previews are stills — pick an image model in Generate and create a new set."
             case .noImageReturned:
                 return "Draw Things returned no image."
+            case .otherSetBusy:
+                return "Another set is rendering. Finish or cancel that batch first."
             case .returnedAClip(let count):
                 return "Draw Things returned \(count) frames for a still."
             }
@@ -78,8 +81,6 @@ final class StyleBrowserController {
     /// Bumped per batch. A cancelled request can take a moment to come back; its
     /// loop must not then mark a batch started in the meantime as finished.
     @ObservationIgnored private var generation = 0
-    /// What Resume picks back up: the set and the styles of the paused batch.
-    @ObservationIgnored private var pausedBatch: (setID: UUID, styles: [StyleEntry])?
     @ObservationIgnored private let logger = Logger(subsystem: "tanque.org.TanqueStudio", category: "StyleBrowser")
 
     init(library: [StyleEntry] = StyleLibrary.loadBundled(),
@@ -192,7 +193,7 @@ final class StyleBrowserController {
         try store.deleteSet(set)
         sets.removeAll { $0.id == id }
         if selectedSetID == id { selectedSetID = nil }
-        if pausedBatch?.setID == id { pausedBatch = nil; isPaused = false }
+        if runningSetID == id { queue = []; runningSetID = nil; isPaused = false }
     }
 
     func isRendered(_ style: StyleEntry, in set: StyleBrowserSet) -> Bool {
@@ -201,15 +202,38 @@ final class StyleBrowserController {
 
     // MARK: - Rendering
 
+    /// The styles waiting behind the one rendering, in order.
+    private(set) var queue: [StyleEntry] = []
+    /// The set the running or paused batch renders into. A queue belongs to one set.
+    private(set) var runningSetID: UUID?
+
+    func isQueued(_ style: StyleEntry) -> Bool { queue.contains(style) }
+
+    /// 1-based place in the queue, for the card's "Queued · 2nd".
+    func queuePosition(of style: StyleEntry) -> Int? {
+        queue.firstIndex(of: style).map { $0 + 1 }
+    }
+
     /// Renders `styles` into the set, in order, skipping ones already on disk.
-    /// `force` re-renders them anyway (the detail view's Re-render).
+    /// `force` re-renders them anyway (the detail view's Re-render). While a batch
+    /// is running or paused on this set, the styles join the end of its queue
+    /// instead; for another set they're refused, so a click can never quietly
+    /// render into a set you aren't looking at.
     @discardableResult
     func render(_ styles: [StyleEntry], inSet setID: UUID, force: Bool = false) -> Task<Void, Never>? {
-        if isRunning { return runTask }
         guard let set = sets.first(where: { $0.id == setID }) else { return nil }
+        refusal = nil
+
+        if isRunning || isPaused {
+            guard setID == runningSetID else {
+                refusal = RenderError.otherSetBusy.localizedDescription
+                return runTask
+            }
+            enqueue(styles, in: set, force: force)
+            return runTask
+        }
 
         let config = set.config
-        refusal = nil
         // By model, not by numFrames: plenty of still configs carry a numFrames > 1
         // that Draw Things ignores, and 0 means "the model's default", which for a
         // video model is a clip.
@@ -222,30 +246,54 @@ final class StyleBrowserController {
             return nil
         }
 
-        let todo = force ? styles : store.pending(styles, in: set)
-        guard !todo.isEmpty else { return nil }
+        queue = []
+        completed = 0
+        total = 0
+        enqueue(styles, in: set, force: force)
+        guard !queue.isEmpty else { return nil }
+        runningSetID = setID
+        return startLoop(in: set)
+    }
 
+    /// Adds styles to the end of the queue, skipping ones already queued, the one
+    /// in flight, and — unless forced — ones already rendered.
+    private func enqueue(_ styles: [StyleEntry], in set: StyleBrowserSet, force: Bool) {
+        for style in styles where !queue.contains(style) && style != currentStyle
+            && (force || !store.isRendered(style, in: set)) {
+            queue.append(style)
+            total += 1
+        }
+    }
+
+    /// Takes a waiting style back out of the queue.
+    func dequeue(_ style: StyleEntry) {
+        guard let index = queue.firstIndex(of: style) else { return }
+        queue.remove(at: index)
+        total -= 1
+    }
+
+    /// Drains the queue. Shared by a fresh batch and Resume.
+    private func startLoop(in set: StyleBrowserSet) -> Task<Void, Never> {
         isRunning = true
         isPaused = false
         pauseRequested = false
-        pausedBatch = nil
-        completed = 0
-        total = todo.count
         generation += 1
         let batch = generation
+        let setID = set.id
+        let config = set.config
 
         let task = Task { [weak self] in
             guard let self else { return }
             let client = self.makeClient()
 
-            for (index, style) in todo.enumerated() {
+            while !self.queue.isEmpty {
                 if Task.isCancelled || self.generation != batch { break }
                 if self.pauseRequested {
                     self.pauseRequested = false
                     self.isPaused = true
-                    self.pausedBatch = (setID, Array(todo[index...]))
                     break
                 }
+                let style = self.queue.removeFirst()
                 self.currentStyle = style
                 let prompt = StyleLibrary.styledPrompt(style: style, subject: set.subject)
                 let started = Date()
@@ -272,6 +320,7 @@ final class StyleBrowserController {
                 self.isRunning = false
                 self.currentStyle = nil
                 self.pauseRequested = false
+                if !self.isPaused { self.runningSetID = nil }
             }
         }
         runTask = task
@@ -284,21 +333,26 @@ final class StyleBrowserController {
         pauseRequested = true
     }
 
+    /// Picks the queue back up, counting on from where it paused: "38 / 47", not "1 / 10".
     @discardableResult
     func resume() -> Task<Void, Never>? {
-        guard let batch = pausedBatch else { return nil }
-        // Keep counting from where the batch paused: "38 / 47", not "1 / 10".
-        let (done, of) = (completed, total)
-        let task = render(batch.styles, inSet: batch.setID)
-        if task != nil { (completed, total) = (done, of) }
-        return task
+        guard isPaused, let setID = runningSetID,
+              let set = sets.first(where: { $0.id == setID }) else { return nil }
+        guard !queue.isEmpty else {
+            isPaused = false
+            runningSetID = nil
+            return nil
+        }
+        return startLoop(in: set)
     }
 
+    /// Stops now and empties the queue.
     func cancel() {
         runTask?.cancel()
         generation += 1
         pauseRequested = false
-        pausedBatch = nil
+        queue = []
+        runningSetID = nil
         isRunning = false
         isPaused = false
         currentStyle = nil

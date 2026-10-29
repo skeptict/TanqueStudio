@@ -89,3 +89,19 @@ real set with it, and the Style Browser moved on to the next one.
 Compact outlined buttons — **New set**, Render Queue's **Reset** and **Clear All**, and
 others — drew their outline right against the letters. They now have space on both sides,
 and the space is clickable.
+
+## Style Browser: queue styles while one renders
+
+Clicking a style while another is rendering used to do nothing. Now it joins a queue:
+the card shows **Queued · 1st**, **2nd** and so on, and the progress line counts what's
+waiting — *"1 / 3 · Alex Ross · 2 queued"*. Click a queued card again to take it back out.
+While a batch runs, **Queue visible** adds everything in the current filter, or a whole
+collection, to the end. **Pause** keeps the queue for **Resume**; **Cancel** stops the
+current style and empties the queue.
+
+A queue belongs to the set it's rendering. If you switch to another set mid-batch, clicking
+a card there tells you to finish the current batch first, rather than quietly rendering into
+a set you aren't looking at.
+
+**Verified in the app:** a card clicked mid-render shows Queued · 1st and the progress line
+counts it; clicking it again removes it; Cancel returns everything to idle with nothing saved.

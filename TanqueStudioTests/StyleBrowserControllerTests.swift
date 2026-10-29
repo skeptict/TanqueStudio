@@ -246,6 +246,101 @@ final class StyleBrowserControllerTests: XCTestCase {
         XCTAssertEqual(client.prompts.count, 2)
     }
 
+    // MARK: - Queueing while a batch runs
+
+    func testStylesAddedMidRunJoinTheEndOfTheQueue() async throws {
+        let (controller, set) = try makeController()
+        client.afterGenerate = { prompt in
+            if prompt.contains("alpha prose") {
+                controller.render([self.styles[2], self.styles[1]], inSet: set.id)
+            }
+        }
+        await controller.render([styles[0]], inSet: set.id)?.value
+
+        XCTAssertEqual(client.prompts.map { String($0.prefix(13)) },
+                       ["Style: Alpha:", "Style: Charli", "Style: Bravo:"])
+        XCTAssertEqual(controller.completed, 3)
+        XCTAssertEqual(controller.total, 3)
+        XCTAssertTrue(controller.queue.isEmpty)
+    }
+
+    func testAStyleAlreadyQueuedOrRenderingIsNotAddedTwice() async throws {
+        let (controller, set) = try makeController()
+        var positions: [Int?] = []
+        client.afterGenerate = { prompt in
+            if prompt.contains("alpha prose") {
+                controller.render([self.styles[1], self.styles[1], self.styles[0]], inSet: set.id)
+                positions = [controller.queuePosition(of: self.styles[1]), controller.queuePosition(of: self.styles[0])]
+            }
+        }
+        await controller.render(Array(styles.prefix(2)), inSet: set.id)?.value
+
+        XCTAssertEqual(positions, [1, nil], "Bravo stays first in line; Alpha is the one rendering")
+        XCTAssertEqual(client.prompts.count, 2)
+        XCTAssertEqual(controller.total, 2)
+    }
+
+    func testAQueuedStyleCanBeTakenBackOut() async throws {
+        let (controller, set) = try makeController()
+        client.afterGenerate = { prompt in
+            if prompt.contains("alpha prose") { controller.dequeue(self.styles[2]) }
+        }
+        await controller.render(styles, inSet: set.id)?.value
+
+        XCTAssertFalse(client.prompts.contains { $0.contains("charlie prose") })
+        XCTAssertEqual(client.prompts.count, 3)
+        XCTAssertEqual(controller.total, 3)
+        XCTAssertNil(renders(controller, set)["Charlie"])
+    }
+
+    func testAClickOnAnotherSetIsRefusedWhileOneRuns() async throws {
+        let (controller, first) = try makeController()
+        let second = try controller.createSet(subject: "elsewhere", config: first.config, negativePrompt: "")
+        client.afterGenerate = { prompt in
+            if prompt.contains("alpha prose") { controller.render([self.styles[3]], inSet: second.id) }
+        }
+        await controller.render(Array(styles.prefix(2)), inSet: first.id)?.value
+
+        XCTAssertNotNil(controller.refusal)
+        XCTAssertEqual(client.prompts.count, 2)
+        XCTAssertTrue(renders(controller, second).isEmpty)
+    }
+
+    func testCancelEmptiesTheQueue() async throws {
+        let (controller, set) = try makeController()
+        client.hangingMarker = "alpha prose"
+        let task = controller.render(styles, inSet: set.id)
+        while client.prompts.isEmpty { await Task.yield() }
+        XCTAssertEqual(controller.queue.count, 3)
+
+        controller.cancel()
+        await task?.value
+        XCTAssertTrue(controller.queue.isEmpty)
+        XCTAssertNil(controller.runningSetID)
+        XCTAssertEqual(client.prompts.count, 1)
+    }
+
+    func testAPausedQueueTakesNewStylesAndResumesWithThem() async throws {
+        let (controller, set) = try makeController()
+        client.afterGenerate = { prompt in
+            if prompt.contains("alpha prose") { controller.pause() }
+        }
+        await controller.render(Array(styles.prefix(2)), inSet: set.id)?.value
+        XCTAssertTrue(controller.isPaused)
+        XCTAssertEqual(controller.queue, [styles[1]])
+
+        controller.render([styles[3]], inSet: set.id)
+        XCTAssertEqual(controller.queue, [styles[1], styles[3]])
+        XCTAssertEqual(controller.total, 3)
+
+        client.afterGenerate = nil
+        await controller.resume()?.value
+        XCTAssertEqual(client.prompts.count, 3)
+        XCTAssertEqual(controller.completed, 3)
+        XCTAssertFalse(controller.isPaused)
+        XCTAssertNil(controller.runningSetID)
+    }
+
     // MARK: - Deleting a set
 
     func testDeletingASetRemovesItsFolderAndItsEntry() async throws {

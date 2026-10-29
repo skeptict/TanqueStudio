@@ -78,10 +78,10 @@ struct StyleBrowserView: View {
             }
         }
         .confirmationDialog(
-            "Render \(visiblePending.count) styles?",
+            "\(selectedSetIsBusy ? "Queue" : "Render") \(visiblePending.count) styles?",
             isPresented: $showLargeBatchConfirm, titleVisibility: .visible
         ) {
-            Button("Render \(visiblePending.count)") { renderVisible() }
+            Button("\(selectedSetIsBusy ? "Queue" : "Render") \(visiblePending.count)") { renderVisible() }
             // Cancel is the default: Return must not start hours of rendering.
             Button("Cancel", role: .cancel) {}
                 .keyboardShortcut(.defaultAction)
@@ -343,9 +343,16 @@ struct StyleBrowserView: View {
         }
     }
 
+    /// Unrendered styles in the filter that aren't already queued or rendering.
     private var visiblePending: [StyleEntry] {
         guard let set = controller.selectedSet else { return [] }
         return controller.store.pending(visibleStyles(in: set), in: set)
+            .filter { !controller.isQueued($0) && $0 != controller.currentStyle }
+    }
+
+    /// True while the selected set is the one with a running or paused queue.
+    private var selectedSetIsBusy: Bool {
+        (controller.isRunning || controller.isPaused) && controller.runningSetID == controller.selectedSet?.id
     }
 
     private var filters: some View {
@@ -536,6 +543,14 @@ struct StyleBrowserView: View {
                                          ? DashboardDS.brass : DashboardDS.muted)
                         .lineLimit(1)
                 }
+                if selectedSetIsBusy, case let count = visiblePending.count, count > 0 {
+                    Button("Queue visible (\(count))") {
+                        if count > Self.largeBatch { showLargeBatchConfirm = true } else { renderVisible() }
+                    }
+                    .buttonStyle(DashboardGhostButtonStyle())
+                    .fixedSize()
+                    .help("Adds every unrendered style in the current filter to the end of the queue.")
+                }
                 if controller.isRunning {
                     Button("Pause") { controller.pause() }
                         .buttonStyle(DashboardGhostButtonStyle())
@@ -577,6 +592,7 @@ struct StyleBrowserView: View {
         else if controller.pauseRequested, let current = controller.currentStyle {
             line += " · pausing after \(current.name)"
         } else if let current = controller.currentStyle { line += " · \(current.name)" }
+        if !controller.queue.isEmpty { line += " · \(controller.queue.count) queued" }
         return line
     }
 
@@ -614,7 +630,10 @@ struct StyleBrowserView: View {
                                   render: set.renders[style.name],
                                   thumbURL: thumbURL(for: style, in: set),
                                   renderedAt: set.renders[style.name]?.renderedAt,
-                                  isRendering: controller.currentStyle == style && controller.isRunning,
+                                  isRendering: controller.currentStyle == style && controller.isRunning
+                                      && controller.runningSetID == set.id,
+                                  queuePosition: controller.runningSetID == set.id
+                                      ? controller.queuePosition(of: style) : nil,
                                   aspect: aspect) {
                             cardTapped(style, in: set)
                         }
@@ -638,10 +657,14 @@ struct StyleBrowserView: View {
         return controller.store.url(for: thumb, in: set)
     }
 
+    /// Rendered: open it. Queued: take it back out. Otherwise render it — or, while
+    /// a batch runs on this set, add it to the end of the queue.
     private func cardTapped(_ style: StyleEntry, in set: StyleBrowserSet) {
         if controller.isRendered(style, in: set) {
             detailStyle = style
-        } else if !controller.isRunning {
+        } else if controller.runningSetID == set.id, controller.isQueued(style) {
+            controller.dequeue(style)
+        } else if controller.currentStyle != style || controller.runningSetID != set.id {
             controller.render([style], inSet: set.id)
         }
     }
@@ -678,6 +701,8 @@ private struct StyleCard: View {
     let thumbURL: URL?
     let renderedAt: Date?
     let isRendering: Bool
+    /// Place in the running queue, or nil when not queued.
+    let queuePosition: Int?
     let aspect: CGFloat
     let onTap: () -> Void
 
@@ -720,6 +745,11 @@ private struct StyleCard: View {
                     if isRendering {
                         ProgressView().controlSize(.small)
                         Text("Rendering…").font(TanqueDS.Font.mono(10)).foregroundStyle(DashboardDS.muted2)
+                    } else if let queuePosition {
+                        Image(systemName: "clock").foregroundStyle(DashboardDS.brass)
+                        Text("Queued · \(Self.ordinal(queuePosition))")
+                            .font(TanqueDS.Font.mono(10.5))
+                            .foregroundStyle(DashboardDS.brass)
                     } else if let error = render?.errorMessage {
                         Image(systemName: "exclamationmark.triangle").foregroundStyle(DashboardDS.red)
                         Text(error)
@@ -739,8 +769,22 @@ private struct StyleCard: View {
         }
     }
 
+    static func ordinal(_ n: Int) -> String {
+        let suffix: String
+        switch (n % 10, n % 100) {
+        case (_, 11...13): suffix = "th"
+        case (1, _): suffix = "st"
+        case (2, _): suffix = "nd"
+        case (3, _): suffix = "rd"
+        default: suffix = "th"
+        }
+        return "\(n)\(suffix)"
+    }
+
     private var helpText: String {
         if thumbURL != nil { return "Open \(style.name)" }
+        if queuePosition != nil { return "Queued — click to take \(style.name) out of the queue" }
+        if isRendering { return "Rendering \(style.name)" }
         if let error = render?.errorMessage { return "Failed: \(error)\nClick to try again." }
         return "Click to render \(style.name)"
     }
