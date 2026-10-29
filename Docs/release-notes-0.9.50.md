@@ -73,3 +73,13 @@ and can be compared style for style. Your collections work with the new set as t
 **Verified in the app:** the panel opens prefilled, the changes line tracks Generate's
 settings, and turning the seed option off adds the seed to the changes. **Not yet tried by
 hand:** pressing Create set from this panel.
+
+## Style Browser: delete a set
+
+The **trash button** beside the set menu deletes the selected set and every image rendered
+into it. It asks first, naming the set and its exact image count, with **Cancel** as the
+default; it can't be undone. Collections aren't affected — they're lists of styles, not of
+renders. Deleting is unavailable while a batch is running.
+
+**Verified in the app:** the confirmation, its count and its Cancel default; Ned deleted a
+real set with it, and the Style Browser moved on to the next one.

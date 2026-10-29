@@ -25,6 +25,8 @@ struct StyleBrowserView: View {
     /// keep its seed, so only what changed in Generate (a size, a model) differs.
     @State private var basedOn: StyleBrowserSet?
     @State private var keepSeed = true
+    @State private var setPendingDelete: StyleBrowserSet?
+    @State private var deleteError: String?
     @State private var showLargeBatchConfirm = false
     @State private var detailStyle: StyleEntry?
     /// Naming a new collection (optionally seeded with a style), or renaming one.
@@ -50,6 +52,9 @@ struct StyleBrowserView: View {
             VStack(alignment: .leading, spacing: TanqueDS.Spacing.lg) {
                 if !controller.sets.isEmpty {
                     setBar
+                }
+                if let deleteError {
+                    Text(deleteError).font(TanqueDS.Font.bodySmall).foregroundStyle(DashboardDS.red)
                 }
                 if isCreatingSet || controller.sets.isEmpty {
                     newSetPanel
@@ -88,6 +93,28 @@ struct StyleBrowserView: View {
             TextField("Name", text: $collectionName)
             Button(namePromptAction) { commitNamePrompt() }
             Button("Cancel", role: .cancel) { namePrompt = nil }
+        }
+        .confirmationDialog(
+            "Delete this set?",
+            isPresented: Binding(get: { setPendingDelete != nil },
+                                 set: { if !$0 { setPendingDelete = nil } }),
+            titleVisibility: .visible
+        ) {
+            let count = setPendingDelete.map(Self.renderedCount) ?? 0
+            Button(count == 0 ? "Delete Set" : "Delete Set and \(count) Image\(count == 1 ? "" : "s")",
+                   role: .destructive) {
+                if let set = setPendingDelete { deleteSet(set) }
+                setPendingDelete = nil
+            }
+            Button("Cancel", role: .cancel) { setPendingDelete = nil }
+                .keyboardShortcut(.defaultAction)
+        } message: {
+            if let set = setPendingDelete {
+                let count = Self.renderedCount(set)
+                Text("\u{201C}\(Self.menuLabel(for: set))\u{201D}"
+                     + (count == 0 ? " has no renders yet." : " and its \(count) rendered image\(count == 1 ? "" : "s") will be deleted.")
+                     + " This can't be undone. Your collections aren't affected.")
+            }
         }
         .confirmationDialog(
             "Delete \u{201C}\(collectionPendingDelete?.name ?? "")\u{201D}?",
@@ -129,6 +156,18 @@ struct StyleBrowserView: View {
                 .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(DashboardDS.border, lineWidth: 1))
                 .disabled(controller.isRunning)
                 .help(controller.isRunning ? "Switch sets once the batch finishes." : "Saved sets, newest first.")
+
+                if let set = controller.selectedSet {
+                    Button { setPendingDelete = set } label: {
+                        Image(systemName: "trash").padding(.horizontal, 10)
+                    }
+                    .buttonStyle(DashboardGhostButtonStyle())
+                    .fixedSize()
+                    .disabled(controller.isRunning)
+                    .opacity(controller.isRunning ? 0.45 : 1)
+                    .help(controller.isRunning ? "Delete sets once the batch finishes."
+                                               : "Delete this set and its rendered images…")
+                }
             }
             Spacer()
             if isCreatingSet {
@@ -146,6 +185,20 @@ struct StyleBrowserView: View {
                     .buttonStyle(DashboardGhostButtonStyle())
                     .fixedSize()
             }
+        }
+    }
+
+    static func renderedCount(_ set: StyleBrowserSet) -> Int {
+        set.renders.values.filter { $0.file != nil }.count
+    }
+
+    private func deleteSet(_ set: StyleBrowserSet) {
+        do {
+            try controller.deleteSet(set.id)
+            deleteError = nil
+            if basedOn?.id == set.id { basedOn = nil; isCreatingSet = false }
+        } catch {
+            deleteError = "Couldn't delete the set: \(error.localizedDescription)"
         }
     }
 

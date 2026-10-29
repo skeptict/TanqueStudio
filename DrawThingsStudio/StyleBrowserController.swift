@@ -185,6 +185,16 @@ final class StyleBrowserController {
         return set
     }
 
+    /// Deletes a set and everything rendered into it. Refused while a batch runs,
+    /// since the batch may be writing into that very folder.
+    func deleteSet(_ id: UUID) throws {
+        guard !isRunning, let set = sets.first(where: { $0.id == id }) else { return }
+        try store.deleteSet(set)
+        sets.removeAll { $0.id == id }
+        if selectedSetID == id { selectedSetID = nil }
+        if pausedBatch?.setID == id { pausedBatch = nil; isPaused = false }
+    }
+
     func isRendered(_ style: StyleEntry, in set: StyleBrowserSet) -> Bool {
         store.isRendered(style, in: set)
     }

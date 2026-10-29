@@ -246,6 +246,46 @@ final class StyleBrowserControllerTests: XCTestCase {
         XCTAssertEqual(client.prompts.count, 2)
     }
 
+    // MARK: - Deleting a set
+
+    func testDeletingASetRemovesItsFolderAndItsEntry() async throws {
+        let (controller, set) = try makeController()
+        await controller.render(styles, inSet: set.id)?.value
+        let folder = controller.store.directory(for: set)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: folder.path))
+
+        try controller.deleteSet(set.id)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: folder.path))
+        XCTAssertTrue(controller.sets.isEmpty)
+        XCTAssertNil(controller.selectedSet)
+    }
+
+    func testDeletingOneSetLeavesTheOthersAndTheCollections() throws {
+        let (controller, first) = try makeController()
+        let second = try controller.createSet(subject: "another", config: first.config, negativePrompt: "")
+        controller.toggleFavorite(styles[0])
+
+        try controller.deleteSet(second.id)
+        XCTAssertEqual(controller.sets.map(\.id), [first.id])
+        XCTAssertEqual(controller.selectedSet?.id, first.id, "falls back to a remaining set")
+        XCTAssertTrue(controller.isFavorite(styles[0]))
+        XCTAssertEqual(StyleBrowserStore(root: tempRoot).loadSets().map(\.id), [first.id])
+    }
+
+    func testASetCannotBeDeletedWhileABatchRuns() async throws {
+        let (controller, set) = try makeController()
+        client.hangingMarker = "alpha prose"
+        let task = controller.render(styles, inSet: set.id)
+        while client.prompts.isEmpty { await Task.yield() }
+
+        try controller.deleteSet(set.id)
+        XCTAssertEqual(controller.sets.map(\.id), [set.id])
+        XCTAssertTrue(FileManager.default.fileExists(atPath: controller.store.directory(for: set).path))
+
+        controller.cancel()
+        await task?.value
+    }
+
     func testRendersPersistAcrossARelaunch() async throws {
         let (controller, set) = try makeController()
         await controller.render(styles, inSet: set.id)?.value

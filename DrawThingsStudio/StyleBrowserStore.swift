@@ -149,6 +149,14 @@ struct StyleBrowserStore {
         styles.filter { !isRendered($0, in: set) }
     }
 
+    /// Removes the set's folder — set.json, its PNGs and thumbnails. Inside the
+    /// container, so this is a real delete, not one the sandbox can quietly ignore.
+    func deleteSet(_ set: StyleBrowserSet) throws {
+        let dir = directory(for: set)
+        guard FileManager.default.fileExists(atPath: dir.path) else { return }
+        try FileManager.default.removeItem(at: dir)
+    }
+
     // MARK: - Collections
 
     private var collectionsURL: URL { root.appendingPathComponent("collections.json") }
