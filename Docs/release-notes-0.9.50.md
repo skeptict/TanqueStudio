@@ -1,4 +1,9 @@
-# Tanque Studio 0.9.50 (draft)
+# Tanque Studio 0.9.50
+
+**The Style Browser grows up.** Star styles into Favorites or collections of your own,
+queue styles while one renders, re-render a set at a new size in two clicks, and delete
+sets you're done with. Also: Generate reopens where you left it, Labs remembers where you
+were, and a Render Queue run no longer slips out of your control when you leave Labs.
 
 ## Render Queue keeps control of a run when you leave Labs
 
@@ -105,3 +110,11 @@ a set you aren't looking at.
 
 **Verified in the app:** a card clicked mid-render shows Queued · 1st and the progress line
 counts it; clicking it again removes it; Cancel returns everything to idle with nothing saved.
+
+## Notes
+
+Test suite: 500 passed, 8 skipped, 0 failures. New tests cover collections, Generate's
+saved config, set deletion, the New from this set comparison, and the queue — adding to a
+running queue, duplicates, taking a style back out, refusing another set, and Pause and
+Cancel. Still not tried by hand: pressing **Create set** from *New from this set*, and
+dragging a Style Browser preview into Draw Things.
