@@ -165,6 +165,32 @@ final class StyleLibraryTests: XCTestCase {
         XCTAssertTrue(store.url(for: render.file!, in: set).path.hasPrefix(tempRoot.path))
     }
 
+    // MARK: - New from this set
+
+    func testIdenticalSettingsShowNoChanges() {
+        let set = makeSet()
+        XCTAssertEqual(StyleBrowserView.changes(from: set.config, to: set.config), [])
+    }
+
+    /// Both sides go through the set's own adjustments, so a size Generate would
+    /// floor to the same value isn't reported as a change.
+    func testOnlyRealDifferencesAreListed() {
+        let old = makeSet().config
+        var generate = old
+        generate.width = 1024
+        generate.height = 1024
+        generate.loras = [.init(file: "x_lora.ckpt", weight: 0.5)]
+        let new = StyleBrowserSet(subject: "s", config: generate, negativePrompt: old.negativePrompt).config
+        XCTAssertEqual(StyleBrowserView.changes(from: old, to: new), ["size 960×768 → 1024×1024", "LoRAs"])
+    }
+
+    func testADifferentSeedIsListedWhenItIsNotKept() {
+        let old = makeSet(seed: 1).config
+        var new = old
+        new.seed = 2
+        XCTAssertEqual(StyleBrowserView.changes(from: old, to: new), ["seed 1 → 2"])
+    }
+
     static func pixel() -> NSImage {
         let ctx = CGContext(data: nil, width: 2, height: 2, bitsPerComponent: 8, bytesPerRow: 0,
                             space: CGColorSpace(name: CGColorSpace.sRGB)!,

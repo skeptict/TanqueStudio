@@ -21,6 +21,10 @@ struct StyleBrowserView: View {
     @State private var isCreatingSet = false
     @State private var newSubject = ""
     @State private var createError: String?
+    /// Set by "New from this set": the panel starts from that set's subject and can
+    /// keep its seed, so only what changed in Generate (a size, a model) differs.
+    @State private var basedOn: StyleBrowserSet?
+    @State private var keepSeed = true
     @State private var showLargeBatchConfirm = false
     @State private var detailStyle: StyleEntry?
     /// Naming a new collection (optionally seeded with a style), or renaming one.
@@ -127,12 +131,60 @@ struct StyleBrowserView: View {
                 .help(controller.isRunning ? "Switch sets once the batch finishes." : "Saved sets, newest first.")
             }
             Spacer()
-            if !controller.sets.isEmpty {
-                Button(isCreatingSet ? "Close" : "New set") { isCreatingSet.toggle() }
+            if isCreatingSet {
+                Button("Close") { isCreatingSet = false; basedOn = nil }
+                    .buttonStyle(DashboardGhostButtonStyle())
+                    .fixedSize()
+            } else {
+                if let set = controller.selectedSet {
+                    Button("New from this set") { beginNewSet(from: set) }
+                        .buttonStyle(DashboardGhostButtonStyle())
+                        .fixedSize()
+                        .help("Same subject, Generate's current settings — change the size or model in Generate first.")
+                }
+                Button("New set") { beginNewSet(from: nil) }
                     .buttonStyle(DashboardGhostButtonStyle())
                     .fixedSize()
             }
         }
+    }
+
+    private func beginNewSet(from set: StyleBrowserSet?) {
+        // Don't carry a subject from one source into a blank set.
+        if set != nil || basedOn != nil { newSubject = set?.subject ?? "" }
+        basedOn = set
+        keepSeed = true
+        createError = nil
+        isCreatingSet = true
+    }
+
+    /// What Create would freeze: Generate's settings, adjusted as a set adjusts them,
+    /// with the source set's seed when it's kept.
+    private var pendingConfig: DrawThingsGenerationConfig {
+        var config = generateVM.config
+        if let basedOn, keepSeed { config.seed = basedOn.seed }
+        return StyleBrowserSet(subject: "", config: config, negativePrompt: generateVM.negativePrompt).config
+    }
+
+    /// The settings that differ between two sets' configs, for the "Changes" line.
+    static func changes(from old: DrawThingsGenerationConfig, to new: DrawThingsGenerationConfig) -> [String] {
+        var out: [String] = []
+        func note<T: Equatable>(_ label: String, _ a: T, _ b: T, _ show: (T) -> String) {
+            if a != b { out.append("\(label) \(show(a)) → \(show(b))") }
+        }
+        note("model", old.model, new.model) { $0 }
+        note("size", "\(old.width)×\(old.height)", "\(new.width)×\(new.height)") { $0 }
+        note("steps", old.steps, new.steps) { "\($0)" }
+        note("sampler", old.sampler, new.sampler) { $0 }
+        note("CFG", old.guidanceScale, new.guidanceScale) { String(format: "%.1f", $0) }
+        note("shift", old.shift, new.shift) { String(format: "%.2f", $0) }
+        note("seed", old.seed, new.seed) { "\($0)" }
+        if old.loras.map({ "\($0.file)@\($0.weight)" }) != new.loras.map({ "\($0.file)@\($0.weight)" }) {
+            out.append("LoRAs")
+        }
+        if old.hiresFix != new.hiresFix { out.append("hires fix \(new.hiresFix ? "on" : "off")") }
+        if old.negativePrompt != new.negativePrompt { out.append("negative prompt") }
+        return out
     }
 
     private static func menuLabel(for set: StyleBrowserSet) -> String {
@@ -145,7 +197,8 @@ struct StyleBrowserView: View {
     private var newSetPanel: some View {
         let config = generateVM.config
         return VStack(alignment: .leading, spacing: TanqueDS.Spacing.sm) {
-            Text("NEW SET").font(TanqueDS.Font.monoSemiBold(11)).foregroundStyle(DashboardDS.muted)
+            Text(basedOn == nil ? "NEW SET" : "NEW SET FROM THIS ONE")
+                .font(TanqueDS.Font.monoSemiBold(11)).foregroundStyle(DashboardDS.muted)
             TextEditor(text: $newSubject)
                 .font(TanqueDS.Font.body)
                 .foregroundStyle(DashboardDS.text)
@@ -160,7 +213,7 @@ struct StyleBrowserView: View {
             HStack(alignment: .firstTextBaseline) {
                 Text(config.model.isEmpty
                      ? "Pick a model in Generate first — the set uses Generate's current settings."
-                     : "Uses Generate's current settings: " + Self.summary(of: config, seed: config.seed))
+                     : "Uses Generate's current settings: " + Self.summary(of: pendingConfig, seed: pendingConfig.seed))
                     .font(TanqueDS.Font.bodySmall)
                     .foregroundStyle(config.model.isEmpty ? DashboardDS.red : DashboardDS.muted2)
                 Spacer()
@@ -172,6 +225,29 @@ struct StyleBrowserView: View {
                     // The primary style has no disabled register of its own.
                     .opacity(blocked ? 0.45 : 1)
             }
+            if let basedOn, !config.model.isEmpty {
+                HStack(spacing: 6) {
+                    Toggle("", isOn: $keepSeed).toggleStyle(.dashboardCheckbox).labelsHidden()
+                    // Verbatim: a seed is an identifier, not a quantity — no "3,557,639,233".
+                    Button { keepSeed.toggle() } label: {
+                        Text(verbatim: "Keep this set's seed (\(basedOn.seed))")
+                    }
+                        .buttonStyle(.dashboardPlain)
+                        .font(TanqueDS.Font.bodySmall)
+                        .foregroundStyle(DashboardDS.muted2)
+                        .help("The same seed makes the two sets comparable style by style.")
+                }
+                let changes = Self.changes(from: basedOn.config, to: pendingConfig)
+                if changes.isEmpty {
+                    Text("Same settings as this set. Change them in Generate first, or the new set will repeat it.")
+                        .font(TanqueDS.Font.bodySmall)
+                        .foregroundStyle(DashboardDS.orange)
+                } else {
+                    Text("Changes: " + changes.joined(separator: " · "))
+                        .font(TanqueDS.Font.bodySmall)
+                        .foregroundStyle(DashboardDS.brass)
+                }
+            }
             if let createError {
                 Text(createError).font(TanqueDS.Font.bodySmall).foregroundStyle(DashboardDS.red)
             }
@@ -181,8 +257,11 @@ struct StyleBrowserView: View {
 
     private func createSet() {
         do {
-            try controller.createSet(subject: newSubject, config: generateVM.config,
+            var config = generateVM.config
+            if let basedOn, keepSeed { config.seed = basedOn.seed }
+            try controller.createSet(subject: newSubject, config: config,
                                      negativePrompt: generateVM.negativePrompt)
+            basedOn = nil
             newSubject = ""
             createError = nil
             isCreatingSet = false

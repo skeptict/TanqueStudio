@@ -60,3 +60,16 @@ render on the card underneath; the detail view's Favorite button and the card's 
 agree; the detail view's Collections button opens its list. Checked by hand by Ned: choosing a
 collection from the Collection menu and rendering it, creating, renaming and deleting
 collections, right-clicking a card, and naming a new collection in the detail view.
+
+## Style Browser: New from this set
+
+To render the same subject at a new size, or with a new model, change it in Generate and
+press **New from this set**. The new-set panel opens with the current set's subject
+already filled in, and lists exactly what will differ — for example *"size 1664×960 →
+1344×768"* — or warns when nothing does, so you don't make a duplicate by accident.
+**Keep this set's seed** is on by default, so the two sets differ only in what you changed
+and can be compared style for style. Your collections work with the new set as they are.
+
+**Verified in the app:** the panel opens prefilled, the changes line tracks Generate's
+settings, and turning the seed option off adds the seed to the changes. **Not yet tried by
+hand:** pressing Create set from this panel.
