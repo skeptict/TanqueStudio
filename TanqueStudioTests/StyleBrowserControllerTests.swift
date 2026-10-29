@@ -155,6 +155,34 @@ final class StyleBrowserControllerTests: XCTestCase {
         XCTAssertFalse(controller.isPaused)
     }
 
+    /// The view shows "pausing after …" off this flag, so it must be set while
+    /// the style in flight finishes.
+    func testPauseIsVisibleAsPendingWhileTheCurrentStyleFinishes() async throws {
+        let (controller, set) = try makeController()
+        var pendingDuringRender: Bool?
+        client.afterGenerate = { prompt in
+            if prompt.contains("alpha prose") {
+                controller.pause()
+                pendingDuringRender = controller.pauseRequested && controller.isRunning
+            }
+        }
+        await controller.render(styles, inSet: set.id)?.value
+        XCTAssertEqual(pendingDuringRender, true)
+        XCTAssertFalse(controller.pauseRequested)
+    }
+
+    func testCancelClearsAPendingPause() async throws {
+        let (controller, set) = try makeController()
+        client.hangingMarker = "alpha prose"
+        let task = controller.render(styles, inSet: set.id)
+        while client.prompts.isEmpty { await Task.yield() }
+        controller.pause()
+        controller.cancel()
+        await task?.value
+        XCTAssertFalse(controller.pauseRequested)
+        XCTAssertFalse(controller.isPaused)
+    }
+
     func testPauseStopsBetweenStylesAndResumeFinishesTheBatch() async throws {
         let (controller, set) = try makeController()
         client.afterGenerate = { prompt in
@@ -164,6 +192,7 @@ final class StyleBrowserControllerTests: XCTestCase {
 
         XCTAssertTrue(controller.isPaused)
         XCTAssertFalse(controller.isRunning)
+        XCTAssertFalse(controller.pauseRequested, "the request is spent once the pause lands")
         XCTAssertEqual(client.prompts.count, 2)
         XCTAssertEqual(controller.completed, 2)
 

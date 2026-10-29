@@ -32,7 +32,9 @@ struct StyleBrowserView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: TanqueDS.Spacing.lg) {
-                setBar
+                if !controller.sets.isEmpty {
+                    setBar
+                }
                 if isCreatingSet || controller.sets.isEmpty {
                     newSetPanel
                 }
@@ -99,7 +101,9 @@ struct StyleBrowserView: View {
     }
 
     private static func menuLabel(for set: StyleBrowserSet) -> String {
-        let snippet = set.subject.count > 48 ? String(set.subject.prefix(47)) + "…" : set.subject
+        // One line: a multi-line subject would otherwise wrap the menu button.
+        let subject = set.subject.split(whereSeparator: \.isNewline).joined(separator: " ")
+        let snippet = subject.count > 48 ? String(subject.prefix(47)) + "…" : subject
         return snippet + " · " + set.createdAt.formatted(date: .abbreviated, time: .shortened)
     }
 
@@ -125,10 +129,13 @@ struct StyleBrowserView: View {
                     .font(TanqueDS.Font.bodySmall)
                     .foregroundStyle(config.model.isEmpty ? DashboardDS.red : DashboardDS.muted2)
                 Spacer()
+                let blocked = newSubject.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                    || config.model.isEmpty
                 Button("Create set") { createSet() }
                     .buttonStyle(DashboardPrimaryButtonStyle())
-                    .disabled(newSubject.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                              || config.model.isEmpty)
+                    .disabled(blocked)
+                    // The primary style has no disabled register of its own.
+                    .opacity(blocked ? 0.45 : 1)
             }
             if let createError {
                 Text(createError).font(TanqueDS.Font.bodySmall).foregroundStyle(DashboardDS.red)
@@ -245,13 +252,16 @@ struct StyleBrowserView: View {
                 if let progress = progressLine {
                     Text(progress)
                         .font(TanqueDS.Font.mono(10.5))
-                        .foregroundStyle(controller.isPaused ? DashboardDS.brass : DashboardDS.muted)
+                        .foregroundStyle(controller.isPaused || controller.pauseRequested
+                                         ? DashboardDS.brass : DashboardDS.muted)
                         .lineLimit(1)
                 }
                 if controller.isRunning {
                     Button("Pause") { controller.pause() }
                         .buttonStyle(DashboardGhostButtonStyle())
                         .fixedSize()
+                        .disabled(controller.pauseRequested)
+                        .opacity(controller.pauseRequested ? 0.45 : 1)
                         .help("Stops starting new styles. The one rendering now finishes first.")
                     Button("Cancel") { controller.cancel() }
                         .buttonStyle(DashboardGhostButtonStyle())
@@ -270,6 +280,7 @@ struct StyleBrowserView: View {
                     }
                     .buttonStyle(DashboardPrimaryButtonStyle())
                     .disabled(count == 0)
+                    .opacity(count == 0 ? 0.45 : 1)
                     .help("Renders every unrendered style in the current filter, in library order.")
                 }
             }
@@ -283,7 +294,9 @@ struct StyleBrowserView: View {
         guard controller.isRunning || controller.isPaused, controller.total > 0 else { return nil }
         var line = "\(controller.completed) / \(controller.total)"
         if controller.isPaused { line += " · paused" }
-        else if let current = controller.currentStyle { line += " · \(current.name)" }
+        else if controller.pauseRequested, let current = controller.currentStyle {
+            line += " · pausing after \(current.name)"
+        } else if let current = controller.currentStyle { line += " · \(current.name)" }
         return line
     }
 
@@ -312,7 +325,9 @@ struct StyleBrowserView: View {
                     .font(TanqueDS.Font.bodySmall)
                     .foregroundStyle(DashboardDS.muted)
             } else {
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 170, maximum: 260), spacing: 14)],
+                // Top-aligned: a two-line style name would otherwise push its
+                // row-mates' thumbnails down to centre them.
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 170, maximum: 260), spacing: 14, alignment: .top)],
                           alignment: .leading, spacing: 16) {
                     ForEach(styles) { style in
                         StyleCard(style: style,
@@ -488,6 +503,9 @@ private struct StyleDetailSheet: View {
                 DashboardDS.surf2
                 if let image {
                     Image(nsImage: image).resizable().scaledToFit()
+                        // The PNG itself, metadata and all, so it drops straight into Draw Things.
+                        .onDrag { imageURL.flatMap { NSItemProvider(contentsOf: $0) } ?? NSItemProvider() }
+                        .help("Drag into Draw Things — the file carries its prompt and settings.")
                 } else if isRendering {
                     ProgressView().controlSize(.small)
                 }

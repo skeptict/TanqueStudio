@@ -60,7 +60,9 @@ final class StyleBrowserController {
     let store: StyleBrowserStore
     @ObservationIgnored private let makeClient: () -> any DrawThingsProvider
     @ObservationIgnored private var runTask: Task<Void, Never>?
-    @ObservationIgnored private var pauseRequested = false
+    /// Pause was pressed; the style in flight finishes first. Observed so the
+    /// view can say so — otherwise the press looks like it did nothing.
+    private(set) var pauseRequested = false
     /// Bumped per batch. A cancelled request can take a moment to come back; its
     /// loop must not then mark a batch started in the meantime as finished.
     @ObservationIgnored private var generation = 0
@@ -143,6 +145,7 @@ final class StyleBrowserController {
             for (index, style) in todo.enumerated() {
                 if Task.isCancelled || self.generation != batch { break }
                 if self.pauseRequested {
+                    self.pauseRequested = false
                     self.isPaused = true
                     self.pausedBatch = (setID, Array(todo[index...]))
                     break
@@ -172,6 +175,7 @@ final class StyleBrowserController {
             if self.generation == batch {
                 self.isRunning = false
                 self.currentStyle = nil
+                self.pauseRequested = false
             }
         }
         runTask = task
@@ -197,7 +201,7 @@ final class StyleBrowserController {
     func cancel() {
         runTask?.cancel()
         generation += 1
-        pauseRequested = true
+        pauseRequested = false
         pausedBatch = nil
         isRunning = false
         isPaused = false
