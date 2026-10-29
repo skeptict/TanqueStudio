@@ -83,3 +83,9 @@ renders. Deleting is unavailable while a batch is running.
 
 **Verified in the app:** the confirmation, its count and its Cancel default; Ned deleted a
 real set with it, and the Style Browser moved on to the next one.
+
+## Outlined buttons get breathing room
+
+Compact outlined buttons — **New set**, Render Queue's **Reset** and **Clear All**, and
+others — drew their outline right against the letters. They now have space on both sides,
+and the space is clickable.
