@@ -7,9 +7,8 @@
 //  the rest. Modeled on RenderQueueController.
 //
 //  Owned by DashboardRootView, not the Labs tab, so a batch keeps running — and
-//  stays controllable — after the user leaves Labs. (RenderQueueController is
-//  owned by its view: leave mid-run and the run carries on with no way back to
-//  its Pause or Stop.)
+//  stays controllable — after the user leaves Labs. RenderQueueController is
+//  owned the same way, for the same reason.
 //
 
 import Foundation

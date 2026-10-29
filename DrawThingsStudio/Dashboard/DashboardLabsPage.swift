@@ -16,6 +16,8 @@ struct DashboardLabsPage: View {
     /// Owned by DashboardRootView: this page is rebuilt every time Labs is
     /// entered, and a style batch has to outlive that.
     let styleBrowser: StyleBrowserController
+    /// Root-owned for the same reason.
+    let renderQueue: RenderQueueController
     @State private var selectedTab: LabsTab = .storyFlow
     /// Owned here rather than passed in, so the open project folder and any unsaved cast edits
     /// survive a switch to another Labs tab and back.
@@ -68,7 +70,7 @@ struct DashboardLabsPage: View {
                     StoryStudioView(generateVM: generateVM,
                                     onNavigateToGenerate: onNavigateToGenerate)
                 case .renderQueue:
-                    RenderQueueView()
+                    RenderQueueView(controller: renderQueue)
                 case .styleBrowser:
                     StyleBrowserView(controller: styleBrowser,
                                      generateVM: generateVM,

@@ -52,6 +52,7 @@ struct DashboardRootView: View {
     /// Here rather than in Labs, which `.id(mode)` rebuilds on every visit: a
     /// running style batch keeps going, and stays controllable, after leaving.
     @State private var styleBrowser = StyleBrowserController()
+    @State private var renderQueue = RenderQueueController()
     // Deliberately nil until .task below: DTProjectBrowserViewModel's init()
     // synchronously enumerates + stats every bookmarked project folder
     // (DTProjectBrowserViewModel.swift's restoreBookmarks() -> reloadAllProjects()).
@@ -175,7 +176,8 @@ struct DashboardRootView: View {
             DashboardLabsPage(storyFlowVM: storyFlowVM,
                               generateVM: generateVM,
                               onNavigateToGenerate: { navigate(to: .focus) },
-                              styleBrowser: styleBrowser)
+                              styleBrowser: styleBrowser,
+                              renderQueue: renderQueue)
         case .settings:
             SettingsView()
         }
