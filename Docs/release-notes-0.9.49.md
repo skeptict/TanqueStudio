@@ -79,6 +79,12 @@ and isn't affected.)
 
 ## Notes
 
+**A stray developer file no longer ships.** Releases since 0.9.19 bundled
+`settings.local.json`, the permission list of the coding assistant used to build the
+app, inside `Contents/Resources`. It held no credentials or keys — only local file
+paths, command lines and old commit messages — and the app never read it. It's now
+excluded from the build.
+
 Test suite: 474 passed, 8 skipped, 0 failures. New tests cover the style library (414 entries, ten
 sections, the prompt template, unique filenames), on-disk sets, and the render
 controller — ordering, skipping finished styles, per-style failures, pause, resume,

@@ -39,6 +39,7 @@
 		9B836F329E3742158B8EECB5 /* Exceptions for "DrawThingsStudio" folder in "TanqueStudio" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
+				".claude/settings.local.json",
 				"Resources/LLMOperations/01-enhance-details-flair.md",
 				"Resources/LLMOperations/02-make-photorealistic.md",
 				"Resources/LLMOperations/03-cinematic-style.md",
