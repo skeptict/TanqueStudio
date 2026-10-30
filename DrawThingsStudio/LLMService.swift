@@ -209,9 +209,15 @@ struct LLMService {
         return parts
     }
 
-    private static func normalizedURL(_ base: String, path: String, provider: LLMProvider) -> String {
+    static func normalizedURL(_ base: String, path: String, provider: LLMProvider) -> String {
         var trimmed = base.trimmingCharacters(in: .whitespacesAndNewlines)
         trimmed = trimmed.hasSuffix("/") ? String(trimmed.dropLast()) : trimmed
+        // Servers commonly document their base URL with the API version on it
+        // (`http://127.0.0.1:3939/v1`), but every path here already starts with
+        // `v1/`. Without this a pasted base URL requests `/v1/v1/…` and 404s.
+        if trimmed.lowercased().hasSuffix("/v1") {
+            trimmed = String(trimmed.dropLast(3))
+        }
 
         let hadScheme = trimmed.contains("://")
 

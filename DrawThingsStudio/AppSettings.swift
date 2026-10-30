@@ -48,6 +48,10 @@ final class AppSettings {
     var llmSeededOperationFiles: [String] {
         didSet { UserDefaults.standard.set(llmSeededOperationFiles, forKey: "tanqueStudio.llmSeededOperationFiles") }
     }
+    /// Prompt Composer library files already seeded — same per-file record as above.
+    var promptFragmentSeededFiles: [String] {
+        didSet { UserDefaults.standard.set(promptFragmentSeededFiles, forKey: "tanqueStudio.promptFragmentSeededFiles") }
+    }
     /// Last cast-and-staging project folder — the one holding `bible.json` + `configs.json`.
     /// Reopened on launch so the pane comes back to the project you were authoring.
     var castProjectFolder: String {
@@ -189,6 +193,7 @@ final class AppSettings {
         llmOperationsFolder         = d.string(forKey: "tanqueStudio.llmOperationsFolder") ?? ""
         llmOperationsFolderBookmark = d.data(forKey: "tanqueStudio.llmOperationsFolderBookmark")
         llmSeededOperationFiles     = d.stringArray(forKey: "tanqueStudio.llmSeededOperationFiles") ?? []
+        promptFragmentSeededFiles   = d.stringArray(forKey: "tanqueStudio.promptFragmentSeededFiles") ?? []
         castProjectFolder           = d.string(forKey: "tanqueStudio.castProjectFolder") ?? ""
         castProjectFolderBookmark   = d.data(forKey: "tanqueStudio.castProjectFolderBookmark")
         castProjectParentFolder     = d.string(forKey: "tanqueStudio.castProjectParentFolder") ?? ""

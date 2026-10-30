@@ -10,6 +10,7 @@ The Generate pane is a four-column workspace: **config panel** (left), **canvas*
 ## Left panel — config
 
 - **Prompt / Negative prompt** — the sparkles button in the prompt's corner runs an LLM Assist operation on it (requires an LLM provider in Settings).
+- **Compose** — builds the prompt from sections (subject, lighting, style, what to avoid…), each with a **Library** menu of stock options. **Tags** joins them with commas, for SD 1.5 and SDXL; **Prose** has your LLM write them as sentences, for FLUX, Z Image, Qwen, Krea and video models. **Auto** picks one from the selected model. Sections marked negative build the negative prompt. **Apply** replaces the prompt rather than adding to it, and asks first if you've edited it since. The option lists are Markdown files you can edit — **Library → Open Library Folder**.
 - **Model** — type a filename or use the chevron to open the search-first picker. The refresh arrow appears when the list is empty (see *Connecting to Draw Things*).
 - **Sampler, Steps, CFG, Size, Seed** — the core parameters. The dice button rolls a new seed; **Randomize each run** rolls one automatically before every generation.
 - **Renders** — number of images per run (a batch). Each image gets its own derived seed, matching Draw Things' per-image seed derivation exactly.
