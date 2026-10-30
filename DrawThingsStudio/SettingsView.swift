@@ -248,11 +248,11 @@ struct SettingsView: View {
 
                         Rectangle().fill(DashboardDS.border).frame(height: 1)
 
-                        SecureField("API Key (required for Jan)", text: $settings.llmAPIKey)
+                        SecureField("API key or token (Jan, Msty Nexus)", text: $settings.llmAPIKey)
                             .textFieldStyle(.plain)
                             .font(TanqueDS.Font.body)
                             .foregroundStyle(DashboardDS.text)
-                            .help("API key sent as Bearer token. Required for Jan.")
+                            .help("Sent as a Bearer token. Required by Jan and by Msty Nexus, which issues its own local tokens.")
                             .padding(.horizontal, TanqueDS.Spacing.md)
                             .padding(.vertical, TanqueDS.Spacing.sm)
                             .background(DashboardDS.surf1)
