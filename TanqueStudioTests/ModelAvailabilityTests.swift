@@ -61,4 +61,21 @@ final class ModelAvailabilityTests: XCTestCase {
         // …and yet it renders. The check reports; it must never be the thing that
         // decides whether a render is attempted.
     }
+
+    // MARK: - The notice
+
+    func testTheNoticeNamesTheModelAndWhatTheOutputsWouldBeLabelled() {
+        let one = ModelAvailability.unlistedWarning(for: ["krea_2_turbo_q8p.ckpt"], outputs: "these renders")
+        XCTAssertTrue(one.hasPrefix("Model “krea_2_turbo_q8p.ckpt” isn't in Draw Things' model list."))
+        XCTAssertTrue(one.contains("these renders are saved labelled with a model that was never used"))
+    }
+
+    func testTheNoticeListsSeveralModels() {
+        let two = ModelAvailability.unlistedWarning(for: ["a.ckpt", "b.ckpt"], outputs: "these variants")
+        XCTAssertTrue(two.hasPrefix("Models “a.ckpt”, “b.ckpt” aren't"))
+    }
+
+    func testNoModelsMeansNoNotice() {
+        XCTAssertEqual(ModelAvailability.unlistedWarning(for: [], outputs: "these renders"), "")
+    }
 }

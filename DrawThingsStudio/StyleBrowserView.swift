@@ -582,6 +582,12 @@ struct StyleBrowserView: View {
             if let refusal = controller.refusal {
                 Text(refusal).font(TanqueDS.Font.bodySmall).foregroundStyle(DashboardDS.red)
             }
+            if let warning = controller.modelWarning, controller.modelWarningSetID == set.id {
+                Text(warning)
+                    .font(TanqueDS.Font.bodySmall)
+                    .foregroundStyle(DashboardDS.orange)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
     }
 

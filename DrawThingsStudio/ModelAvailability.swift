@@ -22,9 +22,11 @@ import Foundation
 /// from Generate one panel over (`1bbf577`). Don't reintroduce one without a way to
 /// ask Draw Things what it can actually serve.
 ///
-/// This lives on its own rather than inside a feature's file because four surfaces
-/// ask the question — Generate, inpaint, the metadata applier, the Render Queue —
-/// and each inline copy had to independently remember the empty-list rule below.
+/// This lives on its own rather than inside a feature's file because every surface
+/// that renders asks the question — Generate, inpaint, the metadata applier, the
+/// Render Queue, and since 2026-10-30 StoryFlow and Story Studio (through
+/// `StoryFlowEngine`) and the Style Browser — and each inline copy had to
+/// independently remember the empty-list rule below.
 enum ModelAvailability {
 
     /// ⚠️ **An empty `known` means the inventory could not be fetched, not that
@@ -40,5 +42,20 @@ enum ModelAvailability {
         let name = model.trimmingCharacters(in: .whitespaces)
         guard !name.isEmpty else { return true }
         return known.contains { $0.filename == name || $0.name == name }
+    }
+
+    /// The notice for a surface that renders with a model Draw Things doesn't list.
+    /// Names the models, because the whole failure is not knowing which one Draw Things
+    /// quietly swapped out, and says what *may* be wrong rather than asserting a failure
+    /// that Bridge Mode often avoids — the same rule as the Render Queue's notice.
+    ///
+    /// - Parameter outputs: what this surface saves, in the plural ("these renders").
+    static func unlistedWarning(for models: [String], outputs: String) -> String {
+        guard !models.isEmpty else { return "" }
+        let names = models.map { "“\($0)”" }.joined(separator: ", ")
+        let subject = models.count == 1 ? "Model \(names) isn't" : "Models \(names) aren't"
+        return "\(subject) in Draw Things' model list. Bridge Mode may still fetch it — but if it "
+             + "can't, Draw Things renders with a different model and says nothing, and \(outputs) "
+             + "are saved labelled with a model that was never used."
     }
 }

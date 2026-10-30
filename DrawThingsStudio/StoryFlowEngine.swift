@@ -87,6 +87,16 @@ final class StoryFlowEngine {
     /// completion line can say so — a run that produced nothing must not report a clean "✓".
     private var emptyRenderCount = 0
 
+    /// Models this run rendered with that Draw Things' model list doesn't include, in
+    /// first-seen order. Observed, so the StoryFlow and Story Studio panels can show a
+    /// notice: a line in a step log behind a disclosure is not a warning anyone reads.
+    /// Never stops the run — absence means "cannot confirm", see `ModelAvailability`.
+    private(set) var unconfirmedModels: [String] = []
+
+    /// Draw Things' model list, fetched once per run at its first render. Nil until
+    /// then; empty when the fetch failed, which `ModelAvailability` treats as "don't warn".
+    private var knownModels: [DrawThingsModel]?
+
     /// Set by the endLoop handler to cause the run loop to jump to a specific index.
     private var jumpToIndex: Int? = nil
 
@@ -178,6 +188,9 @@ final class StoryFlowEngine {
         viewportPosition = .zero
         viewportScale = 1.0
         activeMoodboard = []
+        emptyRenderCount = 0
+        unconfirmedModels = []
+        knownModels = nil
         submitApproval("")   // clear any approval left pending by a previous run
         currentStepIndex = 0
         totalSteps = workflow.steps.count
@@ -223,13 +236,19 @@ final class StoryFlowEngine {
                 if Task.isCancelled {
                     runState = .cancelled
                     log("⏹ Cancelled")
-                } else if emptyRenderCount > 0 {
+                } else if emptyRenderCount > 0 || !unconfirmedModels.isEmpty {
                     // Every step ran, so this is not a failure — but "✓ Completed" over a run
                     // that rendered nothing is the kind of green light this whole project exists
                     // to stop giving.
                     runState = .completed
-                    log("⚠ Completed, but \(emptyRenderCount) render\(emptyRenderCount == 1 ? "" : "s") "
-                      + "produced no image. \(DrawThingsDiagnostics.noImageReturned)")
+                    if emptyRenderCount > 0 {
+                        log("⚠ Completed, but \(emptyRenderCount) render\(emptyRenderCount == 1 ? "" : "s") "
+                          + "produced no image. \(DrawThingsDiagnostics.noImageReturned)")
+                    }
+                    if !unconfirmedModels.isEmpty {
+                        log("⚠ Completed. "
+                          + ModelAvailability.unlistedWarning(for: unconfirmedModels, outputs: "these renders"))
+                    }
                 } else {
                     runState = .completed
                     log("✓ Completed")
@@ -868,6 +887,19 @@ final class StoryFlowEngine {
     /// (`min(boundingBox, max)` each), so despite the name this is not an
     /// aspect-preserving scale — a 2000×500 canvas under a 1664 box becomes
     /// 1664×500, not 1664×416. DT then resets zoom and pan, so we do too.
+    /// Warns, once per model per run, when Draw Things' list doesn't include the model
+    /// about to render. Draw Things doesn't fail on a model it can't serve — it renders
+    /// with another one, and the result is saved under the name we asked for.
+    private func checkModelIsListed(_ model: String, client: DrawThingsGRPCClient) async {
+        if knownModels == nil {
+            knownModels = (try? await client.fetchModels()) ?? []
+        }
+        guard let knownModels, !ModelAvailability.isAvailable(model, in: knownModels),
+              !unconfirmedModels.contains(model) else { return }
+        unconfirmedModels.append(model)
+        log("  ⚠ " + ModelAvailability.unlistedWarning(for: [model], outputs: "these renders"))
+    }
+
     private func executeAdaptSize(step: WorkflowStep) {
         guard let obj = Self.passthroughObject(step.parameters["rawValueJSON"] ?? ""),
               let maxW = Self.numberValue(obj["maxWidth"]),
@@ -1099,6 +1131,7 @@ final class StoryFlowEngine {
             log("  ⚠ No model set in config — Draw Things will render with nothing loaded and likely return raw noise. Set \"model\" in the project's Base Config JSON (or the scene's config override).")
         } else {
             log("  Generating… model: \(cfg.model)")
+            await checkModelIsListed(cfg.model, client: grpcClient)
         }
 
         // Generate

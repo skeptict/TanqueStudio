@@ -61,6 +61,15 @@ struct StoryFlowOutputPanel: View {
                                     icon: "exclamationmark.triangle.fill")
                     }
 
+                    // Draw Things renders with another model, silently, when it can't
+                    // serve the one asked for — so say so where it can't be missed.
+                    if !vm.engine.unconfirmedModels.isEmpty {
+                        stateBanner(
+                            text: ModelAvailability.unlistedWarning(
+                                for: vm.engine.unconfirmedModels, outputs: "these renders"),
+                            color: DashboardDS.orange, icon: "exclamationmark.triangle.fill")
+                    }
+
                     // Generated images grid
                     if !vm.engine.stepResults.isEmpty {
                         resultsGrid

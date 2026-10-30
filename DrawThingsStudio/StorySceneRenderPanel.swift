@@ -288,6 +288,16 @@ struct StorySceneRenderPanel: View {
                 EmptyView()
             }
 
+            // Draw Things renders with another model, silently, when it can't serve
+            // the one asked for — and the variant would be saved under this name.
+            if !controller.engine.unconfirmedModels.isEmpty {
+                Text(ModelAvailability.unlistedWarning(
+                    for: controller.engine.unconfirmedModels, outputs: "these variants"))
+                    .font(TanqueDS.Font.bodySmall)
+                    .foregroundStyle(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
             DisclosureGroup(isExpanded: $showDebugLog) {
                 ScrollView {
                     Text(debugLogText)

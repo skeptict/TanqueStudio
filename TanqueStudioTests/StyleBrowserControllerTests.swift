@@ -20,7 +20,9 @@ final class StyleBrowserControllerTests: XCTestCase {
         var afterGenerate: ((String) -> Void)?
 
         func checkConnection() async -> Bool { true }
-        func fetchModels() async throws -> [DrawThingsModel] { [] }
+        /// Draw Things' model list. Empty means the fetch "failed", which must not warn.
+        var models: [DrawThingsModel] = []
+        func fetchModels() async throws -> [DrawThingsModel] { models }
         func fetchLoRAs() async throws -> [DrawThingsLoRA] { [] }
 
         func generateImage(
@@ -101,6 +103,34 @@ final class StyleBrowserControllerTests: XCTestCase {
         XCTAssertEqual(client.configs.map(\.batchCount), [1, 1, 1, 1])
         XCTAssertEqual(client.configs.map(\.batchSize), [1, 1, 1, 1])
         XCTAssertTrue(client.sourceImages.allSatisfy { $0 == nil })
+    }
+
+    // MARK: - Model not in Draw Things' list
+
+    func testAModelMissingFromTheListWarnsButStillRenders() async throws {
+        client.models = [DrawThingsModel(filename: "some_other_model.ckpt")]
+        let (controller, set) = try makeController(model: "test_image_model.ckpt")
+        await controller.render(styles, inSet: set.id)?.value
+
+        let warning = try XCTUnwrap(controller.modelWarning)
+        XCTAssertTrue(warning.contains("test_image_model.ckpt"))
+        XCTAssertEqual(controller.modelWarningSetID, set.id)
+        XCTAssertEqual(client.prompts.count, 4, "a warning, never a refusal")
+        XCTAssertNil(controller.refusal)
+    }
+
+    func testAListedModelDoesNotWarn() async throws {
+        client.models = [DrawThingsModel(filename: "test_image_model.ckpt")]
+        let (controller, set) = try makeController(model: "test_image_model.ckpt")
+        await controller.render(styles, inSet: set.id)?.value
+        XCTAssertNil(controller.modelWarning)
+    }
+
+    func testAnUnreadableListDoesNotWarn() async throws {
+        client.models = []
+        let (controller, set) = try makeController()
+        await controller.render(styles, inSet: set.id)?.value
+        XCTAssertNil(controller.modelWarning)
     }
 
     func testARandomSeedIsResolvedOnceAndSharedByTheWholeSet() async throws {

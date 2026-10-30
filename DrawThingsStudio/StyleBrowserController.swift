@@ -66,6 +66,11 @@ final class StyleBrowserController {
     private(set) var total = 0
     /// The last batch the controller refused to start, for the view to show.
     var refusal: String?
+    /// Set when the running set's model isn't in Draw Things' list. A warning, not a
+    /// refusal: Bridge Mode renders models that aren't on disk. See `ModelAvailability`.
+    private(set) var modelWarning: String?
+    /// The set `modelWarning` is about, so the view shows it only on that set.
+    private(set) var modelWarningSetID: UUID?
 
     /// Successful renders this session, for the "about N minutes" estimate.
     private(set) var renderCount = 0
@@ -285,6 +290,12 @@ final class StyleBrowserController {
         let task = Task { [weak self] in
             guard let self else { return }
             let client = self.makeClient()
+            // Once per batch. A failed fetch leaves the list empty, which doesn't warn.
+            let known = (try? await client.fetchModels()) ?? []
+            self.modelWarningSetID = setID
+            self.modelWarning = ModelAvailability.isAvailable(config.model, in: known)
+                ? nil
+                : ModelAvailability.unlistedWarning(for: [config.model], outputs: "these previews")
 
             while !self.queue.isEmpty {
                 if Task.isCancelled || self.generation != batch { break }

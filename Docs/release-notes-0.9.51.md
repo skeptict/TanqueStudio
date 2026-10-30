@@ -70,7 +70,30 @@ says what actually happens.
 **Verified in the app:** on a rendered card, Show in Finder opened the set's `images` folder
 with that style's PNG selected.
 
+## Warnings when Draw Things may not have your model
+
+Ask Draw Things for a model it can't provide and it doesn't refuse. It renders with a
+different model and says nothing, and the result is saved labelled with the model you asked
+for. Generate, inpainting and the Render Queue already warned about this. StoryFlow, Story
+Studio and the Style Browser now do too.
+
+- **StoryFlow** logs a warning the first time a run uses a model missing from Draw Things'
+  list, and shows an orange notice above the results. A run that finishes with such a model
+  ends "Completed" with the warning rather than "Run complete".
+- **Story Studio** shows the same notice under the render progress.
+- **The Style Browser** shows it under a set's render controls.
+
+These are warnings, not refusals. Draw Things' list covers only the files on its own disk, and
+Bridge Mode can still fetch a model that isn't there. If the list can't be read at all, nothing
+is shown.
+
+Also fixed: StoryFlow's warning about renders that came back empty used to carry over into
+every later run, even ones where nothing went wrong.
+
 ## Notes
 
-Test suite: 523 passed, 8 skipped, 0 failures. New tests cover the Composer's prompt
-assembly and its library files, and the `/v1` address handling.
+Test suite: 529 passed, 8 skipped, 0 failures. New tests cover the Composer's prompt
+assembly and its library files, the `/v1` address handling, and the model warnings.
+
+**Not yet tried in the app:** the model warnings. They are covered by tests, but nobody has
+yet run a render with a model missing from Draw Things' list to see the notices.
