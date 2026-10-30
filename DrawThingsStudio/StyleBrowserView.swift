@@ -838,9 +838,10 @@ private struct StyleDetailSheet: View {
                 DashboardDS.surf2
                 if let image {
                     Image(nsImage: image).resizable().scaledToFit()
-                        // The PNG itself, metadata and all, so it drops straight into Draw Things.
+                        // The PNG itself. Draw Things' canvas takes only the image from a drop;
+                        // it reads the embedded settings only through Select From Files.
                         .onDrag { imageURL.flatMap { NSItemProvider(contentsOf: $0) } ?? NSItemProvider() }
-                        .help("Drag into Draw Things — the file carries its prompt and settings.")
+                        .help("Drag onto Draw Things' canvas to use the image. To load its settings too, use Show in Finder and open the file in Draw Things with Select From Files.")
                 } else if isRendering {
                     ProgressView().controlSize(.small)
                 }
@@ -892,6 +893,16 @@ private struct StyleDetailSheet: View {
                     }
                     .buttonStyle(DashboardGhostButtonStyle())
                 }
+                // The renders sit in UUID-named folders inside the app's container, which
+                // nobody can find by hand from Draw Things' Select From Files panel.
+                Button("Show in Finder") {
+                    if let url = imageURL {
+                        NSWorkspace.shared.selectFile(url.path, inFileViewerRootedAtPath: "")
+                    }
+                }
+                .buttonStyle(DashboardGhostButtonStyle())
+                .disabled(imageURL == nil)
+                .help("Show the PNG in Finder. To load its prompt and settings in Draw Things, open it there with Select From Files.")
                 HStack(spacing: TanqueDS.Spacing.sm) {
                     Button(isRendering ? "Rendering…" : "Re-render") {
                         controller.render([style], inSet: set.id, force: true)
