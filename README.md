@@ -146,6 +146,17 @@ Batch rendering across a matrix of prompts, models, LoRAs, and settings — the 
 - Run, pause between jobs, and resume; a job that fails (unknown model, a server hiccup) never aborts the ones after it
 - Every job's config and prompt are captured as a full standalone snapshot, so a row stays reproducible even after the axes that produced it change
 
+### Style Browser (Labs)
+
+A library of 414 art-style prompts across ten traditions (Photography, 3D Render, Anime, Painting, Drawing, Comics, Cover Art, Cartoon, Digital Painting, Design), shown as a grid of preview cards rendered with *your* subject — a native take on [clio-style-preview](https://github.com/lumenastrum/clio-style-preview), whose web gallery uses a single fixed subject.
+
+- A **set** is one subject, rendered with a snapshot of the Generate session's model and settings and one shared seed, so the previews compare like for like. New subject or new settings → new set; old sets stay browsable
+- Describe the subject only — no "photo of" or "oil painting of". Every style brings its own medium
+- Render one card, a filtered section, or the whole library; pause, resume, or cancel; a style that fails never stops the rest. A batch keeps running if you leave Labs
+- Each preview is a PNG with its prompt and config embedded in Draw Things' own format. Dragging it onto Draw Things' canvas brings in the image only; to load its settings too, open it in Draw Things with **Select From Files**. Copy the style or the full prompt, re-render, or **Send to Generate** to carry the prompt, model, size and seed to the Focus Room
+- Previews live in the app's own Application Support folder — they never appear in Recent Generations or the filmstrip
+- Star styles into **Favorites** or your own named **collections**, then filter the grid to one and render just that
+
 ---
 
 ### Settings
@@ -255,6 +266,13 @@ DrawThingsStudio/
 │   ├── RenderQueueExpander.swift      # Pure matrix → job-list expansion (axes × base config/prompt)
 │   ├── RenderQueueController.swift    # Runs pending jobs, one direct render call per job
 │   └── RenderQueueView.swift          # Base config, axis editor, job list (prune/reorder/pause/run)
+│
+├── Style Browser (Labs)
+│   ├── Resources/StyleLibrary/clio-styles.json  # Upstream styles.json, unmodified (414 styles)
+│   ├── StyleLibrary.swift             # Library loading, sections, prompt template, filenames
+│   ├── StyleBrowserStore.swift        # Sets on disk: set.json, images/, thumbs/
+│   ├── StyleBrowserController.swift   # Sequential per-style renders, pause/resume/cancel
+│   └── StyleBrowserView.swift         # Set bar, filters, card grid, detail sheet
 │
 ├── Settings
 │   └── SettingsView.swift
@@ -402,6 +420,8 @@ Story Studio adds `StoryProject` / `StoryCharacter` / `StorySetting` / `StoryCha
 - [Draw Things](https://drawthings.ai) by Liu Liu
 - [DT-gRPC-Swift-Client](https://github.com/euphoriacyberware-ai/DT-gRPC-Swift-Client) — Swift gRPC client library for Draw Things
 - [dtm](https://github.com/kcjerrell/dtm) by KC Jerrell — FlatBuffer schemas and database parsing approach that informed the DT Project Browser; its clip playback design (decode once, blit one frame per display tick, index derived from elapsed time); and its `.mp4` export, which is where the audio-tensor layout, the AAC and BT.709 choices, and embedding the generation config in the exported file all come from. dtm reaches those through `ffmpeg` and Tanque Studio uses AVFoundation, so no code is shared — what was borrowed is the knowledge of what to do
+- The Style Browser's library of 414 style prompts was compiled by u/Dear-Spend-2865 and is used with credit as requested
+- [clio-style-preview](https://github.com/lumenastrum/clio-style-preview) by lumenastrum (MIT) — the curated `styles.json`, its prompt template, and the idea of a style gallery rendered from it
 
 ## License
 

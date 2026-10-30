@@ -13,16 +13,24 @@ struct DashboardLabsPage: View {
     /// Switch the app to the Focus Room. Story Studio calls this immediately
     /// after populating `generateVM`.
     let onNavigateToGenerate: () -> Void
-    @State private var selectedTab: LabsTab = .storyFlow
+    /// Owned by DashboardRootView: this page is rebuilt every time Labs is
+    /// entered, and a style batch has to outlive that.
+    let styleBrowser: StyleBrowserController
+    /// Root-owned for the same reason.
+    let renderQueue: RenderQueueController
+    /// Held by DashboardRootView so Labs reopens on the tab it was left on —
+    /// this page itself is rebuilt on every visit.
+    @Binding var selectedTab: LabsTab
     /// Owned here rather than passed in, so the open project folder and any unsaved cast edits
     /// survive a switch to another Labs tab and back.
     @State private var castVM = StoryFlowCastViewModel()
 
-    private enum LabsTab: String, CaseIterable {
+    enum LabsTab: String, CaseIterable {
         case storyFlow = "StoryFlow"
         case castStaging = "Cast & Staging"
         case storyStudio = "Story Studio"
         case renderQueue = "Render Queue"
+        case styleBrowser = "Style Browser"
     }
 
     var body: some View {
@@ -64,7 +72,11 @@ struct DashboardLabsPage: View {
                     StoryStudioView(generateVM: generateVM,
                                     onNavigateToGenerate: onNavigateToGenerate)
                 case .renderQueue:
-                    RenderQueueView()
+                    RenderQueueView(controller: renderQueue)
+                case .styleBrowser:
+                    StyleBrowserView(controller: styleBrowser,
+                                     generateVM: generateVM,
+                                     onNavigateToGenerate: onNavigateToGenerate)
                 }
             }
         }
@@ -75,12 +87,17 @@ struct DashboardLabsPage: View {
         HStack(spacing: 2) {
             ForEach(LabsTab.allCases, id: \.self) { tab in
                 let active = tab == selectedTab
-                Button(tab.rawValue) { selectedTab = tab }
-                    .buttonStyle(.plain)
-                    .font(TanqueDS.Font.mono(11))
-                    .foregroundStyle(active ? DashboardDS.onBrass : DashboardDS.muted2)
-                    .padding(.horizontal, 14).padding(.vertical, 6)
-                    .background(active ? DashboardDS.brass : .clear, in: RoundedRectangle(cornerRadius: 6))
+                // Padding and fill live inside the label: applied to the Button
+                // itself they sat outside its hit area, so only the text responded.
+                Button { selectedTab = tab } label: {
+                    Text(tab.rawValue)
+                        .padding(.horizontal, 14).padding(.vertical, 6)
+                        .background(active ? DashboardDS.brass : .clear, in: RoundedRectangle(cornerRadius: 6))
+                        .contentShape(RoundedRectangle(cornerRadius: 6))
+                }
+                .buttonStyle(.plain)
+                .font(TanqueDS.Font.mono(11))
+                .foregroundStyle(active ? DashboardDS.onBrass : DashboardDS.muted2)
             }
         }
         .padding(4)

@@ -247,6 +247,8 @@ struct FocusRoomView: View {
                 .frame(width: 30, height: 26)
                 .background(vm.canvasMode == mode ? DashboardDS.brass.opacity(0.85) : Color.clear,
                             in: RoundedRectangle(cornerRadius: 6))
+                // Inactive buttons paint Color.clear, which isn't hit-testable.
+                .contentShape(RoundedRectangle(cornerRadius: 6))
                 .foregroundStyle(vm.canvasMode == mode ? DashboardDS.onBrass : DashboardDS.muted2)
         }
         .buttonStyle(.plain)

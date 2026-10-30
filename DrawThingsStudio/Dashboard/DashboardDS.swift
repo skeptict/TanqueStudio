@@ -93,10 +93,17 @@ struct DashboardGhostButtonStyle: ButtonStyle {
         configuration.label
             .font(TanqueDS.Font.monoSemiBold(11.5))
             .foregroundStyle(DashboardDS.muted2)
+            // Without side padding, a compact use (`.fixedSize()`) drew its outline
+            // against the letters. A full-width use looks the same: this only sets
+            // the minimum width.
+            .padding(.horizontal, 14)
             .padding(.vertical, 8)
             .frame(maxWidth: .infinity)
             .background(Color.clear)
             .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(DashboardDS.border2, lineWidth: 1))
+            // Color.clear isn't hit-testable, so without this only the text and
+            // the 1pt border responded — the inside of the outline was dead.
+            .contentShape(RoundedRectangle(cornerRadius: 8))
             .opacity(configuration.isPressed ? 0.6 : 1)
     }
 }
@@ -187,4 +194,36 @@ extension View {
                 }
             }
     }
+}
+
+// MARK: - Plain button hit target
+
+/// `.plain` with the same fix as `accordionHitTarget`: the label's whole frame
+/// responds — its padding, the gaps in an HStack, a `Spacer` — not only the
+/// glyphs. A faint highlight on hover shows how far the target reaches; it is
+/// drawn as a background, so it never changes layout.
+struct DashboardPlainButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        DashboardPlainButton(configuration: configuration)
+    }
+}
+
+private struct DashboardPlainButton: View {
+    let configuration: ButtonStyleConfiguration
+    @State private var isHovered = false
+
+    var body: some View {
+        configuration.label
+            .contentShape(Rectangle())
+            .background(
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(DashboardDS.text.opacity(isHovered ? 0.05 : 0))
+            )
+            .opacity(configuration.isPressed ? 0.6 : 1)
+            .onHover { isHovered = $0 }
+    }
+}
+
+extension ButtonStyle where Self == DashboardPlainButtonStyle {
+    static var dashboardPlain: DashboardPlainButtonStyle { DashboardPlainButtonStyle() }
 }

@@ -15,7 +15,23 @@ final class GenerateViewModel {
     var showNegativePrompt: Bool = false
 
     // MARK: — Config
-    var config = DrawThingsGenerationConfig(seed: Int(UInt32.random(in: 0...UInt32.max)))
+    var config = DrawThingsGenerationConfig(seed: Int(UInt32.random(in: 0...UInt32.max))) {
+        didSet { configStore?.save(config) }
+    }
+
+    /// Where the config is kept between launches. Nil — the default — keeps nothing,
+    /// so a view model built in a test can never write to the user's real defaults.
+    /// Only the app's own session (DashboardRootView) passes one.
+    @ObservationIgnored private let configStore: GenerateConfigStore?
+
+    init(configStore: GenerateConfigStore? = nil) {
+        self.configStore = configStore
+        if var saved = configStore?.load() {
+            // A random seed is rolled per render anyway; a fixed one is part of the setup.
+            if AppSettings.shared.randomizeSeed { saved.seed = config.seed }
+            config = saved
+        }
+    }
 
     // MARK: — Current image & metadata
     var generatedImage: NSImage?
@@ -1344,5 +1360,26 @@ extension DrawThingsGenerationConfig {
         m.resolutionDependentShift = resolutionDependentShift
         m.format           = .drawThings
         return m
+    }
+}
+
+// MARK: - Config persistence
+
+/// Generate's config between launches — the whole of it, so the Focus Room reopens on
+/// the model and settings it was left with, as Draw Things does. Prompts aren't part of it.
+struct GenerateConfigStore {
+    static let key = "tanqueStudio.generateConfig"
+    let defaults: UserDefaults
+
+    static let standard = GenerateConfigStore(defaults: .standard)
+
+    func load() -> DrawThingsGenerationConfig? {
+        guard let data = defaults.data(forKey: Self.key) else { return nil }
+        return try? JSONDecoder().decode(DrawThingsGenerationConfig.self, from: data)
+    }
+
+    func save(_ config: DrawThingsGenerationConfig) {
+        guard let data = try? JSONEncoder().encode(config) else { return }
+        defaults.set(data, forKey: Self.key)
     }
 }

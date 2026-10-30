@@ -17,7 +17,13 @@ struct RenderQueueView: View {
     @Query(sort: \RenderQueueJob.order) private var jobs: [RenderQueueJob]
 
     @State private var settings = RenderQueueSettings.shared
-    @State private var controller = RenderQueueController()
+    /// Owned by DashboardRootView. It used to be this view's `@State`, but Labs is
+    /// rebuilt on every visit and the run task holds the controller strongly — so
+    /// leaving mid-run orphaned the run: it kept rendering, while the new view's
+    /// fresh controller showed it stopped, couldn't pause or stop it, offered Run
+    /// again (a second loop alongside the first), and reset the job in flight to
+    /// pending through `releaseStuckRunningJobs()`.
+    let controller: RenderQueueController
     @State private var jobPendingDelete: RenderQueueJob?
     @State private var showClearAllConfirm = false
     @State private var showingBasePicker = false
