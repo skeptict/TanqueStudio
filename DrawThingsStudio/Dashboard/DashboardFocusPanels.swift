@@ -1400,6 +1400,8 @@ struct ActionsSection: View {
                 actionButton("Copy Image's Config", enabled: true, action: copyImageConfigToDT)
             }
 
+            copyCLICommandMenu
+
             if let json = DTConfigExporter.encodeDTClipboard(config: vm.config) {
                 UseAsStoryStudioBaseMenu(configJSON: json, coverImage: vm.generatedImage)
                     .menuStyle(.borderlessButton)
@@ -1451,6 +1453,51 @@ struct ActionsSection: View {
             .buttonStyle(DashboardGhostButtonStyle())
             .disabled(!enabled)
             .opacity(enabled ? 1 : 0.45)
+    }
+
+    // A draw-things-cli command for the panel's settings. Only the text inputs travel:
+    // the CLI takes images as file paths, so a source image, mask or moodboard is named
+    // in the help text and left for the user to add.
+    @ViewBuilder
+    private var copyCLICommandMenu: some View {
+        let settings = AppSettings.shared
+        Menu {
+            // Only from the Draw Things Mac itself: see DTCLICommand.Backend.server.
+            Button("Through Draw Things' server (run it on the Draw Things Mac)") {
+                copyCLICommand(.server(port: settings.dtPort))
+            }
+            Button("With local models") { copyCLICommand(.local) }
+            Button("On Cloud Compute") { copyCLICommand(.cloud) }
+        } label: {
+            Label("Copy CLI Command", systemImage: "terminal")
+        }
+        .menuStyle(.borderlessButton)
+        .disabled(vm.config.model.trimmingCharacters(in: .whitespaces).isEmpty)
+        .help(cliCommandHelp)
+    }
+
+    private var cliCommandHelp: String {
+        var left: [String] = []
+        if vm.sourceImage != nil { left.append("the source image (add --image <file>)") }
+        if !vm.maskStrokes.isEmpty { left.append("the mask") }
+        if !vm.moodboardEntries.isEmpty { left.append("the moodboard") }
+        let base = "Copy a draw-things-cli command with this prompt, model and settings."
+        return left.isEmpty ? base : base + " Not included: " + left.joined(separator: ", ") + "."
+    }
+
+    private func copyCLICommand(_ backend: DTCLICommand.Backend) {
+        let cfg = DTCLICommand.prepared(vm.config, randomizeSeed: vm.randomizeSeed)
+        guard let command = DTCLICommand.make(
+            config: cfg, prompt: vm.prompt, negativePrompt: vm.negativePrompt,
+            backend: backend, outputName: DTCLICommand.outputName(for: cfg))
+        else {
+            vm.transientWarning = "Couldn't build the CLI command — pick a model first."
+            return
+        }
+        let pb = NSPasteboard.general
+        pb.clearContents()
+        pb.setString(command, forType: .string)
+        flash()
     }
 
     private func copyImage() {
