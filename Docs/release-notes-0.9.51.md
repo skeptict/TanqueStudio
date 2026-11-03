@@ -70,6 +70,45 @@ says what actually happens.
 **Verified in the app:** on a rendered card, Show in Finder opened the set's `images` folder
 with that style's PNG selected.
 
+## Generate: Copy CLI Command
+
+A new **Copy CLI Command** menu in Generate's Actions column copies a `draw-things-cli`
+command carrying the current prompt, negative prompt, model and settings. Paste it into a
+terminal to run the same generation without either app. The menu offers three places to run
+it:
+
+- **Through Draw Things' server** sends it to the Draw Things app's own server, addressed as
+  `localhost`, so **paste it on the Draw Things Mac**. It can't reach Draw Things from another
+  Mac: the CLI checks the server's certificate against the address it was given, and Draw
+  Things' certificate names only `localhost`, so a LAN address fails with "Remote echo timed
+  out." even when the server is running. From another Mac, an SSH tunnel works:
+  `ssh -N -L 7859:127.0.0.1:7859 <draw-things-mac>`, then run the command as copied.
+- **With local models** runs it on the Mac you paste it on, loading that Mac's Draw Things
+  models itself, without the Draw Things app.
+- **On Cloud Compute** runs it on Draw Things' cloud, from any Mac. Sign in once with
+  `draw-things-cli auth login`.
+
+The command reproduces what Generate would send. Dimensions are snapped to multiples of 64,
+and with Randomize on, a seed is rolled into the command so the result can be repeated. The
+CLI fills anything left unstated from the model's recommended settings, so the command spells
+out the switches that are off, such as Hires Fix and tiling, and always passes the negative
+prompt, even an empty one.
+
+Images aren't included, because the CLI takes them as files: a source image, mask or
+moodboard is listed in the button's tooltip so you can add `--image` yourself. You need a
+recent `draw-things-cli`; the Homebrew formula is months behind, so get it from Draw Things'
+[GitHub releases](https://github.com/drawthingsai/draw-things-community/releases).
+
+**Verified in the app:** all three menu items copied a command naming the right backend, with
+width 1000 snapped to 960 and an apostrophe in the prompt quoted correctly. With `--estimate`
+added, the CLI parsed the command and priced it, but `--estimate` never connects to anything,
+so that proves the command's syntax only. **Not yet tried:** a full render from a copied
+command.
+
+**Audio input runs locally only.** `draw-things-cli --audio`, which drives MiniMax H3 and
+LongCat-Video-Avatar with a sound file, refuses `--remote` and `--cloud-compute` with "--audio
+currently supports only local generation."
+
 ## Warnings when Draw Things may not have your model
 
 Ask Draw Things for a model it can't provide and it doesn't refuse. It renders with a
@@ -90,10 +129,30 @@ is shown.
 Also fixed: StoryFlow's warning about renders that came back empty used to carry over into
 every later run, even ones where nothing went wrong.
 
+## Fixed: the Style Browser sent video models as videos
+
+The Style Browser renders stills and is meant to refuse video models, but it only knew
+some of them. With MiniMax H3 selected, it sent a 328-frame video request for each
+style, and Draw Things crashed while decoding the first one. Tanque Studio now recognises
+every video model Draw Things ships: SkyReels, Stable Video Diffusion, ChronoEdit, MiniMax
+and LongCat were all missing, which was 24 of Draw Things' 82 official video models plus
+MiniMax and LongCat. A test now checks all of them.
+
+The same check decides Generate's default frame count when none is set, and whether
+Copy CLI Command names its output `.mp4`, so those models are handled correctly there too.
+
+**The Style Browser now always asks for one frame.** Switching Generate from a video model to
+an image model keeps the old frame count, and a set snapshots it. Most image models ignore
+it, but Krea 2 and Qwen Image decode through the same 3D decoder as Wan video, so they don't.
+A Krea 2 set carrying MiniMax's 328 frames spent six and a half minutes sampling a clip
+for its first style, then crashed Draw Things in the decoder. Sets created before this fix get
+the one-frame setting too.
+
 ## Notes
 
-Test suite: 529 passed, 8 skipped, 0 failures. New tests cover the Composer's prompt
-assembly and its library files, the `/v1` address handling, and the model warnings.
+Test suite: 543 passed, 8 skipped, 0 failures. New tests cover the Composer's prompt assembly and its library files,
+the `/v1` address handling, the model warnings, the CLI command, every official video model,
+and the Style Browser's one-frame request.
 
 **Not yet tried in the app:** the model warnings. They are covered by tests, but nobody has
 yet run a render with a model missing from Draw Things' list to see the notices.
