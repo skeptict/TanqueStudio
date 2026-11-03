@@ -239,9 +239,9 @@ final class StyleBrowserController {
         }
 
         let config = set.config
-        // By model, not by numFrames: plenty of still configs carry a numFrames > 1
-        // that Draw Things ignores, and 0 means "the model's default", which for a
-        // video model is a clip.
+        // By model, not by numFrames: a still config can carry a numFrames left over
+        // from a video model (the set sends 1 regardless, see StyleBrowserSet.config),
+        // and 0 means "the model's default", which for a video model is a clip.
         if config.model.isEmpty {
             refusal = RenderError.noModel.localizedDescription
             return nil

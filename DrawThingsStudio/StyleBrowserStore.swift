@@ -57,6 +57,11 @@ struct StyleBrowserSet: Codable, Identifiable {
         config.seed = seed
         config.batchCount = 1
         config.batchSize = 1
+        // One frame, whatever Generate held. Draw Things does not ignore numFrames
+        // on every still model: Krea 2 and Qwen Image decode through Wan's 3D VAE, so
+        // a leftover 328 sampled a 328-frame clip and crashed it in the decoder.
+        // Set here rather than at creation so sets saved before the fix get it too.
+        config.numFrames = 1
         return config
     }
 }

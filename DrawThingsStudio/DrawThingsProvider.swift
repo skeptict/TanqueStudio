@@ -324,6 +324,14 @@ struct DrawThingsGenerationConfig: Codable {
 
     /// Returns true if the model name identifies a video-generation model
     /// (LTX, Wan, AnimateDiff, HunyuanVideo, Seedance, CogVideo, Mochi, etc.)
+    ///
+    /// `PlaybackFPSTests.testMatchesDrawThingsForEveryOfficialVideoModel` checks this
+    /// against every official video model Draw Things ships. Until 0.9.51 it missed 24 of
+    /// those 82, plus MiniMax and LongCat, and the Style Browser — which refuses video by
+    /// this check — sent a 328-frame MiniMax H3 request that crashed Draw Things.
+    ///
+    /// Stable Video Diffusion is matched as `svd_i2v`/`svd_xt`, never a bare `svd`:
+    /// SVDQuant files (`…_q6p_svd.ckpt`) end in `svd` whatever they are, images included.
     var isVideoModel: Bool {
         let lower = model.lowercased()
         return lower.contains("ltx") ||
@@ -332,7 +340,12 @@ struct DrawThingsGenerationConfig: Codable {
                (lower.contains("hunyuan") && lower.contains("video")) ||
                lower.contains("seedance") ||
                lower.contains("cogvideo") || lower.contains("cog_video") ||
-               lower.contains("mochi")
+               lower.contains("mochi") ||
+               lower.contains("minimax") || lower.contains("mini_max") ||
+               lower.contains("longcat") ||
+               lower.contains("skyreels") ||
+               lower.contains("chronoedit") ||
+               lower.contains("svd_i2v") || lower.contains("svd_xt")
     }
 
     // MARK: - Model Family Detection & Defaults

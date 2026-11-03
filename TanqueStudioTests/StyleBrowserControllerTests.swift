@@ -244,19 +244,21 @@ final class StyleBrowserControllerTests: XCTestCase {
         XCTAssertFalse(controller.isRunning)
     }
 
-    /// A still config can carry numFrames > 1; Draw Things ignores it for an
-    /// image model, so it must not be mistaken for a video request.
-    func testAStillConfigCarryingNumFramesIsNotRefused() async throws {
+    /// A still config can carry numFrames > 1 left over from a video model. It must
+    /// not be mistaken for a video request, and it must not be sent: Krea 2 decodes
+    /// through Wan's 3D VAE, and a leftover 328 crashed Draw Things on 2026-11-03.
+    func testAStillConfigCarryingNumFramesRendersOneFrame() async throws {
         let client = self.client!
         let controller = StyleBrowserController(library: styles, store: StyleBrowserStore(root: tempRoot),
                                                 makeClient: { client })
-        var config = DrawThingsGenerationConfig(seed: 1, model: "flux_1_schnell_q8p.ckpt")
-        config.numFrames = 81
+        var config = DrawThingsGenerationConfig(seed: 1, model: "krea_2_turbo_i8x.ckpt")
+        config.numFrames = 328
         let set = try controller.createSet(subject: "x", config: config, negativePrompt: "")
         await controller.render(Array(styles.prefix(1)), inSet: set.id)?.value
 
         XCTAssertNil(controller.refusal)
         XCTAssertEqual(client.prompts.count, 1)
+        XCTAssertEqual(client.configs.map(\.numFrames), [1])
     }
 
     func testAMultiFrameReturnIsRecordedAsAnErrorNotSavedAsAStill() async throws {

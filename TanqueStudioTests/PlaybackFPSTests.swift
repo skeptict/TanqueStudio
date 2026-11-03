@@ -242,15 +242,40 @@ final class PlaybackFPSTests: XCTestCase {
         ("wan_v2.2_a14b_lne_t2v_q8p.ckpt", 16),
         ]
         var wrong: [String] = []
+        var notVideo: [String] = []
         for (file, expected) in drawThings {
             let got = config(file).playbackFPS
             if got != expected { wrong.append("\(file): DT \(expected), ours \(got)") }
+            if !config(file).isVideoModel { notVideo.append(file) }
             XCTAssertEqual(StoryFlowEngine.clipFPS(for: config(file), framesDialogFPS: nil), got,
                            "\(file): the two fps rules disagree")
         }
         XCTAssertTrue(wrong.isEmpty,
                       "\(wrong.count) of \(drawThings.count) disagree with Draw Things:\n"
                       + wrong.joined(separator: "\n"))
+        // The Style Browser refuses video by `isVideoModel`; a miss sends a clip
+        // request in place of a still (a 328-frame MiniMax H3 crashed DT this way).
+        XCTAssertTrue(notVideo.isEmpty,
+                      "\(notVideo.count) of \(drawThings.count) not recognised as video:\n"
+                      + notVideo.joined(separator: "\n"))
+    }
+
+    /// MiniMax H3 and LongCat-Video Avatar are video `version`s upstream but have no
+    /// file in the static lists above. The MiniMax name is the one in the request
+    /// that crashed Draw Things on 2026-11-03; the LongCat name is illustrative.
+    func testVideoModelsOutsideTheStaticListAreVideo() {
+        XCTAssertTrue(config("minimax_h3_fl2va_i4x.ckpt").isVideoModel)
+        XCTAssertTrue(config("longcat_video_avatar_1.5_q8p.ckpt").isVideoModel)
+    }
+
+    /// SVDQuant files end in `svd` whatever the model is, so that suffix must not
+    /// make a still model into a video one.
+    func testSVDQuantImageModelsAreNotVideo() {
+        for model in ["z_image_turbo_1.0_q6p_svd.ckpt", "flux_1_dev_q5p_svd.ckpt",
+                      "qwen_image_1.0_q6p_svd.ckpt", "krea_2_turbo_i8x.ckpt",
+                      "flux_2_klein_4b_q6p.ckpt"] {
+            XCTAssertFalse(config(model).isVideoModel, model)
+        }
     }
 
     /// CogVideo, Mochi and AnimateDiff are not Draw Things architectures. DT gives a
