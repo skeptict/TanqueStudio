@@ -1,13 +1,24 @@
-# Score this clip (YuE2) — spec (v1)
+# Score this clip (YuE2 and TanqueLoops) — spec (v1.1)
 
 Agreed 2026-11-04 (decisions at the end). Origin: after 0.9.51 Ned asked about audio features, perhaps using YuE2 Studio, the local
 song generator that already runs on this Mac. Of the options discussed, scoring a finished clip
 needs the least new plumbing, because every movie export already muxes a soundtrack.
 
+**v1.1, 2026-11-04:** TanqueLoops loops added as a second source (Ned). A loop renders offline in
+well under a second, tiles to any length and needs no server, so the phases now build the sheet
+against loops first and add YuE2 second.
+
 ## What it is
 
-When a movie is exported, Tanque Studio can ask YuE2 Studio for an instrumental, cut it to the
-clip's length, and put it in the movie as the soundtrack.
+When a movie is exported, Tanque Studio can give it a soundtrack from one of two **sources**:
+
+- **YuE2:** ask YuE2 Studio for an instrumental and cut an excerpt to the clip's length.
+- **Loop:** render a TanqueLoops loop and repeat it to the clip's length (see the
+  TanqueLoops section below).
+
+The source is a picker at the top of the sheet. Everything after it is shared by both
+sources: the Draw Things audio slider, the fades, ▶ preview, the metadata record and the
+export. The rest of this section describes the YuE2 source.
 
 - **Where:** beside **Export Movie** in the Focus Room (a video series), and on the DT Project
   Browser's clip export. Both already call `VideoAssembler.assemble(…audio:…)`; this feature
@@ -40,7 +51,7 @@ clip's length, and put it in the movie as the soundtrack.
   new start time, without a new job. Tanque Studio keeps no score list of its own; the project
   id is cached in settings and looked up by name if it is missing. The scores also show as an
   album in YuE2's own UI.
-- **Records:** the movie's metadata comment gets the YuE2 job id, seed, style, start time and
+- **Records:** for YuE2, the movie's metadata comment gets the YuE2 job id, seed, style, start time and
   Draw Things audio level, so a
   score can be found and re-cut later. The job and its song stay in YuE2's library;
   **Tanque Studio never deletes YuE2 jobs or songs.**
@@ -68,6 +79,86 @@ clip's length, and put it in the movie as the soundtrack.
 - **Licence.** YuE2's weights are CC BY-NC 4.0. The button's help text and the release notes
   say scores are for non-commercial use.
 
+## Source 2: a TanqueLoops loop
+
+TanqueLoops is Ned's 16-step, 7-track step sequencer (iOS first, with a macOS build), in the
+private repo `skeptict/TanqueLoops`. Its `TanqueLoopsCore` package already has everything this
+needs:
+- the loop model (`LoopDocument`);
+- lenient import of untrusted files (`LoopDocument.importing(_:)`);
+- the kits;
+- a pure-DSP offline renderer, `LoopRenderer.renderMono(document:source:muted:normalize:sampleRate:)`.
+
+- **Getting loops in:** loops are shared as `<name>.tanque.json` files, over AirDrop or Files
+  from the phone, or saved from TanqueLoops' Mac build.
+  - **Import Loop…** (an open panel, or a drop onto the sheet) runs `importing`, then copies
+    the file into `Application Support/TanqueStudio/Loops/`.
+  - The sheet's loop menu lists that folder.
+  - A file that won't parse is refused with its name. Bad fields fall back the way the core
+    already handles them.
+- **Choosing:** the loop menu, plus pattern or chain (`ExportSource.pattern` / `.chain`),
+  shown with the loop's BPM and its length in bars and seconds.
+- **Rendering:** `renderMono` at the export's rate (48 kHz) with `normalize: false`, then
+  copied to both channels. No `AVAudioConverter` step is needed, because the renderer takes
+  the rate.
+- **Repeating to length:** one pass lasts `bars × 16 steps × (60 / bpm / 4)` seconds. The
+  renderer starts notes 20 ms in and appends a 0.6 s decay tail. The fitter therefore adds
+  each repeat into the buffer at multiples of the pass length (overlap-add), so the tail of
+  one pass rings into the next instead of being cut. Normalization happens once, after
+  repeating, because overlapping tails can raise the peak. The end gets the shared fade-out;
+  the start needs no fade-in, because the loop starts on its own downbeat.
+- **Start time** works as for YuE2, but is in whole bars, which are where a loop can sensibly
+  begin.
+- **Records:** the metadata comment carries the loop's name, BPM, kit, source, and the loop's
+  own JSON. A loop file is a few kilobytes, so the movie alone is enough to re-render its
+  soundtrack exactly.
+- **Speed and safety:** the renderer is deterministic and fast. Its own tests use it as a
+  fixture. It needs no network or server, and nothing in YuE2's memory or licence section
+  applies to it.
+
+**Packaging: a shared public package (Ned, 2026-11-04).** `TanqueLoopsCore` moves out of the
+private app repo into its own **public** repo, `skeptict/TanqueLoopsCore`. Both apps depend on
+it, so there is one copy of the loop model, kits and renderer, and new kits, schema bumps and
+the Loopra beds reach Tanque Studio as a version bump.
+
+That replaced an earlier plan, the same day, to copy 8 render files into Tanque Studio. Copying
+was only the answer while TanqueLoops had to stay private. A core-only repo was chosen over
+making the whole app repo public:
+- SwiftPM needs `Package.swift` at the repo root, and the core sits two folders down in the
+  app repo.
+- The app repo also holds the design handoffs, `CLAUDE.md` and the TestFlight script. That
+  script carries the App Store Connect key ID and team ID: identifiers, not secrets, and the
+  `.p8` was never committed. None of that needs publishing.
+
+- **Creating it:** `git subtree split --prefix=TanqueLoops/TanqueLoopsCore` from TanqueLoops'
+  `main`. That keeps the core's 11 commits of history, including the sample-exact VoicePatch
+  check. The result is pushed to the new public repo and tagged `1.0.0`. The split comes from
+  `main`, not the checked-out `spike/loopra-ambient`, whose `LoopraAmbient` target becomes a
+  second product when that spike lands.
+- **Changes in the new repo:**
+  - platforms lowered to `.macOS(.v14)`, keeping `.iOS("26.0")`. The whole package built at
+    macOS 14 in a scratch copy (2026-11-04; build only, tests not run);
+  - the SIL Open Font License files added for Atkinson Hyperlegible and IBM Plex Mono;
+  - a README;
+  - the MIT licence (Ned, 2026-11-04).
+- **Status 2026-11-04:** published at <https://github.com/skeptict/TanqueLoopsCore>, public,
+  MIT, tag `1.0.0` = `132c33d` (12 commits on `main`). It has 71 tests, all passing on macOS
+  (this Mac runs macOS 27; nothing has run on macOS 14). `xcodebuild` for generic iOS
+  succeeds, the README's example compiles and runs, and a fresh package pinned
+  `exact: "1.0.0"` resolves from GitHub, builds and runs.
+- **TanqueLoops app:** its local package reference is swapped for the repo URL. While both are
+  being worked on, Xcode's local-checkout override stands in for the remote package. The app's
+  own deployment target stays at 26. Its `TanqueLoopsCore` folder is removed from the app repo
+  only once the app builds, tests pass and it runs on the phone against the URL.
+- **Tanque Studio:** an `XCRemoteSwiftPackageReference` pinned to an exact version, as the
+  Draw Things client is pinned. Bumping it is a deliberate commit that names what changed
+  upstream.
+- **What Tanque Studio uses:** only the loop model, the lenient import and `LoopRenderer`. The
+  real-time `AudioEngine`, the design tokens and the fonts are linked but not called. If that
+  ever matters, they can split into a second product.
+- **Type names:** none of the core's types clash with Tanque Studio's today. The package has
+  its own module either way.
+
 ## Settings
 
 **Settings → Audio** (new section): YuE2 server address, default `http://127.0.0.1:8765`, with
@@ -84,10 +175,22 @@ Things did.
   It has no UI, and an injectable `URLSession` so tests can stub it.
 - `ScoreFitter.swift`: a pure function from FLAC data, clip duration, start time, fades, and
   optionally Draw Things' audio plus its level, to `VideoAssembler.Audio`.
-- `ScoreClipSheet.swift`: style field, ✨, seed, start time with +5 s, ▶ preview, Draw Things
-  audio slider, Use an existing score, progress, Cancel and Use.
+- `ScoreClipSheet.swift`: the source picker. For YuE2: the style field, ✨, seed, start time
+  with +5 s, Use an existing score, and progress. For Loop: Import Loop…, the loop menu,
+  pattern or chain, and the start bar. Shared: the Draw Things audio slider, ▶ preview,
+  Cancel and Use.
+- `LoopScoreSource.swift`: loop import into `Loops/`, the listing, and render-and-repeat.
+- In the new `skeptict/TanqueLoopsCore` repo: the macOS 14 floor, licences and README. In
+  TanqueLoops: the switch to the URL dependency.
 - `Resources/LLMOperations/08-clip-to-score-style.md`.
-- Tests: `ScoreFitterTests` (length, fades, short-song padding, 24-bit decode, mix at 0% equals
+- Tests: `LoopScoreSourceTests`:
+  - a repeated buffer's length matches the clip;
+  - the tail overlap-adds rather than being cut;
+  - a single pass matches `renderMono` sample for sample;
+  - a malformed file is refused;
+  - a loop round-trips through the metadata JSON.
+
+  Also `ScoreFitterTests` (length, fades, short-song padding, 24-bit decode, mix at 0% equals
   replace, mix clamps, rate mismatch converted) and `YuE2ClientTests` (request body with
   `track_id`, project lookup by name, error decoding, SSE framing).
 
@@ -95,10 +198,11 @@ Things did.
 - `GenerateViewModel.swift`: `runVideoExport` takes the fitted audio.
 - `DTProjectBrowserViewModel.swift`: the same for clip export.
 - `DashboardFocusPanels.swift` and the browser's export UI: the button.
-- `AppSettings.swift`: three keys, `tanqueStudio.yue2BaseURL`, `tanqueStudio.yue2HostHistory`
+- `AppSettings.swift`: three keys (all YuE2), `tanqueStudio.yue2BaseURL`, `tanqueStudio.yue2HostHistory`
   and `tanqueStudio.yue2ScoresProjectID`.
 - The Settings view.
-- `project.pbxproj`.
+- `project.pbxproj`: an `XCRemoteSwiftPackageReference` for `skeptict/TanqueLoopsCore`, at an
+  exact version.
 - `Resources/Help/generate.md`.
 
 **Not touched:**
@@ -110,16 +214,34 @@ Things did.
 
 ## Phases
 
-0. **Client and settings.** `YuE2Client` and Settings → Audio with Test. Verified live against
-   the local server: the scores project and a track created, one tags-only job submitted as a
-   take, streamed, downloaded and decoded, with the timing recorded (n = 1, said so). Also confirms that `AVAudioFile` reads YuE2's 24-bit
-   FLAC. If it doesn't, the fallback is `audio.mp3`, which YuE2 transcodes on request.
-1. **Focus Room.** The sheet, the excerpt, the mix and the export, verified by exporting a real
-   LTX series with sound at 0% and at about 40% and *listening* to both, then putting the same
-   score on a second clip through Use an existing score. A green build doesn't count here; the movie has to be opened
-   and played.
-2. **DT Project Browser** clip export.
-3. **Later, not scoped:**
+Reordered in v1.1: the loop source needs no server, so the sheet, fitter and export are built
+and verified against it first.
+
+0. **Packaging and the loop source.**
+   - Split out and publish `skeptict/TanqueLoopsCore` (done 2026-11-04, `1.0.0`).
+   - Switch TanqueLoops to it and verify the app on the phone.
+   - Add the package to Tanque Studio, then
+   `LoopScoreSource` with its tests. Verified by rendering a real loop shared from the phone,
+   repeated to a clip length, and *listening* to the WAV, so you hear any click at the seams.
+1. **Focus Room with loops.** The sheet (source picker, Loop side), `ScoreFitter`, the Draw
+   Things audio slider and the export. Verified by exporting a real LTX series with a loop at
+   0% and at about 40% Draw Things audio and *listening* to both. A green build doesn't count
+   here; the movie has to be opened and played.
+2. **YuE2 source.** `YuE2Client` and Settings → Audio with Test, then the YuE2 side of the sheet.
+   Verified live against the local server:
+   - the scores project and a track created;
+   - one tags-only job submitted as a take, streamed, downloaded and decoded, with the timing
+     recorded (n = 1, said so);
+   - confirmation that `AVAudioFile` reads YuE2's 24-bit FLAC (fallback `audio.mp3`);
+   - an export *listened* to;
+   - the same score put on a second clip through Use an existing score.
+3. **DT Project Browser** clip export, both sources.
+4. **Later, not scoped:**
+   - **Clips timed to the music:** offer a frame count that makes a clip exactly N bars of
+     the chosen loop (at 112 bpm a bar is 2.14 s, about 54 frames at LTX's 25 fps), snapped
+     to a count the model accepts. Also Story Studio and StoryFlow cuts on bar lines.
+   - Per-voice mutes for a loop (`renderMono` already takes `muted:`).
+   - Loopra ambient beds, from the `spike/loopra-ambient` branch, once that spike lands.
    - A Story Studio soundtrack across scenes.
    - A waveform with a draggable clip-length window, if the start field proves annoying.
    - YuE2 on the M4 Max, and a guard against scoring during a local render.
@@ -134,8 +256,8 @@ Things did.
   assume them. The library's 16 kHz default once played LTX audio 3× too slow.
 - **The progress view animates with `TimelineView`**, not `repeatForever`, which slid the
   Compose sheet.
-- **The export says what it did:** "with YuE2 score (job …, 0:42–0:50)", "with Draw Things
-  audio" or "no audio", so a silent or wrong soundtrack is never found later in a player.
+- **The export says what it did:** "with YuE2 score (job …, 0:42–0:50)", "with loop dusk
+  loop 04 (chain, 112 bpm, ×3.2)", "+ Draw Things audio at 40%", or "no audio", so a silent or wrong soundtrack is never found later in a player.
 - **Cancel is honest:** cancelling the sheet cancels the YuE2 job. Closing the sheet without
   cancelling leaves the job running in YuE2 and says so.
 
@@ -148,3 +270,5 @@ Things did.
 3. **Host:** this Mac for now; the address setting covers the M4 Max later.
 4. **Reuse:** a YuE2 project, Tanque Studio scores, read back through YuE2's API. No
    Tanque-side score library.
+5. **Packaging TanqueLoopsCore:** its own public repo, shared by both apps (not copied files,
+   and not the whole TanqueLoops repo made public). Code licence: MIT.
