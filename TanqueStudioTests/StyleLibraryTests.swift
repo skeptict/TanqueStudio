@@ -191,6 +191,17 @@ final class StyleLibraryTests: XCTestCase {
         XCTAssertEqual(StyleBrowserView.changes(from: old, to: new), ["seed 1 → 2"])
     }
 
+    /// Turning tiling off is how a Krea 2 set stops crashing Draw Things, so the new set
+    /// must not be reported as a repeat of the old one.
+    func testTiledDecodingIsListed() {
+        var generate = makeSet().config
+        generate.tiledDecoding = true
+        let old = StyleBrowserSet(subject: "s", config: generate, negativePrompt: generate.negativePrompt).config
+        generate.tiledDecoding = false
+        let new = StyleBrowserSet(subject: "s", config: generate, negativePrompt: generate.negativePrompt).config
+        XCTAssertEqual(StyleBrowserView.changes(from: old, to: new), ["tiled decoding off"])
+    }
+
     static func pixel() -> NSImage {
         let ctx = CGContext(data: nil, width: 2, height: 2, bitsPerComponent: 8, bytesPerRow: 0,
                             space: CGColorSpace(name: CGColorSpace.sRGB)!,

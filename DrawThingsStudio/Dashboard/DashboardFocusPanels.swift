@@ -234,7 +234,7 @@ struct ModelSection: View {
             }
             ForEach(filteredModels) { model in
                 let selected = vm.config.model == model.filename
-                Button { vm.config.model = model.filename } label: {
+                Button { vm.config.selectModel(model.filename) } label: {
                     HStack(spacing: 10) {
                         RoundedRectangle(cornerRadius: 7)
                             .fill(LinearGradient(colors: [DashboardDS.brass, Color(hex: "#cbb98f")],
@@ -717,6 +717,13 @@ struct TilingSection: View {
                 height: $vm.config.decodingTileHeight,
                 overlap: $vm.config.decodingTileOverlap
             )
+
+            if vm.config.tiledDecodingCrashesDrawThings {
+                Text(DrawThingsGenerationConfig.tiledDecodingCrashWarning)
+                    .font(TanqueDS.Font.mono(10.5))
+                    .foregroundStyle(DashboardDS.orange)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
     }
 
@@ -1031,7 +1038,14 @@ struct ParametersSection: View {
             .padding(.top, 6)
             .help("Stable Video Diffusion only: the frame rate SVD imitates, which shapes how much moves between frames. Other models ignore it. Not the playback speed — exported movies use Draw Things' own rate for the model.")
 
-            if vm.config.numFrames > 1 {
+            if vm.config.hasStrayFrameCount {
+                // A pasted or saved config can still carry one; picking a model clears it.
+                Text("Frames is \(vm.config.numFrames), but this isn't a video model. Some image models, such as Krea 2 and Qwen Image, render every frame, which takes minutes. Set Frames to 0 for a still.")
+                    .font(TanqueDS.Font.mono(10.5))
+                    .foregroundStyle(DashboardDS.orange)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, 4)
+            } else if vm.config.numFrames > 1 {
                 Text("Video render — \(vm.config.numFrames) frames will be saved as one gallery series.")
                     .font(TanqueDS.Font.mono(10.5))
                     .foregroundStyle(DashboardDS.muted)

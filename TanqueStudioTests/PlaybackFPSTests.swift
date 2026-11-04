@@ -278,6 +278,80 @@ final class PlaybackFPSTests: XCTestCase {
         }
     }
 
+    // MARK: - Frame counts left over from a video model
+
+    /// MiniMax H3 at 328 frames, then Krea 2 picked: the 328 must not come along.
+    /// Krea 2 decodes through Wan's 3D VAE, and that request crashed Draw Things.
+    func testPickingAnImageModelDropsAVideoFrameCount() {
+        var cfg = config("minimax_h3_fl2va_i4x.ckpt")
+        cfg.numFrames = 328
+        XCTAssertFalse(cfg.hasStrayFrameCount)
+
+        cfg.selectModel("krea_2_turbo_i8x.ckpt")
+        XCTAssertEqual(cfg.model, "krea_2_turbo_i8x.ckpt")
+        XCTAssertEqual(cfg.numFrames, 0)
+        XCTAssertFalse(cfg.hasStrayFrameCount)
+    }
+
+    func testPickingAnotherVideoModelKeepsTheFrameCount() {
+        var cfg = config("ltx_2.3_22b_distilled_q6p.ckpt")
+        cfg.numFrames = 121
+        cfg.selectModel("wan_v2.2_a14b_hne_t2v_q6p_svd.ckpt")
+        XCTAssertEqual(cfg.numFrames, 121)
+    }
+
+    func testAStillFrameCountIsLeftAlone() {
+        var cfg = config("flux_2_klein_4b_q6p.ckpt")
+        cfg.numFrames = 1
+        cfg.selectModel("krea_2_turbo_i8x.ckpt")
+        XCTAssertEqual(cfg.numFrames, 1)
+    }
+
+    /// A config set straight on the model (a paste, a load) isn't changed, but the
+    /// panel can still see that the frame count doesn't fit the model.
+    func testAnImageModelHoldingFramesIsFlagged() {
+        var cfg = config("krea_2_turbo_i8x.ckpt")
+        cfg.numFrames = 328
+        XCTAssertTrue(cfg.hasStrayFrameCount)
+    }
+
+    /// The settings that crashed Draw Things four times on 2026-11-03: Krea 2 at 768×512
+    /// with 256 px decoding tiles.
+    func testKreaTiledDecodingThatEngagesIsFlagged() {
+        var cfg = config("krea_2_turbo_i8x.ckpt")
+        cfg.width = 768
+        cfg.height = 512
+        cfg.tiledDecoding = true
+        cfg.decodingTileWidth = 256
+        cfg.decodingTileHeight = 256
+        XCTAssertTrue(cfg.tiledDecodingCrashesDrawThings)
+        cfg.tiledDecoding = false
+        XCTAssertFalse(cfg.tiledDecodingCrashesDrawThings)
+    }
+
+    /// Draw Things skips tiling when the tile covers the canvas, so there's nothing to warn about.
+    func testATileCoveringTheCanvasIsNotFlagged() {
+        var cfg = config("krea_2_turbo_q8p.ckpt")
+        cfg.width = 1024
+        cfg.height = 1024
+        cfg.tiledDecoding = true
+        cfg.decodingTileWidth = 1024
+        cfg.decodingTileHeight = 1060  // floors to the same 16 units
+        XCTAssertFalse(cfg.tiledDecodingCrashesDrawThings)
+        cfg.height = 1088
+        XCTAssertTrue(cfg.tiledDecodingCrashesDrawThings, "17 units of canvas against a 16-unit tile")
+    }
+
+    func testTiledDecodingOnOtherModelsIsNotFlagged() {
+        var cfg = config("flux_2_klein_4b_q6p.ckpt")
+        cfg.width = 2048
+        cfg.height = 2048
+        cfg.tiledDecoding = true
+        cfg.decodingTileWidth = 640
+        cfg.decodingTileHeight = 640
+        XCTAssertFalse(cfg.tiledDecodingCrashesDrawThings)
+    }
+
     /// CogVideo, Mochi and AnimateDiff are not Draw Things architectures. DT gives a
     /// model it has no spec for 30, so a name that happens to contain one of those
     /// words gets 30 here too — not the 16 this used to guess.

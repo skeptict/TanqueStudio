@@ -141,18 +141,50 @@ MiniMax and LongCat. A test now checks all of them.
 The same check decides Generate's default frame count when none is set, and whether
 Copy CLI Command names its output `.mp4`, so those models are handled correctly there too.
 
-**The Style Browser now always asks for one frame.** Switching Generate from a video model to
-an image model keeps the old frame count, and a set snapshots it. Most image models ignore
-it, but Krea 2 and Qwen Image decode through the same 3D decoder as Wan video, so they don't.
-A Krea 2 set carrying MiniMax's 328 frames spent six and a half minutes sampling a clip
-for its first style, then crashed Draw Things in the decoder. Sets created before this fix get
-the one-frame setting too.
+## Fixed: image models inherited a video frame count
+
+Switching Generate from a video model to an image model kept the old frame count. Most image
+models ignore it, but Krea 2 and Qwen Image decode through the same 3D decoder as Wan video,
+so they don't. A Style Browser set on Krea 2 that had picked up MiniMax's 328 frames spent six
+and a half minutes sampling a clip for its first style. That set also crashed Draw Things,
+but the frames weren't the cause: see the tiled decoding note below.
+
+- **Picking an image model** in Generate's model list now resets Frames to 0, the model's
+  default. Moving between video models keeps your frame count.
+- **Generate warns** in its Parameters section, in orange, when an image model holds more
+  than one frame, which a pasted or loaded config can still bring in.
+- **The Style Browser always asks for one frame**, whatever Generate held, including sets
+  created before this fix.
+
+## Known issue: Tiled Decoding crashes Draw Things on Krea 2
+
+With **Tiled Decoding** on, Krea 2 almost always fails to decode, and on Draw Things
+26.1020.0 it crashes the app. That applies whenever the tile is smaller than the image, so it
+does not apply when the tile covers the whole picture. In Tanque Studio's request log, Krea 2
+decoded 546 of 703 renders with tiling off, but with tiling engaged it decoded only with
+full-width 1920×704 tiles (25 of 27). Draw Things' default 640 px tile went 0 for 11, and a
+256 px tile left over from a MiniMax H3 config went 0 for 4. Every one of today's crashes
+stopped in the same place in Draw Things' Wan decoder. The same Krea 2 settings with only
+Tiled Decoding switched off rendered normally.
+
+Turn Tiled Decoding off for Krea 2. A still doesn't need it: Draw Things decodes stills of any
+practical size in one piece. Tanque Studio now warns, in orange, whenever Krea 2 would be sent
+tiles smaller than the image, but it still sends what you set:
+
+- **Generate** shows the warning under **Tiling**, and again when you press Generate, since
+  the Tiling section is usually collapsed.
+- **The Style Browser** shows it on a set that has tiling on, and in the New Set panel before
+  you create one. A set's settings are fixed, so the fix is to turn tiling off in Generate
+  and use **New from this set**. Its **Changes** line now lists tiled decoding, so that set
+  isn't reported as a repeat of the old one.
+
+Qwen Image uses the same decoder but hasn't been tested, so it gets no warning.
 
 ## Notes
 
-Test suite: 543 passed, 8 skipped, 0 failures. New tests cover the Composer's prompt assembly and its library files,
+Test suite: 551 passed, 8 skipped, 0 failures. New tests cover the Composer's prompt assembly and its library files,
 the `/v1` address handling, the model warnings, the CLI command, every official video model,
-and the Style Browser's one-frame request.
+the Style Browser's one-frame request, the frame reset when picking a model, and the Krea 2 tiling warning.
 
 **Not yet tried in the app:** the model warnings. They are covered by tests, but nobody has
 yet run a render with a model missing from Draw Things' list to see the notices.

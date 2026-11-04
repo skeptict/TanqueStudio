@@ -423,6 +423,10 @@ final class GenerateViewModel {
         if !ModelAvailability.isAvailable(config.model, in: models) {
             transientWarning = "'\(config.model)' isn't in the local model list — generating anyway (may be a DT+ cloud model)."
         }
+        if config.tiledDecodingCrashesDrawThings {
+            transientWarning = [transientWarning, DrawThingsGenerationConfig.tiledDecodingCrashWarning]
+                .compactMap { $0 }.joined(separator: " ")
+        }
         errorMessage = nil
         isGenerating = true
         progress = .starting
@@ -849,6 +853,10 @@ final class GenerateViewModel {
         // returns its own error if the model is genuinely missing.
         if !ModelAvailability.isAvailable(config.model, in: models) {
             transientWarning = "'\(config.model)' isn't in the local model list — inpainting anyway (may be a DT+ cloud model)."
+        }
+        if config.tiledDecodingCrashesDrawThings {
+            transientWarning = [transientWarning, DrawThingsGenerationConfig.tiledDecodingCrashWarning]
+                .compactMap { $0 }.joined(separator: " ")
         }
         guard let mask = rasterizeMask(for: source) else {
             errorMessage = "Could not build the mask."

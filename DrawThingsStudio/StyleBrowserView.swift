@@ -236,6 +236,7 @@ struct StyleBrowserView: View {
             out.append("LoRAs")
         }
         if old.hiresFix != new.hiresFix { out.append("hires fix \(new.hiresFix ? "on" : "off")") }
+        if old.tiledDecoding != new.tiledDecoding { out.append("tiled decoding \(new.tiledDecoding ? "on" : "off")") }
         if old.negativePrompt != new.negativePrompt { out.append("negative prompt") }
         return out
     }
@@ -300,6 +301,12 @@ struct StyleBrowserView: View {
                         .font(TanqueDS.Font.bodySmall)
                         .foregroundStyle(DashboardDS.brass)
                 }
+            }
+            if pendingConfig.tiledDecodingCrashesDrawThings {
+                Text(DrawThingsGenerationConfig.tiledDecodingCrashWarning)
+                    .font(TanqueDS.Font.bodySmall)
+                    .foregroundStyle(DashboardDS.orange)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             if let createError {
                 Text(createError).font(TanqueDS.Font.bodySmall).foregroundStyle(DashboardDS.red)
@@ -584,6 +591,13 @@ struct StyleBrowserView: View {
             }
             if let warning = controller.modelWarning, controller.modelWarningSetID == set.id {
                 Text(warning)
+                    .font(TanqueDS.Font.bodySmall)
+                    .foregroundStyle(DashboardDS.orange)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            // A set's settings are fixed, so the way out is a new set made after Generate changes.
+            if set.config.tiledDecodingCrashesDrawThings {
+                Text("This set has Tiled Decoding on, which crashes Draw Things on Krea 2 more often than not. Turn it off in Generate, then use New from this set.")
                     .font(TanqueDS.Font.bodySmall)
                     .foregroundStyle(DashboardDS.orange)
                     .fixedSize(horizontal: false, vertical: true)

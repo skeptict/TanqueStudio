@@ -348,6 +348,37 @@ struct DrawThingsGenerationConfig: Codable {
                lower.contains("svd_i2v") || lower.contains("svd_xt")
     }
 
+    /// A frame count an image model would act on. Most image models ignore numFrames,
+    /// but Krea 2 and Qwen Image decode through Wan's 3D VAE, so they render every frame:
+    /// a 328 left over from MiniMax H3 sampled for six and a half minutes. (That render then
+    /// crashed Draw Things, but the crash was its 256 px decoding tile, not the frames.)
+    var hasStrayFrameCount: Bool { !isVideoModel && numFrames > 1 }
+
+    /// Picks a model from Generate's list. Moving to an image model drops a frame count
+    /// left over from a video model; 0 means "the model's default", one frame for a still.
+    /// Pasted and loaded configs set the model directly and keep what they say.
+    mutating func selectModel(_ filename: String) {
+        model = filename
+        if hasStrayFrameCount { numFrames = 0 }
+    }
+
+    /// Tiled decoding Draw Things would really apply to a Krea 2 still, which it can't
+    /// survive. Krea 2 decodes through Wan's 3D VAE; with tiling engaged, Tanque Studio's
+    /// request log shows 0 of 11 decodes at DT's default 640 px tile and 0 of 4 at 256 px,
+    /// with crashes in `NHWCWanDecoderCausal3D` (DT 26.1020.0, 2026-11-03), against 546
+    /// of 703 untiled. Only full-width tiles mostly worked. A warning, not a refusal.
+    ///
+    /// DT tiles only when the canvas exceeds the tile in a dimension, comparing in units
+    /// of 64 (FirstStage.swift), and a tile smaller than one unit is sent as one.
+    var tiledDecodingCrashesDrawThings: Bool {
+        guard tiledDecoding, model.lowercased().contains("krea_2") else { return false }
+        return width / 64 > max(1, decodingTileWidth / 64)
+            || height / 64 > max(1, decodingTileHeight / 64)
+    }
+
+    static let tiledDecodingCrashWarning =
+        "Tiled Decoding crashes Draw Things on Krea 2 more often than not. A still doesn't need it: turn it off."
+
     // MARK: - Model Family Detection & Defaults
 
     enum ModelFamily: String {
