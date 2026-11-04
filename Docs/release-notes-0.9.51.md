@@ -1,4 +1,4 @@
-# Tanque Studio 0.9.51 (draft)
+# Tanque Studio 0.9.51
 
 **Build a prompt from parts.** Generate's new **Compose** button assembles a prompt from
 sections such as subject, lighting and camera, as comma-separated tags or as sentences written
