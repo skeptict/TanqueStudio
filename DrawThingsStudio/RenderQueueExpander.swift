@@ -82,6 +82,7 @@ enum RenderQueueExpander {
         let active = axes.filter { !$0.values.isEmpty }
         let (combinations, warnings) = combos(active)
 
+        var tilesKrea = false
         let jobs = combinations.map { combo -> ExpandedJob in
             var config = DrawThingsGenerationConfig()
             if let dict = jsonDict(baseConfigJSON) {
@@ -107,12 +108,15 @@ enum RenderQueueExpander {
                 }
             }
 
+            if config.tiledDecodingCrashesDrawThings { tilesKrea = true }
             let configJSON = (try? JSONEncoder().encode(config))
                 .flatMap { String(data: $0, encoding: .utf8) } ?? baseConfigJSON
             return ExpandedJob(prompt: prompt, configJSON: configJSON,
                                sourceImageID: sourceImageID)
         }
-        return ExpansionPlan(jobs: jobs, warnings: warnings)
+        // Once per plan however many jobs it covers. Warns rather than blocks, as everywhere.
+        let tilingWarning = tilesKrea ? [DrawThingsGenerationConfig.tiledDecodingCrashWarningForConfigs] : []
+        return ExpansionPlan(jobs: jobs, warnings: warnings + tilingWarning)
     }
 
     // MARK: - Combining axes

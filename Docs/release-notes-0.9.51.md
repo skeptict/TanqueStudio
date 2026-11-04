@@ -177,14 +177,20 @@ tiles smaller than the image, but it still sends what you set:
   you create one. A set's settings are fixed, so the fix is to turn tiling off in Generate
   and use **New from this set**. Its **Changes** line now lists tiled decoding, so that set
   isn't reported as a repeat of the old one.
+- **The Render Queue** lists it with the notices above **Expand** when any job it would
+  create sends Krea 2 with tiling, including Krea reached through a model axis. It's listed
+  once, however many jobs are affected.
+- **StoryFlow and Story Studio** log it at the first such render in a run, show it as a
+  notice beside the results, and end the run "Completed" with the warning rather than "Run
+  complete". There the fix is `"tiledDecoding": false` in the config.
 
 Qwen Image uses the same decoder but hasn't been tested, so it gets no warning.
 
 ## Notes
 
-Test suite: 551 passed, 8 skipped, 0 failures. New tests cover the Composer's prompt assembly and its library files,
+Test suite: 555 passed, 8 skipped, 0 failures. New tests cover the Composer's prompt assembly and its library files,
 the `/v1` address handling, the model warnings, the CLI command, every official video model,
-the Style Browser's one-frame request, the frame reset when picking a model, and the Krea 2 tiling warning.
+the Style Browser's one-frame request, the frame reset when picking a model, and the Krea 2 tiling warning in Generate, the Style Browser, the Render Queue and StoryFlow configs.
 
 **Not yet tried in the app:** the model warnings. They are covered by tests, but nobody has
 yet run a render with a model missing from Draw Things' list to see the notices.

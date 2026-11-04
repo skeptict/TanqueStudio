@@ -69,6 +69,10 @@ struct StoryFlowOutputPanel: View {
                                 for: vm.engine.unconfirmedModels, outputs: "these renders"),
                             color: DashboardDS.orange, icon: "exclamationmark.triangle.fill")
                     }
+                    if vm.engine.sentKreaTiledDecoding {
+                        stateBanner(text: DrawThingsGenerationConfig.tiledDecodingCrashWarningForConfigs,
+                                    color: DashboardDS.orange, icon: "exclamationmark.triangle.fill")
+                    }
 
                     // Generated images grid
                     if !vm.engine.stepResults.isEmpty {

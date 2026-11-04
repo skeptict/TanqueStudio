@@ -19,6 +19,42 @@ final class RenderQueueExpanderTests: XCTestCase {
 
     private let baseConfig = #"{"model":"base.ckpt","steps":8,"seed":-1,"width":1024,"height":1024}"#
 
+    // MARK: - Krea 2 tiled decoding
+
+    private let kreaTiled = #"{"model":"krea_2_turbo_i8x.ckpt","width":768,"height":512,"tiledDecoding":true,"decodingTileWidth":256,"decodingTileHeight":256}"#
+
+    /// Warned once per plan, however many jobs carry it: a queue is left running
+    /// unattended, and this crashes Draw Things.
+    func testKreaTiledDecodingWarnsOncePerPlan() {
+        let axes = [RenderQueueExpander.AxisInput(kind: .seed, values: ["1", "2", "3"])]
+        let plan = RenderQueueExpander.plan(axes: axes, basePrompt: "p", baseConfigJSON: kreaTiled)
+        XCTAssertEqual(plan.jobs.count, 3)
+        XCTAssertEqual(plan.warnings, [DrawThingsGenerationConfig.tiledDecodingCrashWarningForConfigs])
+    }
+
+    /// Checked per job, so Krea reached through a model axis counts too.
+    func testKreaOnAModelAxisWarns() {
+        let base = #"{"model":"flux_2_klein_4b_q6p.ckpt","width":768,"height":512,"tiledDecoding":true,"decodingTileWidth":256,"decodingTileHeight":256}"#
+        let flux = RenderQueueExpander.plan(axes: [], basePrompt: "p", baseConfigJSON: base)
+        XCTAssertEqual(flux.warnings, [])
+        let axes = [RenderQueueExpander.AxisInput(kind: .model,
+                                                  values: ["flux_2_klein_4b_q6p.ckpt", "krea_2_turbo_q6p.ckpt"])]
+        let mixed = RenderQueueExpander.plan(axes: axes, basePrompt: "p", baseConfigJSON: base)
+        XCTAssertEqual(mixed.warnings, [DrawThingsGenerationConfig.tiledDecodingCrashWarningForConfigs])
+    }
+
+    func testKreaWithTilingOffDoesNotWarn() {
+        let off = kreaTiled.replacingOccurrences(of: #""tiledDecoding":true"#, with: #""tiledDecoding":false"#)
+        XCTAssertEqual(RenderQueueExpander.plan(axes: [], basePrompt: "p", baseConfigJSON: off).warnings, [])
+    }
+
+    /// StoryFlow reads its configs through the same `mergeDict`, snake_case keys included,
+    /// and checks the result before each render.
+    func testAStoryFlowStyleConfigIsFlagged() throws {
+        let storyFlow = #"{"model":"krea_2_turbo_i8x.ckpt","width":768,"height":512,"tiled_decoding":true,"decoding_tile_width":256,"decoding_tile_height":256}"#
+        XCTAssertTrue(try decode(storyFlow).tiledDecodingCrashesDrawThings)
+    }
+
     // MARK: - No axes
 
     func testNoAxesProducesExactlyOneJobFromTheBase() throws {

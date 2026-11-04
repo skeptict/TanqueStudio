@@ -379,6 +379,10 @@ struct DrawThingsGenerationConfig: Codable {
     static let tiledDecodingCrashWarning =
         "Tiled Decoding crashes Draw Things on Krea 2 more often than not. A still doesn't need it: turn it off."
 
+    /// The same warning for StoryFlow and the Render Queue, where the setting lives in config JSON.
+    static let tiledDecodingCrashWarningForConfigs =
+        "Krea 2 with Tiled Decoding on crashes Draw Things more often than not. A still doesn't need it: set \"tiledDecoding\": false in the config."
+
     // MARK: - Model Family Detection & Defaults
 
     enum ModelFamily: String {

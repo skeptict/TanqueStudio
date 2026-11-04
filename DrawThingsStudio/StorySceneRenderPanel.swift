@@ -297,6 +297,12 @@ struct StorySceneRenderPanel: View {
                     .foregroundStyle(.orange)
                     .fixedSize(horizontal: false, vertical: true)
             }
+            if controller.engine.sentKreaTiledDecoding {
+                Text(DrawThingsGenerationConfig.tiledDecodingCrashWarningForConfigs)
+                    .font(TanqueDS.Font.bodySmall)
+                    .foregroundStyle(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
 
             DisclosureGroup(isExpanded: $showDebugLog) {
                 ScrollView {

@@ -93,6 +93,11 @@ final class StoryFlowEngine {
     /// Never stops the run — absence means "cannot confirm", see `ModelAvailability`.
     private(set) var unconfirmedModels: [String] = []
 
+    /// Whether this run has sent Krea 2 with tiled decoding Draw Things would really apply,
+    /// which crashes it more often than not (`tiledDecodingCrashesDrawThings`). Warned once
+    /// per run in the log and shown by the same panels as `unconfirmedModels`.
+    private(set) var sentKreaTiledDecoding = false
+
     /// Draw Things' model list, fetched once per run at its first render. Nil until
     /// then; empty when the fetch failed, which `ModelAvailability` treats as "don't warn".
     private var knownModels: [DrawThingsModel]?
@@ -190,6 +195,7 @@ final class StoryFlowEngine {
         activeMoodboard = []
         emptyRenderCount = 0
         unconfirmedModels = []
+        sentKreaTiledDecoding = false
         knownModels = nil
         submitApproval("")   // clear any approval left pending by a previous run
         currentStepIndex = 0
@@ -236,7 +242,7 @@ final class StoryFlowEngine {
                 if Task.isCancelled {
                     runState = .cancelled
                     log("⏹ Cancelled")
-                } else if emptyRenderCount > 0 || !unconfirmedModels.isEmpty {
+                } else if emptyRenderCount > 0 || !unconfirmedModels.isEmpty || sentKreaTiledDecoding {
                     // Every step ran, so this is not a failure — but "✓ Completed" over a run
                     // that rendered nothing is the kind of green light this whole project exists
                     // to stop giving.
@@ -248,6 +254,9 @@ final class StoryFlowEngine {
                     if !unconfirmedModels.isEmpty {
                         log("⚠ Completed. "
                           + ModelAvailability.unlistedWarning(for: unconfirmedModels, outputs: "these renders"))
+                    }
+                    if sentKreaTiledDecoding {
+                        log("⚠ Completed. " + DrawThingsGenerationConfig.tiledDecodingCrashWarningForConfigs)
                     }
                 } else {
                     runState = .completed
@@ -1132,6 +1141,10 @@ final class StoryFlowEngine {
         } else {
             log("  Generating… model: \(cfg.model)")
             await checkModelIsListed(cfg.model, client: grpcClient)
+            if cfg.tiledDecodingCrashesDrawThings && !sentKreaTiledDecoding {
+                sentKreaTiledDecoding = true
+                log("  ⚠ " + DrawThingsGenerationConfig.tiledDecodingCrashWarningForConfigs)
+            }
         }
 
         // Generate
