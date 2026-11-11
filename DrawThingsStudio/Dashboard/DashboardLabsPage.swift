@@ -31,6 +31,14 @@ struct DashboardLabsPage: View {
         case storyStudio = "Story Studio"
         case renderQueue = "Render Queue"
         case styleBrowser = "Style Browser"
+        case writingDesk = "Writing Desk"
+
+        /// The tabs to offer. Writing Desk is built on `RealityView`, which
+        /// needs macOS 15, so it is left out on macOS 14.
+        static var available: [LabsTab] {
+            if #available(macOS 15, *) { return allCases }
+            return allCases.filter { $0 != .writingDesk }
+        }
     }
 
     var body: some View {
@@ -77,6 +85,10 @@ struct DashboardLabsPage: View {
                     StyleBrowserView(controller: styleBrowser,
                                      generateVM: generateVM,
                                      onNavigateToGenerate: onNavigateToGenerate)
+                case .writingDesk:
+                    if #available(macOS 15, *) {
+                        WritingDeskView()
+                    }
                 }
             }
         }
@@ -85,7 +97,7 @@ struct DashboardLabsPage: View {
 
     private var pillTabs: some View {
         HStack(spacing: 2) {
-            ForEach(LabsTab.allCases, id: \.self) { tab in
+            ForEach(LabsTab.available, id: \.self) { tab in
                 let active = tab == selectedTab
                 // Padding and fill live inside the label: applied to the Button
                 // itself they sat outside its hit area, so only the text responded.
