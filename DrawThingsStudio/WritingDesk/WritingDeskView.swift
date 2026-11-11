@@ -50,6 +50,8 @@ struct WritingDeskView: View {
     @State private var readout = DeskReadout()
     @State private var lookAround = false
     @State private var muted = false
+    @State private var focused = false
+    @State private var paint = PaintedLookState.Style.fine
     @State private var missingBackdrops: [String] = []
     @State private var confirmNewSheet = false
     @FocusState private var deskFocused: Bool
@@ -106,6 +108,22 @@ struct WritingDeskView: View {
 
             Spacer(minLength: 16)
 
+            Button(focused ? "Focus: on" : "Focus: off") {
+                toggleFocus()
+                deskFocused = true
+            }
+            .buttonStyle(DashboardGhostButtonStyle()).fixedSize()
+            .help("Zoom in on the screen. Esc does the same.")
+
+            if #available(macOS 26, *) {
+                Button("Painted: \(paint.rawValue)") {
+                    paint = paint.next
+                    den?.paint.look = paint
+                    deskFocused = true
+                }
+                .buttonStyle(DashboardGhostButtonStyle()).fixedSize()
+            }
+
             Button("Backdrops folder") {
                 WritingDeskSession.reveal(folder: BackdropLoader.backdropsFolder)
                 deskFocused = true
@@ -153,8 +171,9 @@ struct WritingDeskView: View {
             parts.append("Using a plain gradient for \(missingBackdrops.joined(separator: " and "))")
         }
         if den?.computer.screenFailed == true { parts.append("The screen could not be drawn") }
+        if paint != .off, den?.paint.failed == true { parts.append("The painted look could not start") }
         if parts.isEmpty {
-            parts.append(deskFocused ? "Type to write. Return throws a breaker." : "Click the desk to type.")
+            parts.append(deskFocused ? "Type to write. Return throws a breaker. Esc zooms in and out." : "Click the desk to type.")
         }
         return parts.joined(separator: " · ")
     }
@@ -167,6 +186,12 @@ struct WritingDeskView: View {
                 let scene = DenScene()
                 scene.computer.setText(session.text)
                 scene.lookAround = lookAround
+                scene.paint.look = paint
+                if geo.size.height > 0 { scene.viewAspect = Float(geo.size.width / geo.size.height) }
+                if focused { scene.focus(on: scene.screenViewpoint) }
+                if #available(macOS 26, *) {
+                    content.renderingEffects.customPostProcessing = .effect(PaintedLook(state: scene.paint))
+                }
                 scene.computer.onGearTick = { [sounds] in sounds.gearTick() }
                 content.add(scene.root)
                 updates = content.subscribe(to: SceneEvents.Update.self) { [readout] event in
@@ -178,6 +203,11 @@ struct WritingDeskView: View {
                 }
                 den = scene
                 missingBackdrops = scene.missingBackdrops
+            }
+            .onChange(of: geo.size) { _, size in
+                guard size.height > 0, let den else { return }
+                den.viewAspect = Float(size.width / size.height)
+                if focused { den.focus(on: den.screenViewpoint) }
             }
             .onContinuousHover(coordinateSpace: .local) { phase in
                 switch phase {
@@ -207,6 +237,9 @@ struct WritingDeskView: View {
         if press.modifiers.contains(.command) || press.modifiers.contains(.control) { return .ignored }
 
         switch press.key {
+        case .escape:
+            toggleFocus()
+            return .handled
         case .return:
             session.newline()
             den?.computer.flipBreakers()
@@ -236,6 +269,11 @@ struct WritingDeskView: View {
             // Arrow and function keys arrive as private-use scalars.
             scalar.value >= 0x20 && scalar.value != 0x7F && !(0xF700...0xF8FF).contains(scalar.value)
         }
+    }
+
+    private func toggleFocus() {
+        focused.toggle()
+        den?.focus(on: focused ? den?.screenViewpoint : nil)
     }
 
     private func startNewSheet() {

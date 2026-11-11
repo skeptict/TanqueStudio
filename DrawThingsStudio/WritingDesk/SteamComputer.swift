@@ -51,6 +51,9 @@ final class SteamComputer {
     /// Called once per tooth of the main gear, for the ticking sound.
     var onGearTick: (() -> Void)?
     private(set) var screenFailed = false
+    /// Centre and size of the glass screen, in the machine's own space.
+    private(set) var screenCentre: SIMD3<Float> = .zero
+    private(set) var screenSize: SIMD2<Float> = .zero
 
     // Layout, in metres.
     private let plinthHeight: Float = 0.03
@@ -157,6 +160,8 @@ final class SteamComputer {
         let width: Float = 0.262
         let height = width / ScreenTextRenderer.aspect
         let centre = SIMD3<Float>(-0.045, 0.185, frontZ)
+        screenCentre = centre + [0, 0, 0.004]
+        screenSize = [width, height]
 
         // The tube face bulges slightly; a second, clear skin over it catches highlights.
         var face = MeshBuilder()

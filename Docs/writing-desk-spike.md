@@ -2,7 +2,7 @@
 
 Labs → Writing Desk. A 3D den where you type on a steampunk machine, built to answer one question: is writing this way any good? It is a spike, not a feature.
 
-Status on 2026-11-11: it works end to end and has been driven in the running app. Branch `spike/writing-desk`.
+Status on 2026-11-11: it works end to end and has been driven in the running app. Branch `spike/writing-desk`. Focus zoom and the painted look were added the same day and are described in their own section below.
 
 ## What was built
 
@@ -10,7 +10,7 @@ The camera sits at a dark wood desk. On the desk is a brass and copper machine w
 
 - **Close things are modelled, far things are painted.** The desk, machine, lamp and lower shelves are RealityKit geometry built in code, with no downloaded models. The city and the upper shelves are images on planes.
 - **macOS 15 and later.** `RealityView` needs macOS 15, so the tab is hidden on macOS 14. The app's deployment target is still 14.0.
-- **One existing file changed:** `Dashboard/DashboardLabsPage.swift` gains the tab. Everything else is in `DrawThingsStudio/WritingDesk/` (10 files, about 1,840 lines). No SwiftData changes and no Story Studio wiring.
+- **One existing file changed:** `Dashboard/DashboardLabsPage.swift` gains the tab. Everything else is in `DrawThingsStudio/WritingDesk/` (11 files, about 2,200 lines). No SwiftData changes and no Story Studio wiring.
 
 | File | What it holds |
 |---|---|
@@ -21,6 +21,7 @@ The camera sits at a dark wood desk. On the desk is a brass and copper machine w
 | `ScreenTextRenderer.swift` | 48×16 word wrap and the amber screen image |
 | `BackdropLoader.swift` | Loads `city.png` and `shelves.png`; paints stand-ins and the light environment |
 | `MeshBuilder.swift`, `GearMesh.swift`, `TubeMesh.swift` | Low-poly shapes, gears, wires |
+| `PaintedLook.swift` | The oil-paint filter applied to each finished frame |
 | `DeskSounds.swift` | Generated key click, gear tick and breaker clunk |
 
 ### Using it
@@ -30,6 +31,8 @@ The camera sits at a dark wood desk. On the desk is a brass and copper machine w
 - **Backdrops** go in the app's sandbox container, because the app is sandboxed:
   `~/Library/Containers/tanque.org.TanqueStudio/Data/Library/Application Support/TanqueStudio/WritingDesk/Backdrops/`
   Use the **Backdrops folder** button to open it, drop in `city.png` (about 21:9) and `shelves.png` (about 2:3), then press **Reload backdrops**. Saved sheets are one folder up.
+- **Esc**, or the **Focus** button, zooms in on the screen and back out.
+- **Painted** steps through fine, bold and off (macOS 26 and later).
 - **Look around: on** turns your head with the pointer. Off, the pointer only shifts your head a few centimetres.
 
 ## What was checked in the running app
@@ -88,6 +91,35 @@ Two things to know when reading the number:
 - **In the background the app is throttled** to about 40 fps. Measure with it in front.
 - **Frames of 60–70 ms happen** when a dialog opens and now and then while typing. The screen image is redrawn on every keystroke; that was not measured on its own.
 
+## Focus zoom and the painted look
+
+Both were added after the first pass, and both were driven in the running app with the real backdrops.
+
+### Focus zoom
+
+Esc, or the Focus button, glides the camera in until the screen fills 84% of the view's height. The type becomes about four times larger, with gears, breakers and a strip of window left at the edges. Esc glides back. The glide takes 0.9 seconds and eases in and out.
+
+It is built to be reused. `DenScene.focus(on:)` takes a `Viewpoint` (where the camera sits and what it looks at), and `nil` returns to the seat. `viewpoint(facing:size:)` makes one for any flat thing in the room, so a future feature can zoom into a book, a painting or the window by describing where it is. Head parallax is damped while focused, and Look around is suspended.
+
+The screen image was raised from 1152×832 to 1728×1248 so the enlarged type is sharper.
+
+### Painted look
+
+Each finished frame is repainted before it is shown. The filter picks, for every pixel, the calmest of four neighbouring patches and uses its average colour (a Kuwahara filter), with the patches stretched along edges so dabs follow forms. It then adds uneven paint, a little canvas texture and richer colour. The glass screen is left unpainted so the type stays sharp.
+
+- **It needs macOS 26 or later.** That is when `RealityView` gained custom post-processing. On macOS 15 to 25 the room is shown unpainted and the button is hidden.
+- **Fine** is the default. **Bold** uses larger dabs and loses the machine's detail.
+- **Frame rate is unchanged:** 110–120 fps with the filter on, on the same machine.
+- **If the shader fails to build, the status line says so.** The first version failed silently and showed the unpainted room, which looked like a filter that was too subtle.
+
+Checked: Esc and the Focus button both zoom in and out; typing works while focused (99 fps during a burst, slowest frame 36 ms); the paint setting cycles through all three; the screen stays sharp in every case.
+
+Not checked:
+
+- **Whether the paint shimmers in motion.** Only still frames were looked at. The gears, the flickering bulbs and Look around are the places to watch.
+- **Resizing the window while focused.**
+- **macOS 15 to 25,** where the filter is switched off in code only.
+
 ## What looked good and what did not
 
 Good:
@@ -98,7 +130,9 @@ Good:
 
 Not good:
 
-- **The type is small.** 48 columns on a screen that fills a fifth of the view is readable but not comfortable for long writing. A closer camera, fewer columns or a "lean in" key would help.
+- **The type is small when seated.** Focus zoom fixes this for writing; seated, 48 columns on a screen that fills a fifth of the view is readable but not comfortable.
+- **The enlarged type is slightly soft,** from the phosphor glow more than from resolution.
+- **The modelled parts paint less well than the backdrop.** Flat-coloured books and walls give the filter little to work with, so they still read as computer shapes with soft edges. Textured materials would help more than a stronger filter.
 - **The city image has a hard top edge.** Look up and it ends in a curved line against a flat mauve sky, because the painted sky and the generated sky do not match.
 - **The room's light does not match the backdrop.** The reflections are mauve from the stand-in dusk, while the real city image is green and gold. The desk and floor pick up a purple cast.
 - **The upper shelves do not match the lower ones.** A photographic painting sits above flat-coloured box books, and the painted lampshades float.
@@ -110,7 +144,7 @@ Not good:
 ## Suggested next steps
 
 1. **Decide whether it is worth continuing.** Write a real page at the desk first. Everything below is only worth doing if that is pleasant.
-2. **Make the type bigger:** move the camera in, or zoom to the screen while typing.
+2. **Use the focus mechanism for something else:** zoom to the window for the view, or to a shelf to pick a saved sheet.
 3. **Light the room from the backdrop:** build the environment image from `city.png` so the reflections match, and extend or fade the top of the city image into the sky.
 4. **A looping waterfall** with `VideoMaterial` over that part of the city image.
 5. **A proper machine model.** The coded one is a placeholder; a modelled one needs its licence checked.

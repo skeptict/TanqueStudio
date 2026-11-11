@@ -49,16 +49,16 @@ enum ScreenTextLayout {
 
 /// Draws a page as warm amber type on a dark tube.
 struct ScreenTextRenderer {
-    static let width = 1152
-    static let height = 832
+    static let width = 1728
+    static let height = 1248
     /// Width over height of the image, and so of the screen that carries it.
     static let aspect = Float(width) / Float(height)
 
     private let font: CTFont
     private let cellWidth: CGFloat
     private let lineHeight: CGFloat
-    private let marginX: CGFloat = 48
-    private let marginY: CGFloat = 32
+    private let marginX: CGFloat = 72
+    private let marginY: CGFloat = 48
     private let amber = CGColor(srgbRed: 1.0, green: 0.70, blue: 0.28, alpha: 1)
 
     init() {
@@ -89,7 +89,7 @@ struct ScreenTextRenderer {
         ctx.fill(full)
 
         // Phosphor glow.
-        ctx.setShadow(offset: .zero, blur: 9, color: amber.copy(alpha: 0.75))
+        ctx.setShadow(offset: .zero, blur: 10, color: amber.copy(alpha: 0.6))
 
         let attributes: [NSAttributedString.Key: Any] = [
             NSAttributedString.Key(kCTFontAttributeName as String): font,
@@ -115,7 +115,7 @@ struct ScreenTextRenderer {
         var y = 0
         while y < Self.height {
             ctx.fill(CGRect(x: 0, y: y, width: Self.width, height: 1))
-            y += 4
+            y += 6
         }
         return ctx.makeImage()
     }

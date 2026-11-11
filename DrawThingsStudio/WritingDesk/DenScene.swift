@@ -16,6 +16,23 @@ final class DenScene {
     /// Pointer position over the view, -1...1 on each axis, +y up.
     var pointer: SIMD2<Float> = .zero
     var lookAround = false
+    /// Width over height of the view, so a focused item can be fitted to it.
+    var viewAspect: Float = 2.5
+    /// Carries the camera and the screen's position to the painted look.
+    let paint = PaintedLookState()
+
+    /// Somewhere the camera can sit, and what it looks at from there.
+    struct Viewpoint {
+        var eye: SIMD3<Float>
+        var target: SIMD3<Float>
+
+        func blended(to other: Viewpoint, _ t: Float) -> Viewpoint {
+            Viewpoint(eye: simd_mix(eye, other.eye, SIMD3(repeating: t)),
+                      target: simd_mix(target, other.target, SIMD3(repeating: t)))
+        }
+    }
+    /// True while the camera is at, or travelling to, something other than the seat.
+    private(set) var isFocused = false
 
     private(set) var triangleCount = 0
     private(set) var lightCount = 0
@@ -42,6 +59,14 @@ final class DenScene {
     private var time: Float = 0
     private var smoothedPointer: SIMD2<Float> = .zero
     private var lookBlend: Float = 0
+    private let fieldOfView: Float = 42
+    private var seat: Viewpoint { Viewpoint(eye: eye, target: target) }
+    private var leaving = Viewpoint(eye: .zero, target: [0, 0, -1])
+    private var arriving = Viewpoint(eye: .zero, target: [0, 0, -1])
+    private var current = Viewpoint(eye: .zero, target: [0, 0, -1])
+    private var travel: Float = 1
+    private var focusBlend: Float = 0
+    private let travelSeconds: Float = 0.9
 
     init() {
         buildShell()
@@ -55,7 +80,10 @@ final class DenScene {
         computer.root.position = [deskX, deskTop, -0.62]
         root.addChild(computer.root)
 
-        camera.components.set(PerspectiveCameraComponent(near: 0.05, far: 200, fieldOfViewInDegrees: 42))
+        camera.components.set(PerspectiveCameraComponent(near: 0.05, far: 200, fieldOfViewInDegrees: fieldOfView))
+        leaving = seat
+        arriving = seat
+        current = seat
         camera.look(at: target, from: eye, relativeTo: nil)
         root.addChild(camera)
 
@@ -315,6 +343,37 @@ final class DenScene {
         return count
     }
 
+    // MARK: - Focus
+
+    /// Glides the camera to a viewpoint, or back to the seat for `nil`.
+    /// Anything in the room can be focused on by describing a viewpoint for it.
+    func focus(on viewpoint: Viewpoint?) {
+        leaving = current
+        arriving = viewpoint ?? seat
+        travel = 0
+        isFocused = viewpoint != nil
+    }
+
+    /// A viewpoint square-on to a flat thing, close enough that it fills
+    /// `fill` of the view in whichever direction is tighter.
+    func viewpoint(facing centre: SIMD3<Float>, size: SIMD2<Float>, fill: Float = 0.84) -> Viewpoint {
+        let half = tan(fieldOfView * .pi / 360)
+        let forHeight = size.y / 2 / (fill * half)
+        let forWidth = size.x / 2 / (fill * half * max(viewAspect, 0.1))
+        return Viewpoint(eye: centre + [0, 0, max(forHeight, forWidth)], target: centre)
+    }
+
+    /// Close on the glass screen, for writing.
+    var screenViewpoint: Viewpoint {
+        viewpoint(facing: computer.root.position + computer.screenCentre, size: computer.screenSize)
+    }
+
+    private var screenCorners: [SIMD3<Float>] {
+        let c = computer.root.position + computer.screenCentre
+        let w = computer.screenSize.x / 2, h = computer.screenSize.y / 2
+        return [c + [-w, h, 0], c + [w, h, 0], c + [w, -h, 0], c + [-w, -h, 0]]
+    }
+
     // MARK: - Per frame
 
     func update(dt: Float) {
@@ -324,22 +383,30 @@ final class DenScene {
 
         let follow = 1 - exp(-dt * 4)
         smoothedPointer += (pointer - smoothedPointer) * follow
-        lookBlend += ((lookAround ? 1 : 0) - lookBlend) * (1 - exp(-dt * 3))
 
-        let forward = simd_normalize(target - eye)
+        // Travel between viewpoints eases in and out.
+        travel = min(1, travel + dt / travelSeconds)
+        let eased = travel * travel * (3 - 2 * travel)
+        current = leaving.blended(to: arriving, eased)
+        focusBlend += ((isFocused ? 1 : 0) - focusBlend) * (1 - exp(-dt * 5))
+        lookBlend += ((lookAround && !isFocused ? 1 : 0) - lookBlend) * (1 - exp(-dt * 3))
+
+        let forward = simd_normalize(current.target - current.eye)
         let right = simd_normalize(simd_cross(forward, [0, 1, 0]))
 
-        // Seated: the head shifts a few centimetres with the pointer.
+        // Seated: the head shifts a few centimetres with the pointer. Close
+        // on something, it barely moves.
         let lean = (right * smoothedPointer.x * 0.05 + SIMD3<Float>(0, 1, 0) * smoothedPointer.y * 0.03)
-            * (1 - lookBlend)
+            * (1 - lookBlend) * (1 - 0.9 * focusBlend)
         // Looking around: the head turns instead.
         let yaw = simd_quatf(angle: -smoothedPointer.x * 1.25 * lookBlend, axis: [0, 1, 0])
         let pitch = simd_quatf(angle: smoothedPointer.y * 0.55 * lookBlend, axis: right)
         let gaze = yaw.act(pitch.act(forward))
 
-        let position = eye + lean
-        let reach = simd_length(target - eye)
-        camera.look(at: lookBlend > 0.001 ? position + gaze * reach : target, from: position, relativeTo: nil)
+        let position = current.eye + lean
+        let reach = simd_length(current.target - current.eye)
+        camera.look(at: lookBlend > 0.001 ? position + gaze * reach : current.target, from: position, relativeTo: nil)
+        paint.set(view: camera.transformMatrix(relativeTo: nil).inverse, keepSharp: screenCorners)
 
         // The valley drifts very slightly, and leans against the pointer.
         let drift = sin(time * 0.07) * 0.004 - smoothedPointer.x * 0.003
