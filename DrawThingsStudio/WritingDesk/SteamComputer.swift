@@ -78,6 +78,7 @@ final class SteamComputer {
     private var filaments: [ModelEntity] = []
     private let filamentScale = SIMD3<Float>(0.6, 1.5, 0.6)
     private let bulbLight = Entity()
+    private var fittings: MachineFittings?
     private let bulbLightBase: Float = 9000
 
     private struct Breaker {
@@ -115,7 +116,9 @@ final class SteamComputer {
         buildGears()
         buildBulbs()
         buildBreakers()
-        buildWires()
+        fittings = MachineFittings(root: root, layout: .init(
+            plinthHeight: plinthHeight, topY: topY, frontZ: frontZ, bodyHalfWidth: bodySize.x / 2,
+            breakerX: breakerX, breakerY: (0..<3).map(breakerY), bulbX: (0..<5).map(bulbX)))
         buildKeyboard()
         setText("")
     }
@@ -206,9 +209,11 @@ final class SteamComputer {
             Spec(teeth: 12, parent: 0, centre: .zero, direction: 12, z: plateZ, rate: 0, material: DeskMaterials.copper),
             Spec(teeth: 16, parent: 1, centre: .zero, direction: -30, z: plateZ, rate: 0, material: DeskMaterials.brass),
             Spec(teeth: 9, parent: 2, centre: .zero, direction: 65, z: plateZ, rate: 0, material: DeskMaterials.copper),
+            Spec(teeth: 10, parent: 2, centre: .zero, direction: -5, z: plateZ, rate: 0, material: DeskMaterials.brass),
+            Spec(teeth: 8, parent: 0, centre: .zero, direction: 140, z: plateZ, rate: 0, material: DeskMaterials.copper),
             Spec(teeth: 14, parent: nil, centre: [-0.29, 0.115], direction: 0, z: wingZ,
                  rate: -1.3, material: DeskMaterials.copper),
-            Spec(teeth: 9, parent: 4, centre: .zero, direction: 75, z: wingZ, rate: 0, material: DeskMaterials.brass),
+            Spec(teeth: 9, parent: 6, centre: .zero, direction: 75, z: wingZ, rate: 0, material: DeskMaterials.brass),
         ]
 
         var centres: [SIMD2<Float>] = []
@@ -288,30 +293,6 @@ final class SteamComputer {
         }
     }
 
-    private func buildWires() {
-        var builder = MeshBuilder()
-        // Back plate down to each bulb socket.
-        for i in 0..<5 {
-            let x = bulbX(i)
-            let from = SIMD3<Float>(x * 0.7 + 0.02, topY + 0.012, -0.112)
-            let to = SIMD3<Float>(x, topY + 0.006, -0.012)
-            TubeMesh.add(to: &builder, from, from + [0, 0.035, 0.045], to + [0, 0.045, -0.035], to, radius: 0.0032)
-        }
-        // Out of the side of the body and round to each breaker.
-        for i in 0..<3 {
-            let y = breakerY(i)
-            let from = SIMD3<Float>(bodySize.x / 2, y - 0.03, -0.10)
-            let to = SIMD3<Float>(breakerX + 0.034, y, frontZ + 0.004)
-            TubeMesh.add(to: &builder, from, from + [0.075, 0.01, 0.02], to + [0.07, 0.03, 0.06], to, radius: 0.0036)
-        }
-        // Wing gears back to the body.
-        TubeMesh.add(to: &builder, [-0.33, 0.27, -0.014], [-0.33, 0.36, 0.03], [-0.22, 0.38, 0.0],
-                     [-0.20, topY - 0.02, -0.04], radius: 0.0036)
-        if let mesh = try? builder.build(name: "wires") {
-            _ = add(mesh, DeskMaterials.copper, at: .zero)
-        }
-    }
-
     private func buildKeyboard() {
         let board = Entity()
         board.position = [0, plinthHeight + 0.004, 0.195]
@@ -357,6 +338,7 @@ final class SteamComputer {
     /// the keyboard has no cap for, and kicks the gears.
     func keystroke(_ character: Character?) {
         boost = min(boost + 1.6, 6)
+        fittings?.keystroke()
         guard !keys.isEmpty else { return }
         let lowered = character.flatMap { Character(String($0).lowercased()) }
         let index = lowered.flatMap { keyIndex[$0] } ?? rng.index(keys.count)
@@ -368,9 +350,13 @@ final class SteamComputer {
         guard !breakers.isEmpty else { return }
         boost = min(boost + 2.5, 6)
         if all {
-            for i in breakers.indices { breakers[i].isUp.toggle() }
+            for i in breakers.indices {
+                breakers[i].isUp.toggle()
+                fittings?.breakerThrown(i)
+            }
         } else {
             breakers[nextBreaker].isUp.toggle()
+            fittings?.breakerThrown(nextBreaker)
             nextBreaker = (nextBreaker + 1) % breakers.count
         }
     }
@@ -450,6 +436,8 @@ final class SteamComputer {
             light.intensity = bulbLightBase * total / Float(filaments.count)
             bulbLight.components.set(light)
         }
+
+        fittings?.update(dt: dt, time: time, activity: boost)
 
         // Breakers ease to their thrown position.
         let ease = 1 - exp(-dt * 22)

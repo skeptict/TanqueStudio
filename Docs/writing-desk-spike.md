@@ -10,7 +10,7 @@ The camera sits at a dark wood desk. On the desk is a brass and copper machine w
 
 - **Close things are modelled, far things are painted.** The desk, machine, lamp and lower shelves are RealityKit geometry built in code, with no downloaded models. The city and the upper shelves are images on planes.
 - **macOS 15 and later.** `RealityView` needs macOS 15, so the tab is hidden on macOS 14. The app's deployment target is still 14.0.
-- **One existing file changed:** `Dashboard/DashboardLabsPage.swift` gains the tab. Everything else is in `DrawThingsStudio/WritingDesk/` (11 files, about 2,200 lines). No SwiftData changes and no Story Studio wiring.
+- **One existing file changed:** `Dashboard/DashboardLabsPage.swift` gains the tab. Everything else is in `DrawThingsStudio/WritingDesk/` (12 files, about 2,500 lines). No SwiftData changes and no Story Studio wiring.
 
 | File | What it holds |
 |---|---|
@@ -21,6 +21,7 @@ The camera sits at a dark wood desk. On the desk is a brass and copper machine w
 | `ScreenTextRenderer.swift` | 48×16 word wrap and the amber screen image |
 | `BackdropLoader.swift` | Loads `city.png` and `shelves.png`; paints stand-ins and the light environment |
 | `MeshBuilder.swift`, `GearMesh.swift`, `TubeMesh.swift` | Low-poly shapes, gears, wires |
+| `MachineFittings.swift` | Pulsing tubes, wires that heat and cool, gauges, pipes and rivets |
 | `PaintedLook.swift` | The oil-paint filter applied to each finished frame |
 | `DeskSounds.swift` | Generated key click, gear tick and breaker clunk |
 
@@ -119,6 +120,20 @@ Not checked:
 - **Whether the paint shimmers in motion.** Only still frames were looked at. The gears, the flickering bulbs and Look around are the places to watch.
 - **Resizing the window while focused.**
 - **macOS 15 to 25,** where the filter is switched off in code only.
+
+## More detail on the machine
+
+Added after the painted look, and checked in the running app:
+
+- **Three glass tubes** to the right of the keyboard (amber, aqua, ember). Each swells and fades at its own pace, over 5.5 to 9.5 seconds.
+- **A copper feed wire to each tube** that glows near the top of the tube's swell and cools as it fades.
+- **The older wires heat up too.** A breaker's wire runs hot when Return throws it and cools over a few seconds. The bulb wiring and the wing wire warm with typing.
+- **Two pressure gauges** to the left of the keyboard. One needle rises with typing; the other follows the hottest wire and the brightest tube.
+- **Pipework, about 60 rivets and two more meshed gears** (eight in all).
+
+The glow uses a run of 20 ready-made materials from cold to lit, and an object is given a new one only when its level moves to the next step. That keeps the lesson from the filaments: no materials are built per frame. The scene is now 82,566 triangles and still runs at 119 fps.
+
+Weak points: the gauges sit low and their needles are hard to read from the seat; the glowing columns in the tubes read as flat bars; nothing here casts light on its surroundings, because only the lamp and the bulbs are real lights.
 
 ## What looked good and what did not
 
