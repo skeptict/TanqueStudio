@@ -253,7 +253,8 @@ struct WritingDeskView: View {
             session.newline()
             den?.computer.flipBreakers()
             sounds.breaker()
-        case .delete:
+        // The Delete key arrives as U+007F here, not as `.delete` (U+0008).
+        case .delete, KeyEquivalent("\u{7F}"):
             session.deleteBackward()
             den?.computer.keystroke(nil)
             sounds.key()
