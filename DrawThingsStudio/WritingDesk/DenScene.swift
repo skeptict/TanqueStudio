@@ -72,6 +72,7 @@ final class DenScene {
     private var shelfTexture: TextureResource?
     private let keyLight = Entity()
     private let lampLight = Entity()
+    private var keyLampFace: ModelEntity?
     private let reflections = Entity()
     private var environment: EnvironmentResource?
     private var shelfPanels: [ModelEntity] = []
@@ -314,9 +315,11 @@ final class DenScene {
     private func buildLights() {
         // The key: a warm lamp high to the writer's left, out of sight. It is
         // the only light that casts shadows.
-        keyLight.look(at: [deskX + 0.05, deskTop + 0.2, -0.55],
-                      from: [deskX - 1.0, deskTop + 1.3, 0.25], relativeTo: nil)
+        let aim: SIMD3<Float> = [deskX + 0.05, deskTop + 0.2, -0.55]
+        let from: SIMD3<Float> = [deskX - 1.0, deskTop + 1.3, 0.25]
+        keyLight.look(at: aim, from: from, relativeTo: nil)
         root.addChild(keyLight)
+        buildKeyLamp(from: from, aim: aim)
 
         // The desk lamp.
         lampLight.position = [deskX - 0.85, deskTop + 0.27, -0.80]
@@ -324,6 +327,33 @@ final class DenScene {
 
         // With the machine's bulbs and its tubes, four lights in all.
         lightCount = 4
+    }
+
+    /// The thing the key light comes from: a brass floor lamp standing behind
+    /// the writer's left shoulder, its shade turned on the machine. It is out
+    /// of frame from the seat and in view when looking round.
+    private func buildKeyLamp(from: SIMD3<Float>, aim: SIMD3<Float>) {
+        let back = simd_normalize(from - aim)
+        let joint = from + back * 0.24
+        let foot: SIMD3<Float> = [joint.x, 0, joint.z]
+        add(.deskCylinder(height: 0.03, radius: 0.19), DeskMaterials.brass, at: foot + [0, 0.015, 0])
+        add(.deskCylinder(height: joint.y, radius: 0.014), DeskMaterials.brass, at: foot + [0, joint.y / 2, 0])
+        add(.deskSphere(radius: 0.032), DeskMaterials.brass, at: joint)
+
+        // The head shares the light's aim: its mouth faces -z.
+        let head = Entity()
+        head.transform = keyLight.transform
+        root.addChild(head)
+        let shade = add(.generateCone(height: 0.24, radius: 0.17), DeskMaterials.copper, at: [0, 0, 0.07], to: head)
+        shade.orientation = simd_quatf(angle: .pi / 2, axis: [1, 0, 0])
+        let face = add(.deskCylinder(height: 0.004, radius: 0.15), DeskMaterials.glow(1.0, 0.72, 0.40, intensity: 1.4),
+                       at: [0, 0, -0.052], to: head)
+        face.orientation = simd_quatf(angle: .pi / 2, axis: [1, 0, 0])
+        keyLampFace = face
+        // The light sits inside the shade, so the shade must not shadow it.
+        for part in [shade, face] {
+            part.components.set(DynamicLightShadowComponent(castsShadow: false))
+        }
     }
 
     /// Gives the metal something to reflect, and the room its ambient light.
@@ -371,6 +401,8 @@ final class DenScene {
         } else {
             keyLight.components.remove(SpotLightComponent.Shadow.self)
         }
+        // The floor lamp's face is lit only when the key light is.
+        keyLampFace?.isEnabled = isDark
         lampLight.components.set(PointLightComponent(cgColor: warm,
                                                      intensity: isDark ? 20_000 : 60_000,
                                                      attenuationRadius: 6))

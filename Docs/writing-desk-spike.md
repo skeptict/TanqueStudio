@@ -92,6 +92,12 @@ Two things to know when reading the number:
 - **In the background the app is throttled** to about 40 fps. Measure with it in front.
 - **Frames of 60–70 ms happen** when a dialog opens and now and then while typing. The screen image is redrawn on every keystroke; that was not measured on its own.
 
+### Delete did nothing
+
+Found on 2026-11-12. The Delete key arrives as U+007F, and the handler matched only SwiftUI's `.delete`, which is U+0008, so the press was dropped. It failed zoomed in and zoomed out alike. The handler now accepts both. Checked in the running app in both views.
+
+The first pass recorded Backspace as working. That check was made a day earlier on the same machine and was not re-run after later changes; why it passed then is not known.
+
 ## Focus zoom and the painted look
 
 Both were added after the first pass, and both were driven in the running app with the real backdrops.
@@ -149,7 +155,9 @@ Checked in the running app: both moods, switching between them, zoom while in ch
 
 The keys and gauge faces first ran close to white under the key light. The ivory is now a darker, rougher aged bone (0.86/0.80/0.66 → 0.60/0.53/0.40, roughness 0.38 → 0.55), checked from the seat in chiaroscuro only.
 
-Weak points: the bookshelves almost vanish; the spotlight's source is not something you can see in the room; the brass deck has a small white highlight at its front right corner; the gauge needles are still hard to read.
+The key light now has a source: a brass floor lamp behind the writer's left shoulder, its copper shade turned on the machine. It is out of frame from the seat, as the light is in most Rembrandts, and in view with Look around on and the pointer to the left. Its face glows in chiaroscuro and is dark in dusk. The shade is marked as casting no shadow, because the light sits inside it; the light on the desk is unchanged.
+
+Weak points: the bookshelves almost vanish; the floor lamp's shade is cut off by the top of the view when looking left; the brass deck has a small white highlight at its front right corner; the gauge needles are still hard to read.
 
 ## What looked good and what did not
 
