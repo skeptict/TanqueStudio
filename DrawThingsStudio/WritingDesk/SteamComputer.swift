@@ -32,7 +32,8 @@ enum DeskMaterials {
     static let copper = pbr(0.82, 0.44, 0.27, metallic: 1, roughness: 0.28)
     static let bronze = pbr(0.36, 0.25, 0.13, metallic: 1, roughness: 0.48)
     static let iron = pbr(0.07, 0.07, 0.075, metallic: 0.9, roughness: 0.5)
-    static let ivory = pbr(0.86, 0.80, 0.66, metallic: 0, roughness: 0.38)
+    /// Aged bone, kept well short of white so the key light does not blow it out.
+    static let ivory = pbr(0.60, 0.53, 0.40, metallic: 0, roughness: 0.55)
     static let darkWood: PhysicallyBasedMaterial = {
         var m = pbr(0.13, 0.07, 0.04, metallic: 0, roughness: 0.6)
         m.clearcoat = .init(floatLiteral: 0.15)

@@ -147,7 +147,9 @@ A **Light** button switches between two moods; chiaroscuro is the default.
 
 Checked in the running app: both moods, switching between them, zoom while in chiaroscuro, 112–120 fps. Not checked: either mood with the paint filter off, and anything in motion.
 
-Weak points: the ivory keys and gauge faces run close to white under the key light; the bookshelves almost vanish; the spotlight's source is not something you can see in the room.
+The keys and gauge faces first ran close to white under the key light. The ivory is now a darker, rougher aged bone (0.86/0.80/0.66 → 0.60/0.53/0.40, roughness 0.38 → 0.55), checked from the seat in chiaroscuro only.
+
+Weak points: the bookshelves almost vanish; the spotlight's source is not something you can see in the room; the brass deck has a small white highlight at its front right corner; the gauge needles are still hard to read.
 
 ## What looked good and what did not
 
