@@ -31,6 +31,17 @@ final class DenScene {
                       target: simd_mix(target, other.target, SIMD3(repeating: t)))
         }
     }
+    /// How the room is lit.
+    enum Mood: String, CaseIterable {
+        /// One warm light on the machine and deep shadow everywhere else.
+        case chiaroscuro
+        /// The even dusk light the room began with.
+        case dusk
+
+        var next: Mood { self == .chiaroscuro ? .dusk : .chiaroscuro }
+    }
+    var mood = Mood.chiaroscuro { didSet { applyMood() } }
+
     /// True while the camera is at, or travelling to, something other than the seat.
     private(set) var isFocused = false
 
@@ -55,6 +66,14 @@ final class DenScene {
     private let camera = Entity()
     private let outside = Entity()
     private var cityEntity: ModelEntity?
+    private var skyEntity: ModelEntity?
+    private var cityTexture: TextureResource?
+    private var skyTexture: TextureResource?
+    private var shelfTexture: TextureResource?
+    private let keyLight = Entity()
+    private let lampLight = Entity()
+    private let reflections = Entity()
+    private var environment: EnvironmentResource?
     private var shelfPanels: [ModelEntity] = []
     private var time: Float = 0
     private var smoothedPointer: SIMD2<Float> = .zero
@@ -88,6 +107,7 @@ final class DenScene {
         root.addChild(camera)
 
         applyReflections()
+        applyMood()
         triangleCount = Self.triangles(in: root)
     }
 
@@ -258,7 +278,8 @@ final class DenScene {
         sky.arcWall(center: .zero, radius: 14, span: 2.6, bottom: -6, height: 30)
         if let mesh = try? sky.build(name: "sky"), let image = BackdropLoader.duskSky(),
            let texture = try? TextureResource(image: image, withName: "desk-sky", options: .init(semantic: .color)) {
-            add(mesh, UnlitMaterial(texture: texture), to: outside)
+            skyTexture = texture
+            skyEntity = add(mesh, UnlitMaterial(texture: texture), to: outside)
         }
     }
 
@@ -277,52 +298,88 @@ final class DenScene {
             wall.arcWall(center: .zero, radius: radius, span: span, bottom: 2.05 - tall / 2, height: tall)
             if let mesh = try? wall.build(name: "city") {
                 cityEntity?.removeFromParent()
+                cityTexture = city.texture
                 cityEntity = add(mesh, UnlitMaterial(texture: city.texture), to: outside)
             }
         }
 
         if let shelves = BackdropLoader.backdrop(named: "shelves.png", fallback: BackdropLoader.shelfShadow) {
             if shelves.isFallback { missingBackdrops.append("shelves.png") }
-            var material = UnlitMaterial(texture: shelves.texture)
-            // Painted light would glow in a dark room, so it is knocked back.
-            material.color = .init(tint: NSColor(white: 0.5, alpha: 1), texture: .init(shelves.texture))
-            for panel in shelfPanels { panel.model?.materials = [material] }
+            shelfTexture = shelves.texture
         }
+        tintBackdrops()
         triangleCount = Self.triangles(in: root)
     }
 
     private func buildLights() {
-        // Dusk through the windows.
-        let dusk = Entity()
-        dusk.components.set(DirectionalLightComponent(color: NSColor(srgbRed: 0.55, green: 0.62, blue: 1.0, alpha: 1),
-                                                      intensity: 250))
-        dusk.look(at: [0, 0.8, 0], from: [1.5, 3.5, -6], relativeTo: nil)
-        root.addChild(dusk)
+        // The key: a warm lamp high to the writer's left, out of sight. It is
+        // the only light that casts shadows.
+        keyLight.look(at: [deskX + 0.05, deskTop + 0.2, -0.55],
+                      from: [deskX - 1.0, deskTop + 1.3, 0.25], relativeTo: nil)
+        root.addChild(keyLight)
 
-        // Desk lamp.
-        let lamp = Entity()
-        lamp.position = [deskX - 0.85, deskTop + 0.27, -0.80]
-        lamp.components.set(PointLightComponent(cgColor: CGColor(srgbRed: 1.0, green: 0.74, blue: 0.44, alpha: 1),
-                                                intensity: 60_000, attenuationRadius: 6))
-        root.addChild(lamp)
+        // The desk lamp.
+        lampLight.position = [deskX - 0.85, deskTop + 0.27, -0.80]
+        root.addChild(lampLight)
 
-        // The third light is the machine's own bulb glow.
-        lightCount = 3
+        // With the machine's bulbs and its tubes, four lights in all.
+        lightCount = 4
     }
 
-    /// Gives the metal something to reflect.
+    /// Gives the metal something to reflect, and the room its ambient light.
     private func applyReflections() {
         guard let image = BackdropLoader.reflections(),
-              let environment = try? EnvironmentResource(equirectangular: image, withName: "desk-reflections")
+              let made = try? EnvironmentResource(equirectangular: image, withName: "desk-reflections")
         else { return }
-        let source = Entity()
-        source.components.set(ImageBasedLightComponent(source: .single(environment), intensityExponent: 1.0))
-        root.addChild(source)
+        environment = made
+        root.addChild(reflections)
         Self.visit(root) { entity in
             if entity.components.has(ModelComponent.self) {
-                entity.components.set(ImageBasedLightReceiverComponent(imageBasedLight: source))
+                entity.components.set(ImageBasedLightReceiverComponent(imageBasedLight: reflections))
             }
         }
+    }
+
+    // MARK: - Mood
+
+    private var isDark: Bool { mood == .chiaroscuro }
+
+    /// Painted parts give off their own light, so they are dimmed to sit in the room.
+    private func tintBackdrops() {
+        func tinted(_ texture: TextureResource, _ level: Float) -> UnlitMaterial {
+            var material = UnlitMaterial(texture: texture)
+            material.color = .init(tint: NSColor(white: CGFloat(level), alpha: 1), texture: .init(texture))
+            return material
+        }
+        let outsideLevel: Float = isDark ? 0.62 : 1
+        if let cityTexture { cityEntity?.model?.materials = [tinted(cityTexture, outsideLevel)] }
+        if let skyTexture { skyEntity?.model?.materials = [tinted(skyTexture, outsideLevel)] }
+        if let shelfTexture {
+            let material = tinted(shelfTexture, isDark ? 0.22 : 0.5)
+            for panel in shelfPanels { panel.model?.materials = [material] }
+        }
+    }
+
+    private func applyMood() {
+        let warm = CGColor(srgbRed: 1.0, green: 0.74, blue: 0.44, alpha: 1)
+        let key = SpotLightComponent(color: NSColor(srgbRed: 1.0, green: 0.80, blue: 0.56, alpha: 1),
+                                     intensity: isDark ? 32_000 : 0,
+                                     innerAngleInDegrees: 22, outerAngleInDegrees: 46, attenuationRadius: 9)
+        keyLight.components.set(key)
+        if isDark {
+            keyLight.components.set(SpotLightComponent.Shadow())
+        } else {
+            keyLight.components.remove(SpotLightComponent.Shadow.self)
+        }
+        lampLight.components.set(PointLightComponent(cgColor: warm,
+                                                     intensity: isDark ? 20_000 : 60_000,
+                                                     attenuationRadius: 6))
+        if let environment {
+            reflections.components.set(ImageBasedLightComponent(
+                source: .single(environment), intensityExponent: isDark ? -0.7 : 1))
+        }
+        tintBackdrops()
+        paint.vignette = isDark ? 0.35 : 0
     }
 
     private static func visit(_ entity: Entity, _ body: (Entity) -> Void) {

@@ -51,6 +51,7 @@ struct WritingDeskView: View {
     @State private var lookAround = false
     @State private var muted = false
     @State private var focused = false
+    @State private var mood = DenScene.Mood.chiaroscuro
     @State private var paint = PaintedLookState.Style.fine
     @State private var missingBackdrops: [String] = []
     @State private var confirmNewSheet = false
@@ -114,6 +115,13 @@ struct WritingDeskView: View {
             }
             .buttonStyle(DashboardGhostButtonStyle()).fixedSize()
             .help("Zoom in on the screen. Esc does the same.")
+
+            Button("Light: \(mood.rawValue)") {
+                mood = mood.next
+                den?.mood = mood
+                deskFocused = true
+            }
+            .buttonStyle(DashboardGhostButtonStyle()).fixedSize()
 
             if #available(macOS 26, *) {
                 Button("Painted: \(paint.rawValue)") {
@@ -187,6 +195,7 @@ struct WritingDeskView: View {
                 scene.computer.setText(session.text)
                 scene.lookAround = lookAround
                 scene.paint.look = paint
+                scene.mood = mood
                 if geo.size.height > 0 { scene.viewAspect = Float(geo.size.width / geo.size.height) }
                 if focused { scene.focus(on: scene.screenViewpoint) }
                 if #available(macOS 26, *) {

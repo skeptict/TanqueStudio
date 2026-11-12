@@ -171,7 +171,8 @@ final class SteamComputer {
         face.domedPanel(width: width, height: height, bulge: 0.010)
         if let mesh = try? face.build(name: "screen") {
             screen = add(mesh, DeskMaterials.iron, at: centre + [0, 0, 0.004])
-            _ = add(mesh, DeskMaterials.glass(opacity: 0.06), at: centre + [0, 0, 0.006])
+            // Kept very thin: under the key light a thicker skin fogs the type.
+            _ = add(mesh, DeskMaterials.glass(opacity: 0.02), at: centre + [0, 0, 0.006])
         }
 
         // Bezel.

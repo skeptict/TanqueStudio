@@ -135,6 +135,20 @@ The glow uses a run of 20 ready-made materials from cold to lit, and an object i
 
 Weak points: the gauges sit low and their needles are hard to read from the seat; the glowing columns in the tubes read as flat bars; nothing here casts light on its surroundings, because only the lamp and the bulbs are real lights.
 
+## Chiaroscuro light
+
+A **Light** button switches between two moods; chiaroscuro is the default.
+
+- **Chiaroscuro:** one warm spotlight high to the writer's left lights the machine and casts real shadows across the desk. The room's ambient light is cut hard, the city and painted shelves are dimmed so they sit back in the dark, and the corners of the picture fall into shadow.
+- **Dusk:** the even light the room began with.
+- **The tubes now light what is beside them,** through one small light whose colour follows whichever tubes are brightest.
+- **The window light was removed.** It never had a visible effect. There are four lights: key, desk lamp, bulbs, tubes.
+- **The glass skin over the screen was thinned,** because under the key light it fogged the type.
+
+Checked in the running app: both moods, switching between them, zoom while in chiaroscuro, 112–120 fps. Not checked: either mood with the paint filter off, and anything in motion.
+
+Weak points: the ivory keys and gauge faces run close to white under the key light; the bookshelves almost vanish; the spotlight's source is not something you can see in the room.
+
 ## What looked good and what did not
 
 Good:

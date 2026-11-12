@@ -11,6 +11,13 @@ final class PaintedLookState: @unchecked Sendable {
     private var corners: [SIMD3<Float>] = []
     private var style = Style.fine
     private var broken = false
+    private var edgeDarkening: Float = 0
+
+    /// How far the corners of the picture fall into shadow, 0 to 1.
+    var vignette: Float {
+        get { lock.withLock { edgeDarkening } }
+        set { lock.withLock { edgeDarkening = newValue } }
+    }
 
     /// True when the shader could not be built, so frames are shown unpainted.
     var failed: Bool {
@@ -52,8 +59,8 @@ final class PaintedLookState: @unchecked Sendable {
         }
     }
 
-    fileprivate func snapshot() -> (view: simd_float4x4, corners: [SIMD3<Float>], style: Style) {
-        lock.withLock { (view, corners, style) }
+    fileprivate func snapshot() -> (view: simd_float4x4, corners: [SIMD3<Float>], style: Style, vignette: Float) {
+        lock.withLock { (view, corners, style, edgeDarkening) }
     }
 }
 
@@ -77,6 +84,7 @@ struct PaintedLook: PostProcessEffect, @unchecked Sendable {
         /// Dab reach in pixels, stretch along edges, mottle, canvas weave.
         var brush: SIMD4<Float> = .zero
         var saturation: Float = 1
+        var vignette: Float = 0
     }
 
     mutating func prepare(for device: any MTLDevice) {
@@ -115,6 +123,7 @@ struct PaintedLook: PostProcessEffect, @unchecked Sendable {
         uniforms.amount = now.style == .off ? 0 : 1
         uniforms.brush = [now.style.brush.x, now.style.brush.y, 0.12, 0.03]
         uniforms.saturation = 1.2
+        uniforms.vignette = now.vignette
         if now.corners.count == 4 {
             let projected = now.corners.map { context.projection * now.view * SIMD4<Float>($0, 1) }
             // Behind the camera there is nothing to keep sharp.
@@ -155,6 +164,7 @@ struct PaintedLook: PostProcessEffect, @unchecked Sendable {
         float hasSharpArea;
         float4 brush;
         float saturation;
+        float vignette;
     };
 
     vertex Varying paintedVertex(uint id [[vertex_id]]) {
@@ -194,7 +204,7 @@ struct PaintedLook: PostProcessEffect, @unchecked Sendable {
                                     constant Uniforms &u [[buffer(0)]]) {
         constexpr sampler smooth(filter::linear, address::clamp_to_edge);
         float4 original = frame.sample(smooth, in.uv);
-        if (u.amount <= 0) { return original; }
+        const float3 luma = float3(0.299, 0.587, 0.114);
 
         float2 size = 1 / u.texel;
         float2 pixel = in.uv * size;
@@ -206,11 +216,12 @@ struct PaintedLook: PostProcessEffect, @unchecked Sendable {
             if (sharp >= 1) { return original; }
         }
 
+        float3 best = original.rgb;
+        if (u.amount > 0) {
         float reach = u.brush.x, stretch = u.brush.y;
 
         // Which way the picture runs here: dabs are laid along edges, not
         // across them, the way a brush follows a form.
-        const float3 luma = float3(0.299, 0.587, 0.114);
         float2 probe = u.texel * reach * 2;
         float gx = dot(frame.sample(smooth, in.uv + float2(probe.x, 0)).rgb
                        - frame.sample(smooth, in.uv - float2(probe.x, 0)).rgb, luma);
@@ -226,7 +237,6 @@ struct PaintedLook: PostProcessEffect, @unchecked Sendable {
         // the one that varies least. Edges survive; everything between them
         // collapses into flat dabs.
         const int taps = 5;
-        float3 best = original.rgb;
         float calmest = 1e9;
         for (int q = 0; q < 4; q++) {
             float2 dir = float2((q & 1) ? 1.0 : -1.0, (q & 2) ? 1.0 : -1.0);
@@ -257,6 +267,11 @@ struct PaintedLook: PostProcessEffect, @unchecked Sendable {
 
         float grey = dot(best, luma);
         best = max(mix(float3(grey), best, u.saturation), float3(0));
+        }
+
+        // The corners of the picture fall away into shadow.
+        float2 fromCentre = (in.uv - float2(0.5, 0.52)) * float2(1.0, 0.8);
+        best *= 1 - u.vignette * smoothstep(0.22, 0.62, length(fromCentre));
 
         return float4(mix(best, original.rgb, sharp), original.a);
     }

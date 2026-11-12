@@ -62,8 +62,10 @@ final class MachineFittings {
         var feed: Glowing
         let period: Float
         let phase: Float
+        let colour: SIMD3<Float>
     }
 
+    private let tubeLight = Entity()
     private let root: Entity
     private let layout: Layout
     private var tubes: [Tube] = []
@@ -186,9 +188,14 @@ final class MachineFittings {
             TubeMesh.add(to: &feed, from, from + [0.04, 0, 0.01], to + [-0.035, 0.012, -0.02], to, radius: 0.003)
             guard let feedWire = wire(feed, name: "tube-feed") else { continue }
 
+            let c = spec.colour
             tubes.append(Tube(core: Glowing(entity: column, ramp: ramp), feed: feedWire,
-                              period: spec.period, phase: spec.phase))
+                              period: spec.period, phase: spec.phase,
+                              colour: [Float(c.redComponent), Float(c.greenComponent), Float(c.blueComponent)]))
         }
+        // One small light for the three tubes, so their glow falls on the brass beside them.
+        tubeLight.position = [x - 0.05, base + 0.09, 0.19]
+        root.addChild(tubeLight)
     }
 
     private func buildGauges() {
@@ -304,6 +311,8 @@ final class MachineFittings {
         // Tubes breathe slowly, each at its own pace. The feed wire follows a
         // little behind, glowing only near the top of the swell.
         var brightest: Float = 0
+        var glow = SIMD3<Float>.zero
+        var total: Float = 0
         for i in tubes.indices {
             let turn = 2 * Float.pi / tubes[i].period
             let wave = 0.5 + 0.5 * sin(time * turn + tubes[i].phase)
@@ -312,6 +321,14 @@ final class MachineFittings {
             let lagged = 0.5 + 0.5 * sin((time - 0.9) * turn + tubes[i].phase)
             tubes[i].feed.show(max(0, lagged - 0.45) / 0.55)
             brightest = max(brightest, level)
+            glow += tubes[i].colour * level
+            total += level
+        }
+        if total > 0 {
+            let c = glow / total
+            tubeLight.components.set(PointLightComponent(
+                cgColor: CGColor(srgbRed: CGFloat(c.x), green: CGFloat(c.y), blue: CGFloat(c.z), alpha: 1),
+                intensity: 1_400 * total, attenuationRadius: 0.9))
         }
 
         // Hot wires cool: quickly at first, then slowly.
