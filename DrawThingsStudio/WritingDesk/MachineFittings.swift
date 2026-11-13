@@ -257,9 +257,10 @@ final class MachineFittings {
             rivets.sphere(center: p, radius: r, segments: 8, rings: 5)
         }
         // Round the back plate that carries the gears.
-        let plateFront: Float = -0.113
-        let left: Float = 0.02 - 0.25 + 0.012, right: Float = 0.02 + 0.25 - 0.012
-        let low = layout.topY + 0.012, high = layout.topY + 0.25 - 0.012
+        // They sit on the face of the raised frame.
+        let plateFront: Float = -0.096
+        let left: Float = 0.02 - 0.25 + 0.008, right: Float = 0.02 + 0.25 - 0.008
+        let low = layout.topY + 0.008, high = layout.topY + 0.25 - 0.008
         for i in 0...10 {
             let x = left + (right - left) * Float(i) / 10
             rivet([x, high, plateFront])

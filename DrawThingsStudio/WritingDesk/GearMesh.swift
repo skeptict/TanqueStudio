@@ -18,12 +18,19 @@ enum GearMesh {
     static func pitchRadius(teeth: Int, module: Float) -> Float { module * Float(teeth) / 2 }
     static func pitchAngle(teeth: Int) -> Float { 2 * .pi / Float(teeth) }
 
+    /// With `spokes` above zero, and room for them, the gear is a toothed rim
+    /// joined to a hub by that many arms, with open gaps between.
     static func add(to b: inout MeshBuilder, teeth: Int, module m: Float,
-                    thickness: Float, holeRadius: Float) {
+                    thickness: Float, holeRadius: Float, spokes: Int = 0) {
         let r = pitchRadius(teeth: teeth, module: m)
         let tip = r + m * 0.9
         let root = r - m * 1.1
         let pitch = pitchAngle(teeth: teeth)
+        let hub = holeRadius * 1.5
+        let rimInner = root - m
+        let open = spokes > 0 && rimInner > hub + m * 0.8
+        let solidInner = holeRadius
+        let holeRadius = open ? rimInner : solidInner
 
         var outer: [SIMD2<Float>] = []
         var inner: [SIMD2<Float>] = []
@@ -53,6 +60,34 @@ enum GearMesh {
             let mid = simd_normalize(i0 + i1)
             b.quad([i0.x, i0.y, zb], [i1.x, i1.y, zb], [i1.x, i1.y, zf], [i0.x, i0.y, zf],
                    normal: [-mid.x, -mid.y, 0])
+        }
+        guard open else { return }
+
+        // Hub: a ring round the axle.
+        let steps = 20
+        for i in 0..<steps {
+            let a0 = Float(i) / Float(steps) * 2 * .pi, a1 = Float(i + 1) / Float(steps) * 2 * .pi
+            let d0 = SIMD2<Float>(cos(a0), sin(a0)), d1 = SIMD2<Float>(cos(a1), sin(a1))
+            let i0 = d0 * solidInner, i1 = d1 * solidInner, o0 = d0 * hub, o1 = d1 * hub
+            b.quad([i0.x, i0.y, zf], [o0.x, o0.y, zf], [o1.x, o1.y, zf], [i1.x, i1.y, zf], normal: [0, 0, 1])
+            b.quad([i0.x, i0.y, zb], [o0.x, o0.y, zb], [o1.x, o1.y, zb], [i1.x, i1.y, zb], normal: [0, 0, -1])
+            let mid = simd_normalize(d0 + d1)
+            b.quad([o0.x, o0.y, zb], [o1.x, o1.y, zb], [o1.x, o1.y, zf], [o0.x, o0.y, zf], normal: [mid.x, mid.y, 0])
+            b.quad([i0.x, i0.y, zb], [i1.x, i1.y, zb], [i1.x, i1.y, zf], [i0.x, i0.y, zf], normal: [-mid.x, -mid.y, 0])
+        }
+        // Arms from hub to rim, a little thinner than the rim.
+        let sf = zf * 0.7, sb = zb * 0.7
+        let halfWide = m * 0.55
+        for k in 0..<spokes {
+            let a = (Float(k) + 0.5) / Float(spokes) * 2 * .pi
+            let d = SIMD2<Float>(cos(a), sin(a)), side = SIMD2<Float>(-sin(a), cos(a))
+            let near = d * (hub * 0.95), far = d * (rimInner * 1.03)
+            let n0 = near - side * halfWide, n1 = near + side * halfWide
+            let f0 = far - side * halfWide, f1 = far + side * halfWide
+            b.quad([n0.x, n0.y, sf], [f0.x, f0.y, sf], [f1.x, f1.y, sf], [n1.x, n1.y, sf], normal: [0, 0, 1])
+            b.quad([n0.x, n0.y, sb], [f0.x, f0.y, sb], [f1.x, f1.y, sb], [n1.x, n1.y, sb], normal: [0, 0, -1])
+            b.quad([n0.x, n0.y, sb], [f0.x, f0.y, sb], [f0.x, f0.y, sf], [n0.x, n0.y, sf], normal: [-side.x, -side.y, 0])
+            b.quad([n1.x, n1.y, sb], [f1.x, f1.y, sb], [f1.x, f1.y, sf], [n1.x, n1.y, sf], normal: [side.x, side.y, 0])
         }
     }
 

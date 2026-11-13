@@ -37,8 +37,13 @@ final class DenScene {
         case chiaroscuro
         /// The even dusk light the room began with.
         case dusk
+        /// Daylight through the windows, with the lamps as accents.
+        case daylight
 
-        var next: Mood { self == .chiaroscuro ? .dusk : .chiaroscuro }
+        var next: Mood {
+            let all = Mood.allCases
+            return all[(all.firstIndex(of: self)! + 1) % all.count]
+        }
     }
     var mood = Mood.chiaroscuro { didSet { applyMood() } }
 
@@ -72,6 +77,7 @@ final class DenScene {
     private var shelfTexture: TextureResource?
     private let keyLight = Entity()
     private let lampLight = Entity()
+    private let sunLight = Entity()
     private var keyLampFace: ModelEntity?
     private let reflections = Entity()
     private var environment: EnvironmentResource?
@@ -182,6 +188,66 @@ final class DenScene {
             DeskMaterials.pbr(0.05, 0.22, 0.14, metallic: 0, roughness: 0.25), at: [0, 0.35, 0], to: lamp)
         add(.deskSphere(radius: 0.022), DeskMaterials.glow(1.0, 0.78, 0.48, intensity: 4),
             at: [0, 0.305, 0], to: lamp)
+        buildProps()
+    }
+
+    /// Things a writer leaves on a desk: two stacked books, an open-faced
+    /// notebook with a pen, and a cup of pens.
+    private func buildProps() {
+        func shade(_ size: SIMD2<Float>, corner: Float, on parent: Entity, name: String) {
+            guard let pool = SurfaceTextures.contactShadow(name, size: size, corner: corner, spread: 0.03) else { return }
+            pool.position = [0, 0.0008, 0]
+            parent.addChild(pool)
+        }
+        func book(_ size: SIMD3<Float>, _ material: PhysicallyBasedMaterial, at y: Float, turn: Float, in parent: Entity) {
+            let holder = Entity()
+            holder.position = [0, y, 0]
+            holder.orientation = simd_quatf(angle: turn, axis: [0, 1, 0])
+            parent.addChild(holder)
+            add(.deskBox(size: size, bevel: 0.003), material, at: [0, size.y / 2, 0], to: holder)
+            // Page block, showing on three sides.
+            add(.deskBox(size: [size.x - 0.006, size.y - 0.008, size.z - 0.004], bevel: 0.001), DeskMaterials.paper,
+                at: [0.005, size.y / 2, 0], to: holder)
+        }
+
+        let stack = Entity()
+        stack.position = [deskX + 0.74, deskTop, -0.60]
+        stack.orientation = simd_quatf(angle: -0.25, axis: [0, 1, 0])
+        root.addChild(stack)
+        shade([0.17, 0.23], corner: 0.004, on: stack, name: "shade-books")
+        book([0.17, 0.034, 0.23], DeskMaterials.leather, at: 0, turn: 0, in: stack)
+        book([0.15, 0.026, 0.21], DeskMaterials.pbr(0.07, 0.13, 0.11, metallic: 0, roughness: 0.6),
+             at: 0.034, turn: 0.18, in: stack)
+
+        let notebook = Entity()
+        notebook.position = [deskX - 0.46, deskTop, -0.45]
+        notebook.orientation = simd_quatf(angle: 0.3, axis: [0, 1, 0])
+        root.addChild(notebook)
+        shade([0.16, 0.22], corner: 0.004, on: notebook, name: "shade-notebook")
+        add(.deskBox(size: [0.16, 0.012, 0.22], bevel: 0.002), DeskMaterials.leather, at: [0, 0.006, 0], to: notebook)
+        add(.deskBox(size: [0.152, 0.004, 0.212], bevel: 0.001), DeskMaterials.paper, at: [0, 0.014, 0], to: notebook)
+        let pen = add(.deskCylinder(height: 0.13, radius: 0.0045), DeskMaterials.iron, at: [0.02, 0.0205, 0.01], to: notebook)
+        pen.orientation = simd_quatf(angle: 0.5, axis: [0, 1, 0]) * simd_quatf(angle: .pi / 2, axis: [1, 0, 0])
+        let nib = add(.deskCylinder(height: 0.02, radius: 0.0048), DeskMaterials.brass, at: [0, 0.055, 0], to: pen)
+        nib.components.set(DynamicLightShadowComponent(castsShadow: false))
+
+        let cup = Entity()
+        cup.position = [deskX + 0.60, deskTop, -0.78]
+        root.addChild(cup)
+        shade([0.07, 0.07], corner: 0.035, on: cup, name: "shade-cup")
+        add(.deskCylinder(height: 0.095, radius: 0.035, bevel: 0.003), DeskMaterials.darkBronze, at: [0, 0.0475, 0], to: cup)
+        add(.deskCylinder(height: 0.006, radius: 0.037, bevel: 0.002), DeskMaterials.brass, at: [0, 0.092, 0], to: cup)
+        let pens: [(Float, Float, PhysicallyBasedMaterial)] = [
+            (0.4, 0.16, DeskMaterials.iron), (2.1, 0.20, DeskMaterials.brass), (3.6, 0.13, DeskMaterials.leather),
+            (5.0, 0.18, DeskMaterials.copper),
+        ]
+        for (around, lean, material) in pens {
+            let holder = Entity()
+            holder.position = [0, 0.01, 0]
+            holder.orientation = simd_quatf(angle: around, axis: [0, 1, 0]) * simd_quatf(angle: lean, axis: [0, 0, 1])
+            cup.addChild(holder)
+            add(.deskCylinder(height: 0.15, radius: 0.004), material, at: [0, 0.075, 0], to: holder)
+        }
     }
 
     private func buildShelves() {
@@ -269,8 +335,9 @@ final class DenScene {
         mullions.box(center: [0, 3.5, z], size: [2 * halfWidth, 0.14, 0.10])
         if let mesh = try? mullions.build(name: "mullions") { add(mesh, DeskMaterials.iron) }
 
+        // The glass must not stop the daylight.
         add(.generatePlane(width: 2 * halfWidth, height: height), DeskMaterials.glass(opacity: 0.05),
-            at: [0, height / 2, z - 0.02])
+            at: [0, height / 2, z - 0.02]).components.set(DynamicLightShadowComponent(castsShadow: false))
     }
 
     private func buildOutside() {
@@ -286,6 +353,7 @@ final class DenScene {
            let texture = try? TextureResource(image: image, withName: "desk-sky", options: .init(semantic: .color)) {
             skyTexture = texture
             skyEntity = add(mesh, UnlitMaterial(texture: texture), to: outside)
+            skyEntity?.components.set(DynamicLightShadowComponent(castsShadow: false))
         }
     }
 
@@ -306,6 +374,7 @@ final class DenScene {
                 cityEntity?.removeFromParent()
                 cityTexture = city.texture
                 cityEntity = add(mesh, UnlitMaterial(texture: city.texture), to: outside)
+                cityEntity?.components.set(DynamicLightShadowComponent(castsShadow: false))
             }
         }
 
@@ -330,6 +399,11 @@ final class DenScene {
         keyLight.look(at: aim, from: from, relativeTo: nil)
         root.addChild(keyLight)
         buildKeyLamp(from: from, aim: aim)
+
+        // Daylight: comes in through the windows from high on the right, so it
+        // rakes across the desk toward the writer.
+        sunLight.look(at: [deskX, deskTop, -0.5], from: [deskX + 3.2, 4.4, -7], relativeTo: nil)
+        root.addChild(sunLight)
 
         // The desk lamp.
         lampLight.position = [deskX - 0.85, deskTop + 0.27, -0.80]
@@ -379,7 +453,7 @@ final class DenScene {
     private func lightFromEnvironment() {
         guard let environment else { return }
         reflections.components.set(ImageBasedLightComponent(
-            source: .single(environment), intensityExponent: isDark ? -0.7 : 1))
+            source: .single(environment), intensityExponent: isDark ? -0.7 : (isDay ? 1.5 : 1)))
     }
 
     private func applyReflections() {
@@ -396,6 +470,7 @@ final class DenScene {
     // MARK: - Mood
 
     private var isDark: Bool { mood == .chiaroscuro }
+    private var isDay: Bool { mood == .daylight }
 
     /// Painted parts give off their own light, so they are dimmed to sit in the room.
     private func tintBackdrops() {
@@ -408,7 +483,7 @@ final class DenScene {
         if let cityTexture { cityEntity?.model?.materials = [tinted(cityTexture, outsideLevel)] }
         if let skyTexture { skyEntity?.model?.materials = [tinted(skyTexture, outsideLevel)] }
         if let shelfTexture {
-            let material = tinted(shelfTexture, isDark ? 0.22 : 0.5)
+            let material = tinted(shelfTexture, isDark ? 0.22 : (isDay ? 0.8 : 0.5))
             for panel in shelfPanels { panel.model?.materials = [material] }
         }
     }
@@ -427,8 +502,18 @@ final class DenScene {
         // The floor lamp's face is lit only when the key light is.
         keyLampFace?.isEnabled = isDark
         lampLight.components.set(PointLightComponent(cgColor: warm,
-                                                     intensity: isDark ? 20_000 : 60_000,
+                                                     intensity: isDark ? 20_000 : (isDay ? 25_000 : 60_000),
                                                      attenuationRadius: 6))
+        if isDay {
+            // A far, narrow spot stands in for the sun.
+            sunLight.components.set(SpotLightComponent(
+                color: NSColor(srgbRed: 1.0, green: 0.96, blue: 0.90, alpha: 1), intensity: 700_000,
+                innerAngleInDegrees: 24, outerAngleInDegrees: 34, attenuationRadius: 30))
+            sunLight.components.set(SpotLightComponent.Shadow())
+        } else {
+            sunLight.components.remove(SpotLightComponent.Shadow.self)
+            sunLight.components.remove(SpotLightComponent.self)
+        }
         lightFromEnvironment()
         tintBackdrops()
         paint.vignette = isDark ? 0.35 : 0

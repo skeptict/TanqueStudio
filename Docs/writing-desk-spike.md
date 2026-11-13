@@ -194,6 +194,20 @@ The image the room is lit by used to paint its windows as a mauve and orange sta
 
 Checked in the running app on 2026-11-13, seat view, paint on fine, 116 fps: the purple cast is gone in both moods and the desk reads as neutral wood. Chiaroscuro is a little darker overall, and the bookshelves, already faint there, are fainter. Not checked: Reload backdrops with a different painting, and the no-file stand-in.
 
+## Daylight, a darker machine, desk props
+
+Ned supplied two reference images on 2026-11-13: a daylit study with a dark, worn bronze machine, open gears on a black panel, filament bulbs and a lived-in desk. He wants that level of detail, tone and technology, not a copy. This is the first step toward it.
+
+- **Daylight mood.** The Light button now cycles chiaroscuro, dusk, daylight. Daylight is a far, narrow spot through the windows from high on the right, with shadows, plus a brighter room light and a dimmer desk lamp. The glass and the painted backdrops no longer cast shadows, so they do not block it.
+- **Darker machine.** The casing and keyboard base are a new dark bronze. Brass and copper are less orange and kept for gears, bezel, straps and trim. The gear plate and wing are near-black, and the plate sits inside a raised frame so the gears work in a recess. The rivets moved onto the frame.
+- **Spoked gears.** Gears of 12 teeth and up are a rim, a hub and five arms (`GearMesh.add(spokes:)`).
+- **Filament bulbs.** A socket and screw cap, pear-shaped glass, a looped glowing wire on two posts, and a faint bloom that swells with the flicker. The bulbs' light is half as strong and less orange, so it no longer floods the gears.
+- **Props.** Two stacked books, a notebook with a pen, and a cup of pens, each with a pool of shade.
+
+Checked in the running app on 2026-11-13, paint on fine, 60,940 triangles: chiaroscuro at the seat (102 fps), dusk at the seat (120), daylight at the seat (117) and zoomed in (118). Readings taken while the app was behind another window showed 64 to 69 fps; that is background throttling, not the scene.
+
+Weak points: the notebook reads as a plain cream slab; the filament wire is too fine to see from the seat, so the bulbs still read as glowing blobs; the city painting is a dusk scene, so in daylight the room is brighter than the view; the machine is still the same boxy shape. Not checked: paint off, Look around in daylight, anything in motion.
+
 ## What looked good and what did not
 
 Good:
