@@ -173,6 +173,10 @@ final class DenScene {
         lamp.position = [deskX - 0.85, deskTop, -0.82]
         root.addChild(lamp)
         add(.deskCylinder(height: 0.016, radius: 0.075), DeskMaterials.brass, at: [0, 0.008, 0], to: lamp)
+        if let pool = SurfaceTextures.contactShadow("shade-lamp", size: [0.15, 0.15], corner: 0.075, spread: 0.05) {
+            pool.position = [0, 0.0008, 0]
+            lamp.addChild(pool)
+        }
         add(.deskCylinder(height: 0.30, radius: 0.008), DeskMaterials.brass, at: [0, 0.16, 0], to: lamp)
         add(.generateCone(height: 0.10, radius: 0.12),
             DeskMaterials.pbr(0.05, 0.22, 0.14, metallic: 0, roughness: 0.25), at: [0, 0.35, 0], to: lamp)

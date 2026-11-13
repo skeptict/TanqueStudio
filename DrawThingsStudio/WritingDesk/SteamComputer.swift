@@ -46,7 +46,7 @@ enum DeskMaterials {
     static let bronze = surfaced(SurfaceTextures.metal, 0.39, 0.27, 0.14, metallic: 1, roughness: 0.48)
     static let iron = surfaced(SurfaceTextures.metal, 0.08, 0.08, 0.085, metallic: 0.9, roughness: 0.5)
     /// Aged bone, kept well short of white so the key light does not blow it out.
-    static let ivory = surfaced(SurfaceTextures.ivory, 0.63, 0.56, 0.42, metallic: 0, roughness: 0.5)
+    static let ivory = surfaced(SurfaceTextures.ivory, 0.50, 0.44, 0.32, metallic: 0, roughness: 0.6)
     static let darkWood: PhysicallyBasedMaterial = {
         var m = surfaced(SurfaceTextures.wood, 0.21, 0.115, 0.065, metallic: 0, roughness: 0.5)
         m.clearcoat = .init(floatLiteral: 0.15)
@@ -159,6 +159,18 @@ final class SteamComputer {
         _ = add(.deskBox(size: [0.62, plinthHeight, 0.54], bevel: 0.006), DeskMaterials.bronze,
                 at: [0, plinthHeight / 2, 0.04])
         _ = add(.deskBox(size: bodySize, bevel: 0.012), DeskMaterials.brass, at: bodyCentre)
+
+        // Soft pools of shade where each piece stands on the one below.
+        let pools: [(String, SIMD2<Float>, Float, Float, SIMD3<Float>)] = [
+            ("shade-plinth", [0.62, 0.54], 0.006, 0.09, [0, 0.0008, 0.04]),
+            ("shade-body", [bodySize.x, bodySize.z], 0.012, 0.035, [0, plinthHeight + 0.0006, bodyCentre.z]),
+            ("shade-keyboard", [0.42, 0.185], 0.005, 0.022, [0, plinthHeight + 0.0006, 0.195]),
+        ]
+        for (name, size, corner, spread, position) in pools {
+            guard let pool = SurfaceTextures.contactShadow(name, size: size, corner: corner, spread: spread) else { continue }
+            pool.position = position
+            root.addChild(pool)
+        }
 
         // Riveted straps.
         for x in [-0.19, 0.19] as [Float] {

@@ -1,7 +1,9 @@
+import AppKit
 import CoreGraphics
 import Foundation
 import Metal
 import RealityKit
+import simd
 
 /// Painted-in-code surface detail: tarnish, brushing and scratches for the
 /// metals, grain for the wood, yellowing for the ivory. Every image tiles, so
@@ -31,6 +33,51 @@ enum SurfaceTextures {
         descriptor.mipFilter = .linear
         descriptor.maxAnisotropy = 8
         return .init(texture, sampler: .init(descriptor))
+    }
+
+    // MARK: - Contact shadows
+
+    /// A soft dark pool to lay under something where it stands on a surface,
+    /// so it reads as resting there instead of floating. `size` is the
+    /// footprint in metres, `corner` rounds it (half the width makes a disc)
+    /// and `spread` is how far the darkness reaches past the edge. The pool
+    /// lies flat, facing up, centred on the entity's origin.
+    static func contactShadow(_ name: String, size: SIMD2<Float>, corner: Float,
+                              spread: Float, strength: Float = 0.6) -> ModelEntity? {
+        let px = 128
+        let full = size + SIMD2(repeating: 2 * spread)
+        let half = size / 2
+        var bytes = [UInt8](repeating: 0, count: px * px * 4)
+        for y in 0..<px {
+            for x in 0..<px {
+                let p = SIMD2((Float(x) + 0.5) / Float(px) - 0.5, (Float(y) + 0.5) / Float(px) - 0.5) * full
+                // Distance outside the rounded footprint; negative inside it.
+                let q = simd_abs(p) - (half - SIMD2(repeating: corner))
+                let outside = simd_length(simd_max(q, .zero)) + min(max(q.x, q.y), 0) - corner
+                let fade = 1 - smooth(0, spread, outside)
+                bytes[(y * px + x) * 4 + 3] = UInt8(max(0, min(255, strength * fade * fade * 255)))
+            }
+        }
+        guard let provider = CGDataProvider(data: Data(bytes) as CFData),
+              let image = CGImage(width: px, height: px, bitsPerComponent: 8, bitsPerPixel: 32, bytesPerRow: px * 4,
+                                  space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                                  bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedLast.rawValue),
+                                  provider: provider, decode: nil, shouldInterpolate: true, intent: .defaultIntent),
+              let texture = try? TextureResource(image: image, withName: name, options: .init(semantic: .color))
+        else { return nil }
+
+        var material = UnlitMaterial()
+        material.color = .init(tint: .black, texture: .init(texture))
+        material.blending = .transparent(opacity: .init(floatLiteral: 1))
+
+        var pool = MeshBuilder()
+        let h = full / 2
+        pool.quad([-h.x, 0, h.y], [h.x, 0, h.y], [h.x, 0, -h.y], [-h.x, 0, -h.y], normal: [0, 1, 0],
+                  uvs: [[0, 1], [1, 1], [1, 0], [0, 0]])
+        guard let mesh = try? pool.build(name: name) else { return nil }
+        let entity = ModelEntity(mesh: mesh, materials: [material])
+        entity.components.set(DynamicLightShadowComponent(castsShadow: false))
+        return entity
     }
 
     // MARK: - Painting
@@ -118,8 +165,8 @@ enum SurfaceTextures {
     /// Brass, copper, bronze and iron share this: brushed along `u`, with
     /// patches of tarnish, fine pitting and a few bright scratches.
     private static func paintMetal(_ u: Float, _ v: Float) -> Texel {
-        let tarnish = smooth(0.50, 0.72, cloud(u, v, 5, 5, 1))
-        let grime = smooth(0.55, 0.80, cloud(u, v, 9, 9, 40)) * 0.5
+        let tarnish = smooth(0.40, 0.82, cloud(u, v, 5, 5, 1))
+        let grime = smooth(0.50, 0.85, cloud(u, v, 9, 9, 40)) * 0.4
         let brushed = cloud(u, v, 3, 160, 7, layers: 3) - 0.5
         let pits = smooth(0.80, 0.95, noise(u, v, 96, 96, 23))
         // Long shallow scratches that wander a little off the brushing.
@@ -127,13 +174,13 @@ enum SurfaceTextures {
         let scratch = smooth(0.965, 0.99, noise(u, slant, 2, 220, 61)) * smooth(0.45, 0.6, cloud(u, v, 6, 6, 77))
 
         let dull = min(1, tarnish * 0.75 + grime)
-        var level = 1 - 0.24 * dull + 0.10 * brushed - 0.06 * pits + 0.10 * scratch
+        var level = 1 - 0.15 * dull + 0.10 * brushed - 0.06 * pits + 0.10 * scratch
         level = max(0.4, min(1, level))
         // Tarnish cools the colour a little toward brown-green.
         let r = level * (1 - 0.10 * dull)
         let g = level * (1 - 0.04 * dull)
         let b = level * (1 - 0.14 * dull)
-        let rough = 0.40 + 0.42 * dull + 0.16 * brushed + 0.08 * pits - 0.12 * scratch
+        let rough = 0.42 + 0.30 * dull + 0.16 * brushed + 0.08 * pits - 0.12 * scratch
         return Texel(r: r, g: g, b: b, rough: max(0.15, min(1, rough)))
     }
 

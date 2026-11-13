@@ -178,6 +178,16 @@ Weak points: through the paint filter the tarnish patches turn into strong blotc
 
 An off-screen renderer was used while the Mac's screen was locked: a standalone program that compiles the scene files with `RealityRenderer` and writes a PNG. Its images had black dashes that the app does not show.
 
+## Contact shade, softer tarnish, darker ivory
+
+Three small fixes to weak points from the textures pass.
+
+- **Pools of shade** sit under the machine's plinth, under its body and keyboard where they stand on the plinth, and under the desk lamp. Each is a flat see-through quad with a soft dark edge painted in code (`SurfaceTextures.contactShadow`). The key light's real shadows only exist in chiaroscuro, so in dusk nothing was grounded before.
+- **Tarnish is softer.** The patches fade over a wider band and darken the metal less, because the paint filter turned the old hard-edged patches into blotches.
+- **Ivory is darker and duller** (0.50, 0.44, 0.32), so keys and gauge faces sit further from white under the key light.
+
+Checked in the running app on 2026-11-12: seat view in chiaroscuro and dusk, zoomed in at dusk, paint on fine. 111 to 120 fps, 55,638 triangles. Not checked: paint off, anything in motion, and how long the first open pauses while the textures are painted.
+
 ## What looked good and what did not
 
 Good:
