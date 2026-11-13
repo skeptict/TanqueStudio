@@ -28,14 +28,27 @@ enum DeskMaterials {
         return m
     }
 
-    static let brass = pbr(0.80, 0.58, 0.24, metallic: 1, roughness: 0.30)
-    static let copper = pbr(0.82, 0.44, 0.27, metallic: 1, roughness: 0.28)
-    static let bronze = pbr(0.36, 0.25, 0.13, metallic: 1, roughness: 0.48)
-    static let iron = pbr(0.07, 0.07, 0.075, metallic: 0.9, roughness: 0.5)
+    /// A material whose colour and roughness vary across the surface. The
+    /// tint is multiplied by the colour image, and `roughness` is the level
+    /// reached where the roughness image is mid-grey.
+    static func surfaced(_ maps: SurfaceTextures.Pair?, _ r: CGFloat, _ g: CGFloat, _ b: CGFloat,
+                         metallic: Float, roughness: Float) -> PhysicallyBasedMaterial {
+        var m = pbr(r, g, b, metallic: metallic, roughness: roughness)
+        guard let maps else { return m }
+        m.baseColor = .init(tint: NSColor(srgbRed: r, green: g, blue: b, alpha: 1),
+                            texture: SurfaceTextures.repeating(maps.colour))
+        m.roughness = .init(scale: roughness * 2, texture: SurfaceTextures.repeating(maps.roughness))
+        return m
+    }
+
+    static let brass = surfaced(SurfaceTextures.metal, 0.86, 0.62, 0.26, metallic: 1, roughness: 0.30)
+    static let copper = surfaced(SurfaceTextures.metal, 0.88, 0.47, 0.29, metallic: 1, roughness: 0.28)
+    static let bronze = surfaced(SurfaceTextures.metal, 0.39, 0.27, 0.14, metallic: 1, roughness: 0.48)
+    static let iron = surfaced(SurfaceTextures.metal, 0.08, 0.08, 0.085, metallic: 0.9, roughness: 0.5)
     /// Aged bone, kept well short of white so the key light does not blow it out.
-    static let ivory = pbr(0.60, 0.53, 0.40, metallic: 0, roughness: 0.55)
+    static let ivory = surfaced(SurfaceTextures.ivory, 0.63, 0.56, 0.42, metallic: 0, roughness: 0.5)
     static let darkWood: PhysicallyBasedMaterial = {
-        var m = pbr(0.13, 0.07, 0.04, metallic: 0, roughness: 0.6)
+        var m = surfaced(SurfaceTextures.wood, 0.21, 0.115, 0.065, metallic: 0, roughness: 0.5)
         m.clearcoat = .init(floatLiteral: 0.15)
         return m
     }()
@@ -143,20 +156,20 @@ final class SteamComputer {
     }
 
     private func buildBody() {
-        _ = add(.generateBox(size: [0.62, plinthHeight, 0.54], cornerRadius: 0.006), DeskMaterials.bronze,
+        _ = add(.deskBox(size: [0.62, plinthHeight, 0.54], bevel: 0.006), DeskMaterials.bronze,
                 at: [0, plinthHeight / 2, 0.04])
-        _ = add(.generateBox(size: bodySize, cornerRadius: 0.012), DeskMaterials.brass, at: bodyCentre)
+        _ = add(.deskBox(size: bodySize, bevel: 0.012), DeskMaterials.brass, at: bodyCentre)
 
         // Riveted straps.
         for x in [-0.19, 0.19] as [Float] {
-            _ = add(.generateBox(size: [0.018, bodySize.y + 0.004, bodySize.z + 0.006]), DeskMaterials.copper,
+            _ = add(.deskBox(size: [0.018, bodySize.y + 0.004, bodySize.z + 0.006], bevel: 0.003), DeskMaterials.copper,
                     at: [x, bodyCentre.y, bodyCentre.z])
         }
         // Back plate that carries the main gear train.
-        _ = add(.generateBox(size: [0.50, 0.25, 0.012]), DeskMaterials.bronze,
+        _ = add(.deskBox(size: [0.50, 0.25, 0.012], bevel: 0.004), DeskMaterials.bronze,
                 at: [0.02, topY + 0.125, -0.12])
         // Side wing for the second train.
-        _ = add(.generateBox(size: [0.16, 0.25, 0.010]), DeskMaterials.bronze,
+        _ = add(.deskBox(size: [0.16, 0.25, 0.010], bevel: 0.004), DeskMaterials.bronze,
                 at: [-0.285, 0.155, -0.02])
     }
 
@@ -186,7 +199,7 @@ final class SteamComputer {
             ([centre.x + width / 2 + t / 2, centre.y, z], [t, height, 0.026]),
         ]
         for (position, size) in bars {
-            _ = add(.generateBox(size: size), DeskMaterials.copper, at: position)
+            _ = add(.deskBox(size: size, bevel: 0.004), DeskMaterials.copper, at: position)
         }
     }
 
@@ -277,7 +290,7 @@ final class SteamComputer {
     private let breakerX: Float = 0.155
 
     private func buildBreakers() {
-        _ = add(.generateBox(size: [0.07, 0.20, 0.006]), DeskMaterials.iron,
+        _ = add(.deskBox(size: [0.07, 0.20, 0.006], bevel: 0.002), DeskMaterials.iron,
                 at: [breakerX, 0.185, frontZ + 0.003])
         for i in 0..<3 {
             let y = breakerY(i)
@@ -303,7 +316,7 @@ final class SteamComputer {
         root.addChild(board)
 
         let baseHeight: Float = 0.020
-        _ = add(.generateBox(size: [0.42, baseHeight, 0.185], cornerRadius: 0.005), DeskMaterials.brass,
+        _ = add(.deskBox(size: [0.42, baseHeight, 0.185], bevel: 0.005), DeskMaterials.brass,
                 at: [0, baseHeight / 2, 0], to: board)
 
         let rows: [(keys: String, indent: Float, z: Float)] = [
@@ -313,22 +326,25 @@ final class SteamComputer {
             ("zxcvbnm,.", 0.030, 0.033),
         ]
         let pitch: Float = 0.036
-        let pedestal = MeshResource.deskCylinder(height: 0.008, radius: 0.0150)
-        let capMesh = MeshResource.deskCylinder(height: 0.005, radius: 0.0128)
+        let pedestal = MeshResource.deskCylinder(height: 0.008, radius: 0.0150, bevel: 0.0015)
+        // Typewriter keys: a brass cup with a rolled rim, and an ivory button set into it.
+        let capMesh = MeshResource.deskCylinder(height: 0.005, radius: 0.0128, bevel: 0.0014)
+        let buttonMesh = MeshResource.deskCylinder(height: 0.002, radius: 0.0104, bevel: 0.0008, dish: 0.0007)
         for row in rows {
             for (i, ch) in row.keys.enumerated() {
                 let x = -0.175 + row.indent + Float(i) * pitch
                 _ = add(pedestal, DeskMaterials.copper, at: [x, baseHeight + 0.004, row.z], to: board)
                 let rest = SIMD3<Float>(x, baseHeight + 0.008 + 0.0025, row.z)
-                let cap = add(capMesh, DeskMaterials.ivory, at: rest, to: board)
+                let cap = add(capMesh, DeskMaterials.brass, at: rest, to: board)
+                _ = add(buttonMesh, DeskMaterials.ivory, at: [0, 0.0027, 0], to: cap)
                 keyIndex[ch] = keys.count
                 keys.append(Key(cap: cap, rest: rest))
             }
         }
         let barRest = SIMD3<Float>(0, baseHeight + 0.008, 0.066)
-        _ = add(.generateBox(size: [0.19, 0.006, 0.020]), DeskMaterials.copper,
+        _ = add(.deskBox(size: [0.19, 0.006, 0.020], bevel: 0.002), DeskMaterials.copper,
                 at: [0, baseHeight + 0.003, 0.066], to: board)
-        let bar = add(.generateBox(size: [0.18, 0.005, 0.016]), DeskMaterials.ivory,
+        let bar = add(.deskBox(size: [0.18, 0.005, 0.016], bevel: 0.002), DeskMaterials.ivory,
                       at: barRest, to: board)
         keyIndex[" "] = keys.count
         keys.append(Key(cap: bar, rest: barRest))

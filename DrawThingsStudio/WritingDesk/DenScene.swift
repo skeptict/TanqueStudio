@@ -160,12 +160,13 @@ final class DenScene {
 
     private func buildDesk() {
         var desk = MeshBuilder()
-        desk.box(center: [deskX, deskTop - 0.03, -0.55], size: [2.4, 0.06, 1.1])
+        desk.roundedBox(center: [deskX, deskTop - 0.03, -0.55], size: [2.4, 0.06, 1.1], bevel: 0.009)
         for side in [-0.85, 0.85] as [Float] {
-            desk.box(center: [deskX + side, (deskTop - 0.06) / 2, -0.55], size: [0.5, deskTop - 0.06, 0.95])
+            desk.roundedBox(center: [deskX + side, (deskTop - 0.06) / 2, -0.55],
+                            size: [0.5, deskTop - 0.06, 0.95], bevel: 0.005)
         }
         desk.box(center: [deskX, deskTop - 0.13, -0.95], size: [1.2, 0.14, 0.02])
-        if let mesh = try? desk.build(name: "desk") { add(mesh, DeskMaterials.darkWood) }
+        if let mesh = try? desk.build(name: "desk", tile: 0.9) { add(mesh, DeskMaterials.darkWood) }
 
         // Banker's lamp at the left of the desk.
         let lamp = Entity()
@@ -198,7 +199,7 @@ final class DenScene {
             frame.box(center: [-halfWidth + depth / 2, 0.095 + Float(r) * rowPitch, 0],
                       size: [depth, 0.03, 2 * halfDepth])
         }
-        if let mesh = try? frame.build(name: "shelf-frame") { add(mesh, DeskMaterials.darkWood) }
+        if let mesh = try? frame.build(name: "shelf-frame", tile: 0.9) { add(mesh, DeskMaterials.darkWood) }
 
         // Books: one mesh per leather colour, so the whole wall is six draws.
         let leathers: [PhysicallyBasedMaterial] = [

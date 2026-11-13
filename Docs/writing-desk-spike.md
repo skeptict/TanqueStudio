@@ -159,6 +159,25 @@ The key light now has a source: a brass floor lamp behind the writer's left shou
 
 Weak points: the bookshelves almost vanish; the floor lamp's shade is cut off by the top of the view when looking left; the brass deck has a small white highlight at its front right corner; the gauge needles are still hard to read.
 
+## Surface textures and bevels
+
+Added on 2026-11-12 and checked in the running app: seat and zoomed views in chiaroscuro, paint on and off.
+
+- **Textures made in code** (`SurfaceTextures.swift`): one tiling 512-pixel pair each for metal, wood and ivory. Each pair is a colour image that multiplies the material's tint and a roughness image. Metal has brushing, tarnish patches, pitting and scratches; wood has grain bands, fibre and pores; ivory has yellowing and hairlines. Brass, copper, bronze and iron share the metal pair and differ by tint.
+- **Texture scale follows size.** A part built without texture coordinates gets them laid on flat from whichever way each face points, at 0.22 m a repeat (0.33 m for boxes, 0.9 m for the desk and shelf frame), so a rivet and the case show the same grain size.
+- **The gears show radial streaks.** Their faces carry one texture repeat per tooth wedge, which reads as a turned finish. It was not planned; it looks right, so it stays.
+- **Rounded edges:** the case, plinth, straps, back plate, wing, screen bezel, breaker plate, keyboard base, space bar, desk top and pedestals, all through one light `roundedBox`.
+- **Keys are now typewriter keys:** a brass cup with a rolled rim and a dished ivory button set into it.
+- **Frame rate:** 106 fps from the seat and 112 zoomed, against 112 to 120 before. The scene is 55,630 triangles, down from 83,222.
+
+What went wrong on the way: RealityKit's own rounded box is very dense. Using it for ten parts took the scene to 250,262 triangles and 96 fps. The code-built box does the same job in about 130 triangles.
+
+Not checked: the dusk mood, the first-open pause (painting the textures took about 2.5 seconds in an unoptimised test, on the main thread), and anything in motion.
+
+Weak points: through the paint filter the tarnish patches turn into strong blotches on the back plate; the keys and gauge faces are bright again under the key light; there are no bump (normal) maps, because the code-built meshes have no tangents.
+
+An off-screen renderer was used while the Mac's screen was locked: a standalone program that compiles the scene files with `RealityRenderer` and writes a PNG. Its images had black dashes that the app does not show.
+
 ## What looked good and what did not
 
 Good:
