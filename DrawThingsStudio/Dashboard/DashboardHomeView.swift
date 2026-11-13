@@ -35,9 +35,8 @@ private let quickStarts: [QuickStartPreset] = [
 
 // MARK: - Feature tiles
 //
-// One entry per tile. Writing Desk goes here once its Labs tab is merged:
-// `.init(name: "Writing Desk", ..., destination: .labs(.writingDesk))`, behind
-// the same macOS availability check the tab itself uses.
+// One entry per tile. A Labs tile is shown only where its tab is offered
+// (`LabsTab.available`), so Writing Desk disappears on macOS 14 with its tab.
 
 private struct FeatureTile: Identifiable {
     enum Destination {
@@ -56,7 +55,12 @@ private let featureTiles: [FeatureTile] = [
           icon: "folder", destination: .mode(.projects)),
     .init(name: "Style Browser", description: "Render a prompt across styles",
           icon: "paintpalette", destination: .labs(.styleBrowser)),
-]
+    .init(name: "Writing Desk", description: "Write in a 3D den",
+          icon: "keyboard", destination: .labs(.writingDesk)),
+].filter { tile in
+    if case .labs(let tab) = tile.destination { return DashboardLabsPage.LabsTab.available.contains(tab) }
+    return true
+}
 
 // MARK: - Dashboard home
 
@@ -271,7 +275,7 @@ struct DashboardHomeView: View {
                         VStack(alignment: .leading, spacing: 3) {
                             Text(tile.name).font(TanqueDS.Font.monoSemiBold(12)).foregroundStyle(DashboardDS.text)
                             Text(tile.description).font(TanqueDS.Font.mono(11)).foregroundStyle(DashboardDS.muted)
-                                .lineLimit(2).multilineTextAlignment(.leading)
+                                .lineLimit(2, reservesSpace: true).multilineTextAlignment(.leading)
                         }
                         Spacer(minLength: 0)
                     }
