@@ -614,6 +614,8 @@ final class DenScene {
         arriving = viewpoint ?? seat
         travel = 0
         isFocused = viewpoint != nil
+        // Up close, the screen stops riding on its pistons.
+        computer.steady = isFocused
     }
 
     /// A viewpoint square-on to a flat thing, close enough that it fills
@@ -631,7 +633,7 @@ final class DenScene {
     }
 
     private var screenCorners: [SIMD3<Float>] {
-        let c = computer.root.position + computer.screenCentre
+        let c = computer.root.position + computer.liveScreenCentre
         let w = computer.screenSize.x / 2, h = computer.screenSize.y / 2
         return [c + [-w, h, 0], c + [w, h, 0], c + [w, -h, 0], c + [-w, -h, 0]]
     }
