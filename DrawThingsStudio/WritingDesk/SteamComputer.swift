@@ -70,13 +70,32 @@ final class SteamComputer {
     /// Called once per tooth of the main gear, for the ticking sound.
     var onGearTick: (() -> Void)?
     private(set) var screenFailed = false
-    /// Centre and size of the glass screen, in the machine's own space.
+    /// Centre of the glass screen at rest, and its size, in the machine's own
+    /// space. The zoom aims here, and `steady` brings the screen to it.
     private(set) var screenCentre: SIMD3<Float> = .zero
     private(set) var screenSize: SIMD2<Float> = .zero
+    /// Where the screen is this frame: it rides up and down on its pistons.
+    var liveScreenCentre: SIMD3<Float> { screenCentre + [0, crtLift, 0] }
+    /// Holds the screen still at its rest height, for reading up close.
+    var steady = false
 
     // Layout, in metres.
     private let plinthHeight: Float = 0.03
-    private let bodySize = SIMD3<Float>(0.42, 0.30, 0.22)
+    /// The outline of the cabinet: a low deck, a tower on the right and a
+    /// spine across the back, with the screen hung in the open corner.
+    private let bodySize = SIMD3<Float>(0.42, 0.34, 0.22)
+    private let deckHeight: Float = 0.10
+    private var deckTop: Float { plinthHeight + deckHeight }
+    private let towerWidth: Float = 0.10
+    private let spineDepth: Float = 0.06
+
+    /// The screen and its housing, which move as one.
+    private let crt = Entity()
+    private let crtRest = SIMD3<Float>(-0.07, 0.305, 0.07)
+    private var crtSize = SIMD2<Float>(0.31, 0.25)
+    private var crtLift: Float = 0
+    private var pinion: Entity?
+    private let pinionTeeth = 8
     private var bodyCentre: SIMD3<Float> { [0, plinthHeight + bodySize.y / 2, -0.06] }
     private var frontZ: Float { bodyCentre.z + bodySize.z / 2 }
     private var topY: Float { plinthHeight + bodySize.y }
@@ -132,12 +151,15 @@ final class SteamComputer {
     init() {
         buildBody()
         buildScreen()
+        buildMount()
         buildGears()
         buildBulbs()
         buildBreakers()
         fittings = MachineFittings(root: root, layout: .init(
-            plinthHeight: plinthHeight, topY: topY, frontZ: frontZ, bodyHalfWidth: bodySize.x / 2,
-            breakerX: breakerX, breakerY: (0..<3).map(breakerY), bulbX: (0..<5).map(bulbX)))
+            plinthHeight: plinthHeight, topY: topY, deckTop: deckTop, frontZ: frontZ, bodyHalfWidth: bodySize.x / 2,
+            breakerX: breakerX, breakerY: (0..<3).map(breakerY),
+            bulbParent: crt, bulbSockets: (0..<5).map(bulbSocket),
+            bulbFeed: [0, crtSize.y * 0.39, -0.135]))
         buildKeyboard()
         setText("")
     }
@@ -163,7 +185,13 @@ final class SteamComputer {
     private func buildBody() {
         _ = add(.deskBox(size: [0.62, plinthHeight, 0.54], bevel: 0.006), DeskMaterials.bronze,
                 at: [0, plinthHeight / 2, 0.04])
-        _ = add(.deskBox(size: bodySize, bevel: 0.012), DeskMaterials.darkBronze, at: bodyCentre)
+        let back = bodyCentre.z - bodySize.z / 2
+        _ = add(.deskBox(size: [bodySize.x, deckHeight, bodySize.z], bevel: 0.010), DeskMaterials.darkBronze,
+                at: [0, plinthHeight + deckHeight / 2, bodyCentre.z])
+        _ = add(.deskBox(size: [towerWidth, bodySize.y, bodySize.z], bevel: 0.010), DeskMaterials.darkBronze,
+                at: [bodySize.x / 2 - towerWidth / 2, bodyCentre.y, bodyCentre.z])
+        _ = add(.deskBox(size: [bodySize.x, bodySize.y, spineDepth], bevel: 0.010), DeskMaterials.darkBronze,
+                at: [0, bodyCentre.y, back + spineDepth / 2])
 
         // Soft pools of shade where each piece stands on the one below.
         let pools: [(String, SIMD2<Float>, Float, Float, SIMD3<Float>)] = [
@@ -178,10 +206,11 @@ final class SteamComputer {
         }
 
         // Riveted straps.
-        for x in [-0.19, 0.19] as [Float] {
-            _ = add(.deskBox(size: [0.018, bodySize.y + 0.004, bodySize.z + 0.006], bevel: 0.003), DeskMaterials.brass,
-                    at: [x, bodyCentre.y, bodyCentre.z])
-        }
+        // The right one goes over the tower; the left one only round the deck.
+        _ = add(.deskBox(size: [0.018, bodySize.y + 0.004, bodySize.z + 0.006], bevel: 0.003), DeskMaterials.brass,
+                at: [0.19, bodyCentre.y, bodyCentre.z])
+        _ = add(.deskBox(size: [0.018, deckHeight + 0.004, bodySize.z + 0.006], bevel: 0.003), DeskMaterials.brass,
+                at: [-0.19, plinthHeight + deckHeight / 2, bodyCentre.z])
         // Back plate that carries the main gear train.
         // It is near-black and sits inside a raised brass frame, so the gears
         // work in a shallow recess.
@@ -198,38 +227,104 @@ final class SteamComputer {
             _ = add(.deskBox(size: size, bevel: 0.004), DeskMaterials.darkBronze, at: position)
         }
         // Side wing for the second train.
-        _ = add(.deskBox(size: [0.16, 0.25, 0.010], bevel: 0.004), DeskMaterials.iron,
-                at: [-0.285, 0.155, -0.02])
+        // Tall enough to carry the pinion that the screen's rack runs on.
+        _ = add(.deskBox(size: [0.16, 0.33, 0.010], bevel: 0.004), DeskMaterials.iron,
+                at: [-0.285, 0.195, -0.02])
     }
 
+    /// The cathode-ray tube: a glass face in a brass bezel, a bronze housing
+    /// that narrows to the tube's neck, and the coils round it.
     private func buildScreen() {
         let width: Float = 0.262
         let height = width / ScreenTextRenderer.aspect
-        let centre = SIMD3<Float>(-0.045, 0.185, frontZ)
-        screenCentre = centre + [0, 0, 0.004]
+        screenCentre = crtRest + [0, 0, 0.004]
         screenSize = [width, height]
+        crt.position = crtRest
+        root.addChild(crt)
 
         // The tube face bulges slightly; a second, clear skin over it catches highlights.
         var face = MeshBuilder()
         face.domedPanel(width: width, height: height, bulge: 0.010)
         if let mesh = try? face.build(name: "screen") {
-            screen = add(mesh, DeskMaterials.iron, at: centre + [0, 0, 0.004])
+            screen = add(mesh, DeskMaterials.iron, at: [0, 0, 0.004], to: crt)
             // Kept very thin: under the key light a thicker skin fogs the type.
-            _ = add(mesh, DeskMaterials.glass(opacity: 0.02), at: centre + [0, 0, 0.006])
+            _ = add(mesh, DeskMaterials.glass(opacity: 0.02), at: [0, 0, 0.006], to: crt)
         }
 
         // Bezel.
         let t: Float = 0.018
-        let z = centre.z + 0.010
+        let z: Float = 0.010
         let bars: [(SIMD3<Float>, SIMD3<Float>)] = [
-            ([centre.x, centre.y + height / 2 + t / 2, z], [width + 2 * t, t, 0.026]),
-            ([centre.x, centre.y - height / 2 - t / 2, z], [width + 2 * t, t, 0.026]),
-            ([centre.x - width / 2 - t / 2, centre.y, z], [t, height, 0.026]),
-            ([centre.x + width / 2 + t / 2, centre.y, z], [t, height, 0.026]),
+            ([0, height / 2 + t / 2, z], [width + 2 * t, t, 0.026]),
+            ([0, -height / 2 - t / 2, z], [width + 2 * t, t, 0.026]),
+            ([-width / 2 - t / 2, 0, z], [t, height, 0.026]),
+            ([width / 2 + t / 2, 0, z], [t, height, 0.026]),
         ]
         for (position, size) in bars {
-            _ = add(.deskBox(size: size, bevel: 0.004), DeskMaterials.brass, at: position)
+            _ = add(.deskBox(size: size, bevel: 0.004), DeskMaterials.brass, at: position, to: crt)
         }
+
+        // Housing: a deep front box, a smaller one behind it, then the neck.
+        let w = width + 2 * t + 0.014, h = height + 2 * t + 0.014
+        crtSize = [w, h]
+        _ = add(.deskBox(size: [w, h, 0.09], bevel: 0.012), DeskMaterials.darkBronze, at: [0, 0, -0.045], to: crt)
+        _ = add(.deskBox(size: [w * 0.78, h * 0.78, 0.05], bevel: 0.014), DeskMaterials.darkBronze,
+                at: [0, 0, -0.112], to: crt)
+        _ = addAxial(radius: 0.040, length: 0.04, DeskMaterials.iron, at: [0, 0, -0.150], to: crt)
+        _ = addAxial(radius: 0.052, length: 0.010, DeskMaterials.brass, at: [0, 0, -0.139], to: crt)
+        _ = addAxial(radius: 0.047, length: 0.014, DeskMaterials.copper, at: [0, 0, -0.154], to: crt)
+        _ = addAxial(radius: 0.022, length: 0.012, DeskMaterials.brass, at: [0, 0, -0.174], to: crt)
+        // A brass band where the two boxes meet, and studs at the bezel's corners.
+        _ = add(.deskBox(size: [w * 0.80, h * 0.80, 0.008], bevel: 0.003), DeskMaterials.brass,
+                at: [0, 0, -0.091], to: crt)
+        var studs = MeshBuilder()
+        for sx in [-1, 1] as [Float] {
+            for sy in [-1, 1] as [Float] {
+                studs.sphere(center: [sx * (width / 2 + t / 2), sy * (height / 2 + t / 2), 0.023], radius: 0.0045,
+                             segments: 8, rings: 5)
+            }
+        }
+        if let mesh = try? studs.build(name: "bezel-studs") { _ = add(mesh, DeskMaterials.copper, at: .zero, to: crt) }
+    }
+
+    /// What carries the screen: two pistons under it, and a toothed rack down
+    /// its left side that turns a pinion on the wing plate as it rises.
+    private func buildMount() {
+        let steel = DeskMaterials.pbr(0.55, 0.55, 0.57, metallic: 1, roughness: 0.22)
+        let under = -crtSize.y / 2
+        for side in [-1, 1] as [Float] {
+            let x = side * 0.10, z: Float = -0.045
+            // Sleeve and collar stand on the deck; the rod hangs from the housing and slides in them.
+            _ = add(.deskCylinder(height: 0.032, radius: 0.014, bevel: 0.002), DeskMaterials.brass,
+                    at: [crtRest.x + x, deckTop + 0.016, crtRest.z + z])
+            _ = add(.deskCylinder(height: 0.006, radius: 0.019, bevel: 0.0015), DeskMaterials.copper,
+                    at: [crtRest.x + x, deckTop + 0.003, crtRest.z + z])
+            _ = add(.deskCylinder(height: 0.08, radius: 0.0065), steel, at: [x, under - 0.04, z], to: crt)
+            _ = add(.deskCylinder(height: 0.006, radius: 0.016, bevel: 0.0015), DeskMaterials.brass,
+                    at: [x, under - 0.003, z], to: crt)
+        }
+
+        // Rack: a bar on the housing's left side with square teeth facing out.
+        let rackZ: Float = -0.079
+        let barX = -crtSize.x / 2 - 0.006
+        var rack = MeshBuilder()
+        rack.box(center: [barX, 0.0125, rackZ], size: [0.012, 0.145, 0.008])
+        let pitch = Float.pi * gearModule
+        for k in -2...3 {
+            rack.box(center: [barX - 0.0105, Float(k) * pitch, rackZ], size: [0.009, pitch * 0.5, 0.008])
+        }
+        if let mesh = try? rack.build(name: "rack") { _ = add(mesh, DeskMaterials.brass, at: .zero, to: crt) }
+
+        // Pinion, fixed to the wing plate.
+        let radius = GearMesh.pitchRadius(teeth: pinionTeeth, module: gearModule)
+        let centre = SIMD3<Float>(crtRest.x + barX - 0.0105 - radius, crtRest.y, crtRest.z + rackZ)
+        var builder = MeshBuilder()
+        GearMesh.add(to: &builder, teeth: pinionTeeth, module: gearModule, thickness: 0.008, holeRadius: radius * 0.3)
+        if let mesh = try? builder.build(name: "pinion") {
+            pinion = add(mesh, DeskMaterials.copper, at: centre)
+        }
+        _ = addAxial(radius: radius * 0.3, length: 0.018, DeskMaterials.bronze, at: centre)
+        _ = addAxial(radius: radius * 0.42, length: 0.004, DeskMaterials.brass, at: centre + [0, 0, 0.006])
     }
 
     private func buildGears() {
@@ -296,17 +391,18 @@ final class SteamComputer {
         }
     }
 
-    private func bulbX(_ i: Int) -> Float { Float(i - 2) * 0.08 }
+    /// Bulb sockets along the top of the screen's housing, in its own space.
+    private func bulbSocket(_ i: Int) -> SIMD3<Float> { [Float(i - 2) * 0.062, crtSize.y / 2, -0.045] }
 
     private func buildBulbs() {
         for i in 0..<5 {
-            let x = bulbX(i)
+            let socket = bulbSocket(i)
             // Socket: a wide collar, then the narrower screw cap the glass sits in.
             _ = add(.deskCylinder(height: 0.008, radius: 0.016, bevel: 0.002), DeskMaterials.darkBronze,
-                    at: [x, topY + 0.004, 0])
+                    at: socket + [0, 0.004, 0], to: crt)
             _ = add(.deskCylinder(height: 0.014, radius: 0.011, bevel: 0.0015), DeskMaterials.brass,
-                    at: [x, topY + 0.015, 0])
-            let centre = SIMD3<Float>(x, topY + 0.022 + 0.024, 0)
+                    at: socket + [0, 0.015, 0], to: crt)
+            let centre = socket + [0, 0.022 + 0.024, 0]
             // The wire itself: two posts and a looped filament between them.
             var wire = MeshBuilder()
             for side in [-1, 1] as [Float] {
@@ -317,22 +413,22 @@ final class SteamComputer {
             TubeMesh.add(to: &wire, [-0.005, -0.002, 0], [-0.001, 0.010, -0.004], [0.001, 0.010, 0.004],
                          [0.005, -0.002, 0], radius: 0.0008, segments: 12, sides: 5)
             if let mesh = try? wire.build(name: "filament") {
-                _ = add(mesh, DeskMaterials.glow(1.0, 0.70, 0.30, intensity: 9), at: centre)
+                _ = add(mesh, DeskMaterials.glow(1.0, 0.70, 0.30, intensity: 9), at: centre, to: crt)
             }
             // A soft bloom round the wire, which is what swells and shrinks.
             var bloom = DeskMaterials.glow(1.0, 0.62, 0.22, intensity: 1.5)
             bloom.blending = .transparent(opacity: .init(floatLiteral: 0.22))
-            let filament = add(.deskSphere(radius: 0.008), bloom, at: centre + [0, 0.004, 0])
+            let filament = add(.deskSphere(radius: 0.008), bloom, at: centre + [0, 0.004, 0], to: crt)
             filament.scale = filamentScale
             filaments.append(filament)
             // Pear-shaped glass.
-            let glass = add(.deskSphere(radius: 0.021), DeskMaterials.glass(opacity: 0.14), at: centre + [0, 0.003, 0])
+            let glass = add(.deskSphere(radius: 0.021), DeskMaterials.glass(opacity: 0.14), at: centre + [0, 0.003, 0], to: crt)
             glass.scale = [1, 1.28, 1]
         }
-        bulbLight.position = [0, topY + 0.07, 0.07]
+        bulbLight.position = [0, crtSize.y / 2 + 0.07, 0.03]
         bulbLight.components.set(PointLightComponent(cgColor: CGColor(srgbRed: 1.0, green: 0.80, blue: 0.58, alpha: 1),
                                                      intensity: bulbLightBase, attenuationRadius: 2.0))
-        root.addChild(bulbLight)
+        crt.addChild(bulbLight)
     }
 
     private func breakerY(_ i: Int) -> Float { 0.245 - Float(i) * 0.06 }
@@ -505,6 +601,14 @@ final class SteamComputer {
         }
 
         fittings?.update(dt: dt, time: time, activity: boost)
+
+        // The screen rides up on its pistons while the machine is worked, and
+        // breathes a little at rest. The pinion turns with the rack.
+        let wanted: Float = steady ? 0 : 0.0015 * sin(time * 0.9) + 0.004 * min(boost, 3.5)
+        crtLift += (wanted - crtLift) * (1 - exp(-dt * 3))
+        crt.position = crtRest + [0, crtLift, 0]
+        pinion?.orientation = simd_quatf(
+            angle: crtLift / GearMesh.pitchRadius(teeth: pinionTeeth, module: gearModule), axis: [0, 0, 1])
 
         // Breakers ease to their thrown position.
         let ease = 1 - exp(-dt * 22)

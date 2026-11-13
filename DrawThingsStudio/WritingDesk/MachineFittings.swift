@@ -37,11 +37,17 @@ final class MachineFittings {
     struct Layout {
         var plinthHeight: Float
         var topY: Float
+        /// Top of the low deck the screen hangs over.
+        var deckTop: Float
         var frontZ: Float
         var bodyHalfWidth: Float
         var breakerX: Float
         var breakerY: [Float]
-        var bulbX: [Float]
+        /// The bulbs ride on the screen's housing: their sockets, and where
+        /// their wires come out of it, are in that entity's space.
+        var bulbParent: Entity
+        var bulbSockets: [SIMD3<Float>]
+        var bulbFeed: SIMD3<Float>
     }
 
     private struct Glowing {
@@ -102,22 +108,23 @@ final class MachineFittings {
         return e
     }
 
-    private func wire(_ builder: MeshBuilder, name: String) -> Glowing? {
+    private func wire(_ builder: MeshBuilder, name: String, on parent: Entity? = nil) -> Glowing? {
         guard let mesh = try? builder.build(name: name) else { return nil }
-        var glowing = Glowing(entity: add(mesh, DeskMaterials.copper, at: .zero), ramp: hotCopper)
+        var glowing = Glowing(entity: add(mesh, DeskMaterials.copper, at: .zero, to: parent), ramp: hotCopper)
         glowing.show(0)
         return glowing
     }
 
     private func buildWires() {
-        // Back plate down to each bulb socket: these warm with typing.
+        // Out of the back of the screen's housing and over to each bulb
+        // socket: these warm with typing.
         var toBulbs = MeshBuilder()
-        for x in layout.bulbX {
-            let from = SIMD3<Float>(x * 0.7 + 0.02, layout.topY + 0.012, -0.112)
-            let to = SIMD3<Float>(x, layout.topY + 0.006, -0.012)
-            TubeMesh.add(to: &toBulbs, from, from + [0, 0.035, 0.045], to + [0, 0.045, -0.035], to, radius: 0.0032)
+        for socket in layout.bulbSockets {
+            let from = layout.bulbFeed + [socket.x * 0.5, 0, 0]
+            let to = socket + [0, 0.006, -0.012]
+            TubeMesh.add(to: &toBulbs, from, from + [0, 0.05, 0.02], to + [0, 0.045, -0.035], to, radius: 0.0032)
         }
-        bulbWires = wire(toBulbs, name: "bulb-wires")
+        bulbWires = wire(toBulbs, name: "bulb-wires", on: layout.bulbParent)
 
         // Out of the side of the body and round to each breaker: each one
         // runs hot when its breaker is thrown.
@@ -134,8 +141,8 @@ final class MachineFittings {
 
         // Wing gears back to the body.
         var wing = MeshBuilder()
-        TubeMesh.add(to: &wing, [-0.33, 0.27, -0.014], [-0.33, 0.36, 0.03], [-0.22, 0.38, 0.0],
-                     [-0.20, layout.topY - 0.02, -0.04], radius: 0.0036)
+        TubeMesh.add(to: &wing, [-0.35, 0.20, -0.014], [-0.40, 0.27, -0.08], [-0.30, 0.34, -0.17],
+                     [-0.21, 0.28, -0.15], radius: 0.0036)
         wingWire = wire(wing, name: "wing-wire")
     }
 
@@ -271,13 +278,14 @@ final class MachineFittings {
             rivet([right, y, plateFront])
         }
         // Along the copper straps, over the top of the body.
-        for x in [-0.19, 0.19] as [Float] {
+        // The right strap goes over the tower, the left one over the deck.
+        for (x, top) in [(-0.19, layout.deckTop), (0.19, layout.topY)] as [(Float, Float)] {
             for i in 0...4 {
-                rivet([x, layout.topY + 0.002, -0.16 + 0.05 * Float(i)], 0.0036)
+                rivet([x, top + 0.002, -0.16 + 0.05 * Float(i)], 0.0036)
             }
         }
         // Down the front of the left strap; the right one is behind the breakers.
-        for i in 0...6 {
+        for i in 0...1 {
             rivet([-0.19, 0.05 + 0.043 * Float(i), layout.frontZ + 0.003], 0.0036)
         }
         // Along both edges of the plinth.

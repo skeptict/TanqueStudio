@@ -225,6 +225,17 @@ Tried with three paintings rendered from that prompt (Krea 2 Turbo, 2048×832, a
 
 Not yet seen in the app: a file cannot be copied into the app's folder from outside, so only the button and the missing-file message were checked there. The paint filter over a painting, frame rate, and how the painting holds up while leaning are unknown.
 
+## A separate screen on pistons
+
+The cabinet is no longer one box. It is a low deck, a tower on the right that carries the breakers, and a spine across the back that carries the gear plate. The screen is its own cathode-ray tube hung over the deck: glass face, brass bezel, a bronze housing that narrows to the tube's neck with coils round it, and the five bulbs along its top.
+
+- Two pistons carry it. Brass sleeves stand on the deck and steel rods hang from the housing and slide in them.
+- A toothed rack runs down the housing's left side and turns a copper pinion on the wing plate as the screen moves.
+- The screen breathes about 1.5 mm at rest and rides up to 14 mm higher while typing, then sinks back.
+- Zoomed in (`SteamComputer.steady`), it holds still at its rest height so the page does not move while you read.
+
+Seen only in off-screen renders (seat at rest, seat while typing, zoomed while typing). Not yet seen in the app, so the paint filter over it, the motion itself and the frame rate are unchecked.
+
 ## What looked good and what did not
 
 Good:
