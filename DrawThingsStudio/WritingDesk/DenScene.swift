@@ -17,7 +17,12 @@ final class DenScene {
     var pointer: SIMD2<Float> = .zero
     var lookAround = false
     /// Width over height of the view, so a focused item can be fitted to it.
-    var viewAspect: Float = 2.5
+    var viewAspect: Float = 2.5 { didSet { fitPlate() } }
+    /// Shows the room as one painting behind the desk, in place of the built
+    /// room. Does nothing until `room.png` is in the backdrops folder.
+    var paintedRoom = false { didSet { applyRoom() } }
+    /// True when `room.png` was found.
+    private(set) var hasRoomPlate = false
     /// Carries the camera and the screen's position to the painted look.
     let paint = PaintedLookState()
 
@@ -69,6 +74,15 @@ final class DenScene {
     private let cityYaw: Float = 20 * .pi / 180
 
     private let camera = Entity()
+    /// Everything the painted room replaces: walls, floor, shelves, windows, the view.
+    private let room = Entity()
+    private var plateEntity: ModelEntity?
+    private var plateTexture: TextureResource?
+    private var plateAspect: Float = 2.4
+    /// How far up `room.png` its eye-level line sits, 0 at the bottom.
+    private let plateHorizon: Float = 0.5
+    private let plateDistance: Float = 9
+    private var showsPlate: Bool { paintedRoom && hasRoomPlate }
     private let outside = Entity()
     private var cityEntity: ModelEntity?
     private var skyEntity: ModelEntity?
@@ -95,6 +109,7 @@ final class DenScene {
     private let travelSeconds: Float = 0.9
 
     init() {
+        root.addChild(room)
         buildShell()
         buildDesk()
         buildShelves()
@@ -150,7 +165,7 @@ final class DenScene {
             boards = DeskMaterials.darkWood
         }
         boards.clearcoat = .init(floatLiteral: 0.5)
-        if let mesh = try? floor.build(name: "floor") { add(mesh, boards) }
+        if let mesh = try? floor.build(name: "floor") { add(mesh, boards, to: room) }
 
         // Three walls and a ceiling; the fourth wall is glass.
         var shell = MeshBuilder()
@@ -160,7 +175,7 @@ final class DenScene {
         shell.box(center: [0, height / 2, halfDepth + t / 2], size: [2 * halfWidth, height, t])
         shell.box(center: [0, height + t / 2, 0], size: [2 * halfWidth, t, 2 * halfDepth])
         if let mesh = try? shell.build(name: "shell") {
-            add(mesh, DeskMaterials.pbr(0.11, 0.095, 0.085, metallic: 0, roughness: 0.9))
+            add(mesh, DeskMaterials.pbr(0.11, 0.095, 0.085, metallic: 0, roughness: 0.9), to: room)
         }
     }
 
@@ -269,7 +284,7 @@ final class DenScene {
             frame.box(center: [-halfWidth + depth / 2, 0.095 + Float(r) * rowPitch, 0],
                       size: [depth, 0.03, 2 * halfDepth])
         }
-        if let mesh = try? frame.build(name: "shelf-frame", tile: 0.9) { add(mesh, DeskMaterials.darkWood) }
+        if let mesh = try? frame.build(name: "shelf-frame", tile: 0.9) { add(mesh, DeskMaterials.darkWood, to: room) }
 
         // Books: one mesh per leather colour, so the whole wall is six draws.
         let leathers: [PhysicallyBasedMaterial] = [
@@ -301,7 +316,7 @@ final class DenScene {
             }
         }
         for (builder, leather) in zip(books, leathers) where !builder.isEmpty {
-            if let mesh = try? builder.build(name: "books") { add(mesh, leather) }
+            if let mesh = try? builder.build(name: "books") { add(mesh, leather, to: room) }
         }
 
         // Upper shelves: three painted panels, the middle one mirrored so the
@@ -316,7 +331,7 @@ final class DenScene {
                        normal: [1, 0, 0],
                        uvs: mirrored ? [[1, 0], [0, 0], [0, 1], [1, 1]] : [[0, 0], [1, 0], [1, 1], [0, 1]])
             if let mesh = try? panel.build(name: "upper-shelves") {
-                shelfPanels.append(add(mesh, DeskMaterials.darkWood))
+                shelfPanels.append(add(mesh, DeskMaterials.darkWood, to: room))
             }
         }
     }
@@ -333,11 +348,11 @@ final class DenScene {
         }
         // The heavier transom where the two storeys meet.
         mullions.box(center: [0, 3.5, z], size: [2 * halfWidth, 0.14, 0.10])
-        if let mesh = try? mullions.build(name: "mullions") { add(mesh, DeskMaterials.iron) }
+        if let mesh = try? mullions.build(name: "mullions") { add(mesh, DeskMaterials.iron, to: room) }
 
         // The glass must not stop the daylight.
         add(.generatePlane(width: 2 * halfWidth, height: height), DeskMaterials.glass(opacity: 0.05),
-            at: [0, height / 2, z - 0.02]).components.set(DynamicLightShadowComponent(castsShadow: false))
+            at: [0, height / 2, z - 0.02], to: room).components.set(DynamicLightShadowComponent(castsShadow: false))
     }
 
     private func buildOutside() {
@@ -345,7 +360,7 @@ final class DenScene {
         // right of the machine.
         outside.position = [eye.x, 0, eye.z]
         outside.orientation = simd_quatf(angle: -cityYaw, axis: [0, 1, 0])
-        root.addChild(outside)
+        room.addChild(outside)
 
         var sky = MeshBuilder()
         sky.arcWall(center: .zero, radius: 14, span: 2.6, bottom: -6, height: 30)
@@ -382,13 +397,60 @@ final class DenScene {
             if shelves.isFallback { missingBackdrops.append("shelves.png") }
             shelfTexture = shelves.texture
         }
+        loadPlate()
         tintBackdrops()
-        // A new city painting changes what the room reflects.
+        // A new painting changes what the room reflects.
         if environment != nil {
             buildEnvironment()
             lightFromEnvironment()
         }
         triangleCount = Self.triangles(in: root)
+    }
+
+    /// The painted room is optional, so a missing file is not reported as missing.
+    private func loadPlate() {
+        plateEntity?.removeFromParent()
+        plateEntity = nil
+        plateTexture = nil
+        hasRoomPlate = false
+        if let image = BackdropLoader.image(named: "room.png"),
+           let texture = try? TextureResource(image: image, withName: "room.png", options: .init(semantic: .color)) {
+            plateTexture = texture
+            plateAspect = Float(image.width) / Float(image.height)
+            let plate = add(.generatePlane(width: 1, height: 1), UnlitMaterial(texture: texture))
+            plate.components.set(DynamicLightShadowComponent(castsShadow: false))
+            plateEntity = plate
+            hasRoomPlate = true
+            fitPlate()
+        }
+        room.isEnabled = !showsPlate
+        plateEntity?.isEnabled = showsPlate
+    }
+
+    /// Stands the painting upright ahead of the seat, its eye-level line at
+    /// eye height, wide and tall enough to fill the view with some to spare
+    /// for leaning and for the zoom.
+    private func fitPlate() {
+        guard let plateEntity else { return }
+        let spare: Float = 1.25
+        let half = tan(fieldOfView * .pi / 360)
+        let wide = 2 * plateDistance * half * max(viewAspect, 0.1) * spare
+        // The seat looks slightly down, so the view reaches less far above eye level.
+        let pitch = atan2(eye.y - target.y, eye.z - target.z)
+        let above = plateDistance * tan(fieldOfView * .pi / 360 - pitch) * spare
+        let tall = max(wide / plateAspect, above / (1 - plateHorizon))
+        plateEntity.scale = [tall * plateAspect, tall, 1]
+        plateEntity.position = [eye.x, eye.y + (0.5 - plateHorizon) * tall, eye.z - plateDistance]
+    }
+
+    private func applyRoom() {
+        room.isEnabled = !showsPlate
+        plateEntity?.isEnabled = showsPlate
+        applyMood()
+        if environment != nil {
+            buildEnvironment()
+            lightFromEnvironment()
+        }
     }
 
     private func buildLights() {
@@ -420,14 +482,14 @@ final class DenScene {
         let back = simd_normalize(from - aim)
         let joint = from + back * 0.24
         let foot: SIMD3<Float> = [joint.x, 0, joint.z]
-        add(.deskCylinder(height: 0.03, radius: 0.19), DeskMaterials.brass, at: foot + [0, 0.015, 0])
-        add(.deskCylinder(height: joint.y, radius: 0.014), DeskMaterials.brass, at: foot + [0, joint.y / 2, 0])
-        add(.deskSphere(radius: 0.032), DeskMaterials.brass, at: joint)
+        add(.deskCylinder(height: 0.03, radius: 0.19), DeskMaterials.brass, at: foot + [0, 0.015, 0], to: room)
+        add(.deskCylinder(height: joint.y, radius: 0.014), DeskMaterials.brass, at: foot + [0, joint.y / 2, 0], to: room)
+        add(.deskSphere(radius: 0.032), DeskMaterials.brass, at: joint, to: room)
 
         // The head shares the light's aim: its mouth faces -z.
         let head = Entity()
         head.transform = keyLight.transform
-        root.addChild(head)
+        room.addChild(head)
         let shade = add(.generateCone(height: 0.24, radius: 0.17), DeskMaterials.copper, at: [0, 0, 0.07], to: head)
         shade.orientation = simd_quatf(angle: .pi / 2, axis: [1, 0, 0])
         let face = add(.deskCylinder(height: 0.004, radius: 0.15), DeskMaterials.glow(1.0, 0.72, 0.40, intensity: 1.4),
@@ -443,8 +505,9 @@ final class DenScene {
     /// Gives the metal something to reflect, and the room its ambient light.
     /// Makes the image the room is lit by, from the city painting when there is one.
     private func buildEnvironment() {
-        let city = BackdropLoader.image(named: "city.png", maxPixel: 256)
-        guard let image = BackdropLoader.reflections(city: city),
+        // In the painted room, the painting is what the brass reflects.
+        let view = BackdropLoader.image(named: showsPlate ? "room.png" : "city.png", maxPixel: 256)
+        guard let image = BackdropLoader.reflections(city: view),
               let made = try? EnvironmentResource(equirectangular: image, withName: "desk-reflections")
         else { return }
         environment = made
@@ -486,6 +549,9 @@ final class DenScene {
             let material = tinted(shelfTexture, isDark ? 0.22 : (isDay ? 0.8 : 0.5))
             for panel in shelfPanels { panel.model?.materials = [material] }
         }
+        if let plateTexture {
+            plateEntity?.model?.materials = [tinted(plateTexture, isDark ? 0.35 : (isDay ? 1 : 0.7))]
+        }
     }
 
     private func applyMood() {
@@ -507,7 +573,9 @@ final class DenScene {
         if isDay {
             // A far, narrow spot stands in for the sun.
             sunLight.components.set(SpotLightComponent(
-                color: NSColor(srgbRed: 1.0, green: 0.96, blue: 0.90, alpha: 1), intensity: 700_000,
+                color: NSColor(srgbRed: 1.0, green: 0.96, blue: 0.90, alpha: 1),
+                // With no window bars in its way, the full sun bleaches the desk.
+                intensity: showsPlate ? 300_000 : 700_000,
                 innerAngleInDegrees: 24, outerAngleInDegrees: 34, attenuationRadius: 30))
             sunLight.components.set(SpotLightComponent.Shadow())
         } else {
@@ -593,8 +661,10 @@ final class DenScene {
         let lean = (right * smoothedPointer.x * 0.05 + SIMD3<Float>(0, 1, 0) * smoothedPointer.y * 0.03)
             * (1 - lookBlend) * (1 - 0.9 * focusBlend)
         // Looking around: the head turns instead.
-        let yaw = simd_quatf(angle: -smoothedPointer.x * 1.25 * lookBlend, axis: [0, 1, 0])
-        let pitch = simd_quatf(angle: smoothedPointer.y * 0.55 * lookBlend, axis: right)
+        // A painting has edges, so in the painted room it turns only a little.
+        let turn: Float = showsPlate ? 0.05 : 1
+        let yaw = simd_quatf(angle: -smoothedPointer.x * 1.25 * lookBlend * turn, axis: [0, 1, 0])
+        let pitch = simd_quatf(angle: smoothedPointer.y * 0.55 * lookBlend * turn, axis: right)
         let gaze = yaw.act(pitch.act(forward))
 
         let position = current.eye + lean

@@ -53,6 +53,7 @@ struct WritingDeskView: View {
     @State private var focused = false
     @State private var mood = DenScene.Mood.chiaroscuro
     @State private var paint = PaintedLookState.Style.fine
+    @State private var paintedRoom = false
     @State private var missingBackdrops: [String] = []
     @State private var confirmNewSheet = false
     @FocusState private var deskFocused: Bool
@@ -99,7 +100,7 @@ struct WritingDeskView: View {
                 session.save()
                 deskFocused = true
             }
-            .buttonStyle(DashboardPrimaryButtonStyle())
+            .buttonStyle(DashboardPrimaryButtonStyle()).fixedSize()
 
             Button("Reveal in Finder") {
                 session.revealInFinder()
@@ -132,18 +133,27 @@ struct WritingDeskView: View {
                 .buttonStyle(DashboardGhostButtonStyle()).fixedSize()
             }
 
+            Button(paintedRoom ? "Room: painted" : "Room: built") {
+                paintedRoom.toggle()
+                den?.paintedRoom = paintedRoom
+                deskFocused = true
+            }
+            .buttonStyle(DashboardGhostButtonStyle()).fixedSize()
+            .help("Swap the built room for one painting, room.png in the backdrops folder.")
+
             Button("Backdrops folder") {
                 WritingDeskSession.reveal(folder: BackdropLoader.backdropsFolder)
                 deskFocused = true
             }
             .buttonStyle(DashboardGhostButtonStyle()).fixedSize()
 
-            Button("Reload backdrops") {
+            Button("Reload") {
                 den?.loadBackdrops()
                 missingBackdrops = den?.missingBackdrops ?? []
                 deskFocused = true
             }
             .buttonStyle(DashboardGhostButtonStyle()).fixedSize()
+            .help("Read the backdrop images again.")
 
             Button(lookAround ? "Look around: on" : "Look around: off") {
                 lookAround.toggle()
@@ -178,6 +188,9 @@ struct WritingDeskView: View {
         if !missingBackdrops.isEmpty {
             parts.append("Using a plain gradient for \(missingBackdrops.joined(separator: " and "))")
         }
+        if paintedRoom, den?.hasRoomPlate == false {
+            parts.append("Add room.png to the backdrops folder for the painted room")
+        }
         if den?.computer.screenFailed == true { parts.append("The screen could not be drawn") }
         if paint != .off, den?.paint.failed == true { parts.append("The painted look could not start") }
         if parts.isEmpty {
@@ -196,6 +209,7 @@ struct WritingDeskView: View {
                 scene.lookAround = lookAround
                 scene.paint.look = paint
                 scene.mood = mood
+                scene.paintedRoom = paintedRoom
                 if geo.size.height > 0 { scene.viewAspect = Float(geo.size.width / geo.size.height) }
                 if focused { scene.focus(on: scene.screenViewpoint) }
                 if #available(macOS 26, *) {

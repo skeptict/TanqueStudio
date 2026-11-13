@@ -208,6 +208,23 @@ Checked in the running app on 2026-11-13, paint on fine, 60,940 triangles: chiar
 
 Weak points: the notebook reads as a plain cream slab; the filament wire is too fine to see from the seat, so the bulbs still read as glowing blobs; the city painting is a dusk scene, so in daylight the room is brighter than the view; the machine is still the same boxy shape. Not checked: paint off, Look around in daylight, anything in motion.
 
+## Painted room (experiment)
+
+The **Room** button swaps the built room for one painting, `room.png` in the backdrops folder. The desk, its props and the machine stay 3D and are lit as before; the walls, floor, shelves, windows, view and floor lamp are hidden. With no `room.png` the built room stays and the status line says what to add.
+
+- The painting stands upright 9 m ahead of the seat with its eye-level line at eye height. `plateHorizon` in `DenScene` says how far up the image that line is (0.5 now); change it if a painting's horizon sits elsewhere.
+- It is a quarter larger than the view needs, so leaning and the focus zoom never show its edge. Compose the image with that margin: the outer eighth on each side is rarely seen, and the lower half is behind the desk.
+- Look around turns only about 3.5° in the painted room, because a painting has edges.
+- The brass reflects a blur of the painting in place of the city, and the painting is dimmed to 0.35 in chiaroscuro and 0.7 in dusk.
+
+A prompt to start from, about 2.4:1 (for example 2048×832), lit to suit the daylight mood:
+
+> Interior of a Victorian steampunk study in soft daylight, wide straight-on view at seated eye level toward a wall of tall riveted iron-framed windows. Beyond the glass, a retro-futurist city in a steep jungle valley with a waterfall in haze. Dark walnut bookshelves packed with leather books on the left wall, brass pipes, potted ferns, a worn leather armchair, wood floor. Empty foreground, no desk, no people. Level camera, horizon at mid-height, photographic detail.
+
+Tried with three paintings rendered from that prompt (Krea 2 Turbo, 2048×832, about 100 s each on the M4), in an off-screen render from the seat in all three moods and zoomed. The room reads as a photograph and the desk sits in it believably; the chair and ferns are cut off by the desk as real ones would be. The sun is cut to under half in the painted room, because with no window bars in its way it bleached the desk. The 3D machine and desk now look plainer than the room behind them.
+
+Not yet seen in the app: a file cannot be copied into the app's folder from outside, so only the button and the missing-file message were checked there. The paint filter over a painting, frame rate, and how the painting holds up while leaning are unknown.
+
 ## What looked good and what did not
 
 Good:
