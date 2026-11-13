@@ -33,6 +33,31 @@ private let quickStarts: [QuickStartPreset] = [
           aspect: (4, 3), swatch: ("#d9b9a8", "#b5453f")),
 ]
 
+// MARK: - Feature tiles
+//
+// One entry per tile. Writing Desk goes here once its Labs tab is merged:
+// `.init(name: "Writing Desk", ..., destination: .labs(.writingDesk))`, behind
+// the same macOS availability check the tab itself uses.
+
+private struct FeatureTile: Identifiable {
+    enum Destination {
+        case mode(DashboardMode)
+        case labs(DashboardLabsPage.LabsTab)
+    }
+    let name: String
+    let description: String
+    let icon: String
+    let destination: Destination
+    var id: String { name }
+}
+
+private let featureTiles: [FeatureTile] = [
+    .init(name: "Project Browser", description: "Browse Draw Things projects",
+          icon: "folder", destination: .mode(.projects)),
+    .init(name: "Style Browser", description: "Render a prompt across styles",
+          icon: "paintpalette", destination: .labs(.styleBrowser)),
+]
+
 // MARK: - Dashboard home
 
 struct DashboardHomeView: View {
@@ -41,9 +66,11 @@ struct DashboardHomeView: View {
     let onEnterFocus: () -> Void
     let onSelectImage: (TSImage) -> Void
     let onNavigate: (DashboardMode) -> Void
+    let onOpenLabsTab: (DashboardLabsPage.LabsTab) -> Void
 
     @Query(sort: \TSImage.createdAt, order: .reverse) private var savedImages: [TSImage]
     @State private var storageUsedText = "Calculating\u{2026}"
+    @State private var isDropTargeted = false
 
     private var hasSession: Bool {
         !vm.prompt.isEmpty || vm.generatedImage != nil
@@ -63,9 +90,16 @@ struct DashboardHomeView: View {
 
                 topGrid
 
+                imageDropZone
+
                 VStack(alignment: .leading, spacing: 12) {
                     DashboardCardLabel(text: "Quick Start")
                     quickStartGrid
+                }
+
+                VStack(alignment: .leading, spacing: 12) {
+                    DashboardCardLabel(text: "Features")
+                    featureGrid
                 }
 
                 VStack(alignment: .leading, spacing: 12) {
@@ -178,6 +212,79 @@ struct DashboardHomeView: View {
         let formatter = ByteCountFormatter()
         formatter.countStyle = .file
         storageUsedText = formatter.string(fromByteCount: bytes)
+    }
+
+    // MARK: Image drop
+
+    /// Same path as dropping on the Focus Room canvas: the view model loads the
+    /// image, reads its embedded metadata and selects the Metadata tab.
+    private var imageDropZone: some View {
+        HStack(spacing: 12) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 8).fill(DashboardDS.brassSubtle)
+                Image(systemName: "photo.badge.arrow.down").font(TanqueDS.Font.mono(13)).foregroundStyle(DashboardDS.brass)
+            }
+            .frame(width: 30, height: 30)
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Drop an image here").font(TanqueDS.Font.monoSemiBold(12)).foregroundStyle(DashboardDS.text)
+                Text("Opens it in Generate with its embedded metadata \u{2014} PNG or JPG")
+                    .font(TanqueDS.Font.mono(11)).foregroundStyle(DashboardDS.muted)
+            }
+            Spacer()
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(isDropTargeted ? DashboardDS.brassSubtle : .clear, in: RoundedRectangle(cornerRadius: 12))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .strokeBorder(isDropTargeted ? DashboardDS.brass : DashboardDS.border2,
+                              style: StrokeStyle(lineWidth: isDropTargeted ? 2 : 1.5, dash: [6]))
+        )
+        .contentShape(RoundedRectangle(cornerRadius: 12))
+        .dropDestination(for: URL.self) { urls, _ in
+            guard let url = urls.first else { return false }
+            let ext = url.pathExtension.lowercased()
+            guard ext == "png" || ext == "jpg" || ext == "jpeg" else { return false }
+            vm.handleDroppedImageURL(url)
+            onEnterFocus()
+            return true
+        } isTargeted: { isDropTargeted = $0 }
+    }
+
+    // MARK: Feature tiles
+
+    private var featureGrid: some View {
+        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: 4), spacing: 12) {
+            ForEach(featureTiles) { tile in
+                Button {
+                    switch tile.destination {
+                    case .mode(let mode): onNavigate(mode)
+                    case .labs(let tab): onOpenLabsTab(tab)
+                    }
+                } label: {
+                    HStack(spacing: 12) {
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 8).fill(DashboardDS.brassSubtle)
+                            Image(systemName: tile.icon).font(TanqueDS.Font.mono(13)).foregroundStyle(DashboardDS.brass)
+                        }
+                        .frame(width: 30, height: 30)
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(tile.name).font(TanqueDS.Font.monoSemiBold(12)).foregroundStyle(DashboardDS.text)
+                            Text(tile.description).font(TanqueDS.Font.mono(11)).foregroundStyle(DashboardDS.muted)
+                                .lineLimit(2).multilineTextAlignment(.leading)
+                        }
+                        Spacer(minLength: 0)
+                    }
+                    .padding(16)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(DashboardDS.surf1, in: RoundedRectangle(cornerRadius: 12))
+                    .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(DashboardDS.border, lineWidth: 1))
+                    .contentShape(RoundedRectangle(cornerRadius: 12))
+                }
+                .buttonStyle(.plain)
+                .help("\(tile.name) \u{2014} \(tile.description)")
+            }
+        }
     }
 
     // MARK: Quick Start

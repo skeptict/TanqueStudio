@@ -168,7 +168,11 @@ struct DashboardRootView: View {
                     selectGalleryImage(image)
                     navigate(to: .focus)
                 },
-                onNavigate: { navigate(to: $0) }
+                onNavigate: { navigate(to: $0) },
+                onOpenLabsTab: { tab in
+                    labsTab = tab
+                    navigate(to: .labs)
+                }
             )
         case .focus:
             FocusRoomView(vm: generateVM, modelContext: modelContext, onSelectImage: selectGalleryImage)
