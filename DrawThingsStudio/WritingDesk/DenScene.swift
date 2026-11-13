@@ -1,0 +1,679 @@
+import AppKit
+import RealityKit
+import simd
+
+/// The penthouse den: a box room with a desk, a wall of books, a two-storey
+/// window wall and the painted valley beyond it.
+///
+/// World space: floor at y = 0, windows on the -z wall, bookshelves on the -x
+/// wall. The writer sits at the desk facing the windows.
+@available(macOS 15, *)
+@MainActor
+final class DenScene {
+    let root = Entity()
+    let computer = SteamComputer()
+
+    /// Pointer position over the view, -1...1 on each axis, +y up.
+    var pointer: SIMD2<Float> = .zero
+    var lookAround = false
+    /// Width over height of the view, so a focused item can be fitted to it.
+    var viewAspect: Float = 2.5 { didSet { fitPlate() } }
+    /// Shows the room as one painting behind the desk, in place of the built
+    /// room. Does nothing until `room.png` is in the backdrops folder.
+    var paintedRoom = false { didSet { applyRoom() } }
+    /// True when `room.png` was found.
+    private(set) var hasRoomPlate = false
+    /// Carries the camera and the screen's position to the painted look.
+    let paint = PaintedLookState()
+
+    /// Somewhere the camera can sit, and what it looks at from there.
+    struct Viewpoint {
+        var eye: SIMD3<Float>
+        var target: SIMD3<Float>
+
+        func blended(to other: Viewpoint, _ t: Float) -> Viewpoint {
+            Viewpoint(eye: simd_mix(eye, other.eye, SIMD3(repeating: t)),
+                      target: simd_mix(target, other.target, SIMD3(repeating: t)))
+        }
+    }
+    /// How the room is lit.
+    enum Mood: String, CaseIterable {
+        /// One warm light on the machine and deep shadow everywhere else.
+        case chiaroscuro
+        /// The even dusk light the room began with.
+        case dusk
+        /// Daylight through the windows, with the lamps as accents.
+        case daylight
+
+        var next: Mood {
+            let all = Mood.allCases
+            return all[(all.firstIndex(of: self)! + 1) % all.count]
+        }
+    }
+    var mood = Mood.chiaroscuro { didSet { applyMood() } }
+
+    /// True while the camera is at, or travelling to, something other than the seat.
+    private(set) var isFocused = false
+
+    private(set) var triangleCount = 0
+    private(set) var lightCount = 0
+    /// Backdrop files that were not found, so a gradient is standing in.
+    private(set) var missingBackdrops: [String] = []
+
+    // Room, in metres.
+    private let halfWidth: Float = 4
+    private let halfDepth: Float = 4.5
+    private let height: Float = 7
+    private let deskTop: Float = 0.76
+    /// The desk sits left of centre so the book wall is in frame.
+    private let deskX: Float = -1.4
+    private var eye: SIMD3<Float> { [deskX, 1.22, 0.55] }
+    private var target: SIMD3<Float> { [deskX, 1.12, -0.62] }
+    /// The city image is centred this far right of straight ahead, so its
+    /// middle is not hidden behind the machine.
+    private let cityYaw: Float = 20 * .pi / 180
+
+    private let camera = Entity()
+    /// Everything the painted room replaces: walls, floor, shelves, windows, the view.
+    private let room = Entity()
+    private var plateEntity: ModelEntity?
+    private var plateTexture: TextureResource?
+    private var plateAspect: Float = 2.4
+    /// How far up `room.png` its eye-level line sits, 0 at the bottom.
+    private let plateHorizon: Float = 0.5
+    private let plateDistance: Float = 9
+    private var showsPlate: Bool { paintedRoom && hasRoomPlate }
+    private let outside = Entity()
+    private var cityEntity: ModelEntity?
+    private var skyEntity: ModelEntity?
+    private var cityTexture: TextureResource?
+    private var skyTexture: TextureResource?
+    private var shelfTexture: TextureResource?
+    private let keyLight = Entity()
+    private let lampLight = Entity()
+    private let sunLight = Entity()
+    private var keyLampFace: ModelEntity?
+    private let reflections = Entity()
+    private var environment: EnvironmentResource?
+    private var shelfPanels: [ModelEntity] = []
+    private var time: Float = 0
+    private var smoothedPointer: SIMD2<Float> = .zero
+    private var lookBlend: Float = 0
+    private let fieldOfView: Float = 42
+    private var seat: Viewpoint { Viewpoint(eye: eye, target: target) }
+    private var leaving = Viewpoint(eye: .zero, target: [0, 0, -1])
+    private var arriving = Viewpoint(eye: .zero, target: [0, 0, -1])
+    private var current = Viewpoint(eye: .zero, target: [0, 0, -1])
+    private var travel: Float = 1
+    private var focusBlend: Float = 0
+    private let travelSeconds: Float = 0.9
+
+    init() {
+        root.addChild(room)
+        buildShell()
+        buildDesk()
+        buildShelves()
+        buildWindows()
+        buildOutside()
+        loadBackdrops()
+        buildLights()
+
+        computer.root.position = [deskX, deskTop, -0.62]
+        root.addChild(computer.root)
+
+        camera.components.set(PerspectiveCameraComponent(near: 0.05, far: 200, fieldOfViewInDegrees: fieldOfView))
+        leaving = seat
+        arriving = seat
+        current = seat
+        camera.look(at: target, from: eye, relativeTo: nil)
+        root.addChild(camera)
+
+        applyReflections()
+        applyMood()
+        triangleCount = Self.triangles(in: root)
+    }
+
+    // MARK: - Building
+
+    @discardableResult
+    private func add(_ mesh: MeshResource, _ material: any RealityKit.Material,
+                     at position: SIMD3<Float> = .zero, to parent: Entity? = nil) -> ModelEntity {
+        let e = ModelEntity(mesh: mesh, materials: [material])
+        e.position = position
+        (parent ?? root).addChild(e)
+        return e
+    }
+
+    private func buildShell() {
+        // Floor: tiled quads, so the board texture repeats without needing a
+        // repeating sampler.
+        var floor = MeshBuilder()
+        let tiles = 5
+        let tileW = 2 * halfWidth / Float(tiles), tileD = 2 * halfDepth / Float(tiles)
+        for i in 0..<tiles {
+            for j in 0..<tiles {
+                let x0 = -halfWidth + Float(i) * tileW, z0 = -halfDepth + Float(j) * tileD
+                floor.quad([x0, 0, z0 + tileD], [x0 + tileW, 0, z0 + tileD], [x0 + tileW, 0, z0], [x0, 0, z0],
+                           normal: [0, 1, 0])
+            }
+        }
+        var boards = DeskMaterials.pbr(0.5, 0.5, 0.5, metallic: 0, roughness: 0.35)
+        if let image = BackdropLoader.floorboards(),
+           let texture = try? TextureResource(image: image, withName: "desk-floor", options: .init(semantic: .color)) {
+            boards.baseColor = .init(tint: .white, texture: .init(texture))
+        } else {
+            boards = DeskMaterials.darkWood
+        }
+        boards.clearcoat = .init(floatLiteral: 0.5)
+        if let mesh = try? floor.build(name: "floor") { add(mesh, boards, to: room) }
+
+        // Three walls and a ceiling; the fourth wall is glass.
+        var shell = MeshBuilder()
+        let t: Float = 0.1
+        shell.box(center: [halfWidth + t / 2, height / 2, 0], size: [t, height, 2 * halfDepth])
+        shell.box(center: [-halfWidth - t / 2, height / 2, 0], size: [t, height, 2 * halfDepth])
+        shell.box(center: [0, height / 2, halfDepth + t / 2], size: [2 * halfWidth, height, t])
+        shell.box(center: [0, height + t / 2, 0], size: [2 * halfWidth, t, 2 * halfDepth])
+        if let mesh = try? shell.build(name: "shell") {
+            add(mesh, DeskMaterials.pbr(0.11, 0.095, 0.085, metallic: 0, roughness: 0.9), to: room)
+        }
+    }
+
+    private func buildDesk() {
+        var desk = MeshBuilder()
+        desk.roundedBox(center: [deskX, deskTop - 0.03, -0.55], size: [2.4, 0.06, 1.1], bevel: 0.009)
+        for side in [-0.85, 0.85] as [Float] {
+            desk.roundedBox(center: [deskX + side, (deskTop - 0.06) / 2, -0.55],
+                            size: [0.5, deskTop - 0.06, 0.95], bevel: 0.005)
+        }
+        desk.box(center: [deskX, deskTop - 0.13, -0.95], size: [1.2, 0.14, 0.02])
+        if let mesh = try? desk.build(name: "desk", tile: 0.9) { add(mesh, DeskMaterials.darkWood) }
+
+        // Banker's lamp at the left of the desk.
+        let lamp = Entity()
+        lamp.position = [deskX - 0.85, deskTop, -0.82]
+        root.addChild(lamp)
+        add(.deskCylinder(height: 0.016, radius: 0.075), DeskMaterials.brass, at: [0, 0.008, 0], to: lamp)
+        if let pool = SurfaceTextures.contactShadow("shade-lamp", size: [0.15, 0.15], corner: 0.075, spread: 0.05) {
+            pool.position = [0, 0.0008, 0]
+            lamp.addChild(pool)
+        }
+        add(.deskCylinder(height: 0.30, radius: 0.008), DeskMaterials.brass, at: [0, 0.16, 0], to: lamp)
+        add(.generateCone(height: 0.10, radius: 0.12),
+            DeskMaterials.pbr(0.05, 0.22, 0.14, metallic: 0, roughness: 0.25), at: [0, 0.35, 0], to: lamp)
+        add(.deskSphere(radius: 0.022), DeskMaterials.glow(1.0, 0.78, 0.48, intensity: 4),
+            at: [0, 0.305, 0], to: lamp)
+        buildProps()
+    }
+
+    /// Things a writer leaves on a desk: two stacked books, an open-faced
+    /// notebook with a pen, and a cup of pens.
+    private func buildProps() {
+        func shade(_ size: SIMD2<Float>, corner: Float, on parent: Entity, name: String) {
+            guard let pool = SurfaceTextures.contactShadow(name, size: size, corner: corner, spread: 0.03) else { return }
+            pool.position = [0, 0.0008, 0]
+            parent.addChild(pool)
+        }
+        func book(_ size: SIMD3<Float>, _ material: PhysicallyBasedMaterial, at y: Float, turn: Float, in parent: Entity) {
+            let holder = Entity()
+            holder.position = [0, y, 0]
+            holder.orientation = simd_quatf(angle: turn, axis: [0, 1, 0])
+            parent.addChild(holder)
+            add(.deskBox(size: size, bevel: 0.003), material, at: [0, size.y / 2, 0], to: holder)
+            // Page block, showing on three sides.
+            add(.deskBox(size: [size.x - 0.006, size.y - 0.008, size.z - 0.004], bevel: 0.001), DeskMaterials.paper,
+                at: [0.005, size.y / 2, 0], to: holder)
+        }
+
+        let stack = Entity()
+        stack.position = [deskX + 0.74, deskTop, -0.60]
+        stack.orientation = simd_quatf(angle: -0.25, axis: [0, 1, 0])
+        root.addChild(stack)
+        shade([0.17, 0.23], corner: 0.004, on: stack, name: "shade-books")
+        book([0.17, 0.034, 0.23], DeskMaterials.leather, at: 0, turn: 0, in: stack)
+        book([0.15, 0.026, 0.21], DeskMaterials.pbr(0.07, 0.13, 0.11, metallic: 0, roughness: 0.6),
+             at: 0.034, turn: 0.18, in: stack)
+
+        let notebook = Entity()
+        notebook.position = [deskX - 0.46, deskTop, -0.45]
+        notebook.orientation = simd_quatf(angle: 0.3, axis: [0, 1, 0])
+        root.addChild(notebook)
+        shade([0.16, 0.22], corner: 0.004, on: notebook, name: "shade-notebook")
+        add(.deskBox(size: [0.16, 0.012, 0.22], bevel: 0.002), DeskMaterials.leather, at: [0, 0.006, 0], to: notebook)
+        add(.deskBox(size: [0.152, 0.004, 0.212], bevel: 0.001), DeskMaterials.paper, at: [0, 0.014, 0], to: notebook)
+        let pen = add(.deskCylinder(height: 0.13, radius: 0.0045), DeskMaterials.iron, at: [0.02, 0.0205, 0.01], to: notebook)
+        pen.orientation = simd_quatf(angle: 0.5, axis: [0, 1, 0]) * simd_quatf(angle: .pi / 2, axis: [1, 0, 0])
+        let nib = add(.deskCylinder(height: 0.02, radius: 0.0048), DeskMaterials.brass, at: [0, 0.055, 0], to: pen)
+        nib.components.set(DynamicLightShadowComponent(castsShadow: false))
+
+        let cup = Entity()
+        cup.position = [deskX + 0.60, deskTop, -0.78]
+        root.addChild(cup)
+        shade([0.07, 0.07], corner: 0.035, on: cup, name: "shade-cup")
+        add(.deskCylinder(height: 0.095, radius: 0.035, bevel: 0.003), DeskMaterials.darkBronze, at: [0, 0.0475, 0], to: cup)
+        add(.deskCylinder(height: 0.006, radius: 0.037, bevel: 0.002), DeskMaterials.brass, at: [0, 0.092, 0], to: cup)
+        let pens: [(Float, Float, PhysicallyBasedMaterial)] = [
+            (0.4, 0.16, DeskMaterials.iron), (2.1, 0.20, DeskMaterials.brass), (3.6, 0.13, DeskMaterials.leather),
+            (5.0, 0.18, DeskMaterials.copper),
+        ]
+        for (around, lean, material) in pens {
+            let holder = Entity()
+            holder.position = [0, 0.01, 0]
+            holder.orientation = simd_quatf(angle: around, axis: [0, 1, 0]) * simd_quatf(angle: lean, axis: [0, 0, 1])
+            cup.addChild(holder)
+            add(.deskCylinder(height: 0.15, radius: 0.004), material, at: [0, 0.075, 0], to: holder)
+        }
+    }
+
+    private func buildShelves() {
+        let depth: Float = 0.32
+        let front = -halfWidth + depth
+        let lowerTop: Float = 2.33
+        let rowPitch: Float = 0.44
+        let rows = 5
+        let bays = Int(2 * halfDepth)
+
+        var frame = MeshBuilder()
+        frame.box(center: [-halfWidth + 0.01, lowerTop / 2, 0], size: [0.02, lowerTop, 2 * halfDepth])
+        for i in 0...bays {
+            let z = -halfDepth + Float(i)
+            frame.box(center: [-halfWidth + depth / 2, lowerTop / 2, min(max(z, -halfDepth + 0.02), halfDepth - 0.02)],
+                      size: [depth, lowerTop, 0.04])
+        }
+        for r in 0...rows {
+            frame.box(center: [-halfWidth + depth / 2, 0.095 + Float(r) * rowPitch, 0],
+                      size: [depth, 0.03, 2 * halfDepth])
+        }
+        if let mesh = try? frame.build(name: "shelf-frame", tile: 0.9) { add(mesh, DeskMaterials.darkWood, to: room) }
+
+        // Books: one mesh per leather colour, so the whole wall is six draws.
+        let leathers: [PhysicallyBasedMaterial] = [
+            DeskMaterials.pbr(0.30, 0.07, 0.06, metallic: 0, roughness: 0.65),
+            DeskMaterials.pbr(0.07, 0.17, 0.10, metallic: 0, roughness: 0.70),
+            DeskMaterials.pbr(0.07, 0.10, 0.20, metallic: 0, roughness: 0.70),
+            DeskMaterials.pbr(0.42, 0.28, 0.14, metallic: 0, roughness: 0.75),
+            DeskMaterials.pbr(0.19, 0.11, 0.06, metallic: 0, roughness: 0.70),
+            DeskMaterials.pbr(0.20, 0.19, 0.20, metallic: 0, roughness: 0.80),
+        ]
+        var books = Array(repeating: MeshBuilder(), count: leathers.count)
+        var rng = SeededRandom(seed: 0x5EED_B00C)
+        for r in 0..<rows {
+            let shelfTop = 0.11 + Float(r) * rowPitch
+            for bay in 0..<bays {
+                var z = -halfDepth + Float(bay) + 0.045
+                let end = -halfDepth + Float(bay) + 0.955
+                while true {
+                    if rng.unit() < 0.05 { z += rng.range(0.04, 0.14) }
+                    let width = rng.range(0.022, 0.056)
+                    guard z + width <= end else { break }
+                    let tall = rng.range(0.22, 0.37)
+                    let deep = rng.range(0.17, 0.25)
+                    let spine = front - 0.015 - rng.range(0, 0.03)
+                    books[rng.index(books.count)].box(center: [spine - deep / 2, shelfTop + tall / 2, z + width / 2],
+                                                      size: [deep, tall, width])
+                    z += width + 0.001
+                }
+            }
+        }
+        for (builder, leather) in zip(books, leathers) where !builder.isEmpty {
+            if let mesh = try? builder.build(name: "books") { add(mesh, leather, to: room) }
+        }
+
+        // Upper shelves: three painted panels, the middle one mirrored so the
+        // repeat is less obvious.
+        let panelDepth = 2 * halfDepth / 3
+        for i in 0..<3 {
+            let z1 = halfDepth - Float(i) * panelDepth
+            let z0 = z1 - panelDepth
+            let mirrored = i == 1
+            var panel = MeshBuilder()
+            panel.quad([front, lowerTop, z1], [front, lowerTop, z0], [front, height, z0], [front, height, z1],
+                       normal: [1, 0, 0],
+                       uvs: mirrored ? [[1, 0], [0, 0], [0, 1], [1, 1]] : [[0, 0], [1, 0], [1, 1], [0, 1]])
+            if let mesh = try? panel.build(name: "upper-shelves") {
+                shelfPanels.append(add(mesh, DeskMaterials.darkWood, to: room))
+            }
+        }
+    }
+
+    private func buildWindows() {
+        let z = -halfDepth
+        var mullions = MeshBuilder()
+        for i in 0...Int(2 * halfWidth) {
+            let x = min(max(-halfWidth + Float(i), -halfWidth + 0.03), halfWidth - 0.03)
+            mullions.box(center: [x, height / 2, z], size: [0.05, height, 0.08])
+        }
+        for y in [0.04, 1.2, 2.35, 4.65, 5.8, height - 0.04] as [Float] {
+            mullions.box(center: [0, y, z], size: [2 * halfWidth, 0.05, 0.08])
+        }
+        // The heavier transom where the two storeys meet.
+        mullions.box(center: [0, 3.5, z], size: [2 * halfWidth, 0.14, 0.10])
+        if let mesh = try? mullions.build(name: "mullions") { add(mesh, DeskMaterials.iron, to: room) }
+
+        // The glass must not stop the daylight.
+        add(.generatePlane(width: 2 * halfWidth, height: height), DeskMaterials.glass(opacity: 0.05),
+            at: [0, height / 2, z - 0.02], to: room).components.set(DynamicLightShadowComponent(castsShadow: false))
+    }
+
+    private func buildOutside() {
+        // Centred on the writer and turned so the image's middle sits to the
+        // right of the machine.
+        outside.position = [eye.x, 0, eye.z]
+        outside.orientation = simd_quatf(angle: -cityYaw, axis: [0, 1, 0])
+        room.addChild(outside)
+
+        var sky = MeshBuilder()
+        sky.arcWall(center: .zero, radius: 14, span: 2.6, bottom: -6, height: 30)
+        if let mesh = try? sky.build(name: "sky"), let image = BackdropLoader.duskSky(),
+           let texture = try? TextureResource(image: image, withName: "desk-sky", options: .init(semantic: .color)) {
+            skyTexture = texture
+            skyEntity = add(mesh, UnlitMaterial(texture: texture), to: outside)
+            skyEntity?.components.set(DynamicLightShadowComponent(castsShadow: false))
+        }
+    }
+
+    /// Reads the backdrop images again. Call after dropping new files in the folder.
+    func loadBackdrops() {
+        missingBackdrops = []
+        BackdropLoader.ensureFolders()
+
+        if let city = BackdropLoader.backdrop(named: "city.png", fallback: BackdropLoader.duskCity) {
+            if city.isFallback { missingBackdrops.append("city.png") }
+            let radius: Float = 12
+            let span: Float = 100 * .pi / 180
+            let tall = radius * span / city.aspect
+            var wall = MeshBuilder()
+            // Middle of the image a little above eye level.
+            wall.arcWall(center: .zero, radius: radius, span: span, bottom: 2.05 - tall / 2, height: tall)
+            if let mesh = try? wall.build(name: "city") {
+                cityEntity?.removeFromParent()
+                cityTexture = city.texture
+                cityEntity = add(mesh, UnlitMaterial(texture: city.texture), to: outside)
+                cityEntity?.components.set(DynamicLightShadowComponent(castsShadow: false))
+            }
+        }
+
+        if let shelves = BackdropLoader.backdrop(named: "shelves.png", fallback: BackdropLoader.shelfShadow) {
+            if shelves.isFallback { missingBackdrops.append("shelves.png") }
+            shelfTexture = shelves.texture
+        }
+        loadPlate()
+        tintBackdrops()
+        // A new painting changes what the room reflects.
+        if environment != nil {
+            buildEnvironment()
+            lightFromEnvironment()
+        }
+        triangleCount = Self.triangles(in: root)
+    }
+
+    /// The painted room is optional, so a missing file is not reported as missing.
+    private func loadPlate() {
+        plateEntity?.removeFromParent()
+        plateEntity = nil
+        plateTexture = nil
+        hasRoomPlate = false
+        if let image = BackdropLoader.image(named: "room.png"),
+           let texture = try? TextureResource(image: image, withName: "room.png", options: .init(semantic: .color)) {
+            plateTexture = texture
+            plateAspect = Float(image.width) / Float(image.height)
+            let plate = add(.generatePlane(width: 1, height: 1), UnlitMaterial(texture: texture))
+            plate.components.set(DynamicLightShadowComponent(castsShadow: false))
+            plateEntity = plate
+            hasRoomPlate = true
+            fitPlate()
+        }
+        room.isEnabled = !showsPlate
+        plateEntity?.isEnabled = showsPlate
+    }
+
+    /// Stands the painting upright ahead of the seat, its eye-level line at
+    /// eye height, wide and tall enough to fill the view with some to spare
+    /// for leaning and for the zoom.
+    private func fitPlate() {
+        guard let plateEntity else { return }
+        let spare: Float = 1.25
+        let half = tan(fieldOfView * .pi / 360)
+        let wide = 2 * plateDistance * half * max(viewAspect, 0.1) * spare
+        // The seat looks slightly down, so the view reaches less far above eye level.
+        let pitch = atan2(eye.y - target.y, eye.z - target.z)
+        let above = plateDistance * tan(fieldOfView * .pi / 360 - pitch) * spare
+        let tall = max(wide / plateAspect, above / (1 - plateHorizon))
+        plateEntity.scale = [tall * plateAspect, tall, 1]
+        plateEntity.position = [eye.x, eye.y + (0.5 - plateHorizon) * tall, eye.z - plateDistance]
+    }
+
+    private func applyRoom() {
+        room.isEnabled = !showsPlate
+        plateEntity?.isEnabled = showsPlate
+        applyMood()
+        if environment != nil {
+            buildEnvironment()
+            lightFromEnvironment()
+        }
+    }
+
+    private func buildLights() {
+        // The key: a warm lamp high to the writer's left, out of sight. It is
+        // the only light that casts shadows.
+        let aim: SIMD3<Float> = [deskX + 0.05, deskTop + 0.2, -0.55]
+        let from: SIMD3<Float> = [deskX - 1.0, deskTop + 1.3, 0.25]
+        keyLight.look(at: aim, from: from, relativeTo: nil)
+        root.addChild(keyLight)
+        buildKeyLamp(from: from, aim: aim)
+
+        // Daylight: comes in through the windows from high on the right, so it
+        // rakes across the desk toward the writer.
+        sunLight.look(at: [deskX, deskTop, -0.5], from: [deskX + 3.2, 4.4, -7], relativeTo: nil)
+        root.addChild(sunLight)
+
+        // The desk lamp.
+        lampLight.position = [deskX - 0.85, deskTop + 0.27, -0.80]
+        root.addChild(lampLight)
+
+        // With the machine's bulbs and its tubes, four lights in all.
+        lightCount = 4
+    }
+
+    /// The thing the key light comes from: a brass floor lamp standing behind
+    /// the writer's left shoulder, its shade turned on the machine. It is out
+    /// of frame from the seat and in view when looking round.
+    private func buildKeyLamp(from: SIMD3<Float>, aim: SIMD3<Float>) {
+        let back = simd_normalize(from - aim)
+        let joint = from + back * 0.24
+        let foot: SIMD3<Float> = [joint.x, 0, joint.z]
+        add(.deskCylinder(height: 0.03, radius: 0.19), DeskMaterials.brass, at: foot + [0, 0.015, 0], to: room)
+        add(.deskCylinder(height: joint.y, radius: 0.014), DeskMaterials.brass, at: foot + [0, joint.y / 2, 0], to: room)
+        add(.deskSphere(radius: 0.032), DeskMaterials.brass, at: joint, to: room)
+
+        // The head shares the light's aim: its mouth faces -z.
+        let head = Entity()
+        head.transform = keyLight.transform
+        room.addChild(head)
+        let shade = add(.generateCone(height: 0.24, radius: 0.17), DeskMaterials.copper, at: [0, 0, 0.07], to: head)
+        shade.orientation = simd_quatf(angle: .pi / 2, axis: [1, 0, 0])
+        let face = add(.deskCylinder(height: 0.004, radius: 0.15), DeskMaterials.glow(1.0, 0.72, 0.40, intensity: 1.4),
+                       at: [0, 0, -0.052], to: head)
+        face.orientation = simd_quatf(angle: .pi / 2, axis: [1, 0, 0])
+        keyLampFace = face
+        // The light sits inside the shade, so the shade must not shadow it.
+        for part in [shade, face] {
+            part.components.set(DynamicLightShadowComponent(castsShadow: false))
+        }
+    }
+
+    /// Gives the metal something to reflect, and the room its ambient light.
+    /// Makes the image the room is lit by, from the city painting when there is one.
+    private func buildEnvironment() {
+        // In the painted room, the painting is what the brass reflects.
+        let view = BackdropLoader.image(named: showsPlate ? "room.png" : "city.png", maxPixel: 256)
+        guard let image = BackdropLoader.reflections(city: view),
+              let made = try? EnvironmentResource(equirectangular: image, withName: "desk-reflections")
+        else { return }
+        environment = made
+    }
+
+    private func lightFromEnvironment() {
+        guard let environment else { return }
+        reflections.components.set(ImageBasedLightComponent(
+            source: .single(environment), intensityExponent: isDark ? -0.7 : (isDay ? 1.5 : 1)))
+    }
+
+    private func applyReflections() {
+        buildEnvironment()
+        guard environment != nil else { return }
+        root.addChild(reflections)
+        Self.visit(root) { entity in
+            if entity.components.has(ModelComponent.self) {
+                entity.components.set(ImageBasedLightReceiverComponent(imageBasedLight: reflections))
+            }
+        }
+    }
+
+    // MARK: - Mood
+
+    private var isDark: Bool { mood == .chiaroscuro }
+    private var isDay: Bool { mood == .daylight }
+
+    /// Painted parts give off their own light, so they are dimmed to sit in the room.
+    private func tintBackdrops() {
+        func tinted(_ texture: TextureResource, _ level: Float) -> UnlitMaterial {
+            var material = UnlitMaterial(texture: texture)
+            material.color = .init(tint: NSColor(white: CGFloat(level), alpha: 1), texture: .init(texture))
+            return material
+        }
+        let outsideLevel: Float = isDark ? 0.62 : 1
+        if let cityTexture { cityEntity?.model?.materials = [tinted(cityTexture, outsideLevel)] }
+        if let skyTexture { skyEntity?.model?.materials = [tinted(skyTexture, outsideLevel)] }
+        if let shelfTexture {
+            let material = tinted(shelfTexture, isDark ? 0.22 : (isDay ? 0.8 : 0.5))
+            for panel in shelfPanels { panel.model?.materials = [material] }
+        }
+        if let plateTexture {
+            plateEntity?.model?.materials = [tinted(plateTexture, isDark ? 0.35 : (isDay ? 1 : 0.7))]
+        }
+    }
+
+    private func applyMood() {
+        let warm = CGColor(srgbRed: 1.0, green: 0.74, blue: 0.44, alpha: 1)
+        let key = SpotLightComponent(color: NSColor(srgbRed: 1.0, green: 0.80, blue: 0.56, alpha: 1),
+                                     intensity: isDark ? 32_000 : 0,
+                                     innerAngleInDegrees: 22, outerAngleInDegrees: 46, attenuationRadius: 9)
+        keyLight.components.set(key)
+        if isDark {
+            keyLight.components.set(SpotLightComponent.Shadow())
+        } else {
+            keyLight.components.remove(SpotLightComponent.Shadow.self)
+        }
+        // The floor lamp's face is lit only when the key light is.
+        keyLampFace?.isEnabled = isDark
+        lampLight.components.set(PointLightComponent(cgColor: warm,
+                                                     intensity: isDark ? 20_000 : (isDay ? 25_000 : 60_000),
+                                                     attenuationRadius: 6))
+        if isDay {
+            // A far, narrow spot stands in for the sun.
+            sunLight.components.set(SpotLightComponent(
+                color: NSColor(srgbRed: 1.0, green: 0.96, blue: 0.90, alpha: 1),
+                // With no window bars in its way, the full sun bleaches the desk.
+                intensity: showsPlate ? 300_000 : 700_000,
+                innerAngleInDegrees: 24, outerAngleInDegrees: 34, attenuationRadius: 30))
+            sunLight.components.set(SpotLightComponent.Shadow())
+        } else {
+            sunLight.components.remove(SpotLightComponent.Shadow.self)
+            sunLight.components.remove(SpotLightComponent.self)
+        }
+        lightFromEnvironment()
+        tintBackdrops()
+        paint.vignette = isDark ? 0.35 : 0
+    }
+
+    private static func visit(_ entity: Entity, _ body: (Entity) -> Void) {
+        body(entity)
+        for child in entity.children { visit(child, body) }
+    }
+
+    private static func triangles(in entity: Entity) -> Int {
+        var count = 0
+        visit(entity) { e in
+            guard let model = e.components[ModelComponent.self] else { return }
+            for m in model.mesh.contents.models {
+                for part in m.parts {
+                    count += (part.triangleIndices?.count ?? 0) / 3
+                }
+            }
+        }
+        return count
+    }
+
+    // MARK: - Focus
+
+    /// Glides the camera to a viewpoint, or back to the seat for `nil`.
+    /// Anything in the room can be focused on by describing a viewpoint for it.
+    func focus(on viewpoint: Viewpoint?) {
+        leaving = current
+        arriving = viewpoint ?? seat
+        travel = 0
+        isFocused = viewpoint != nil
+    }
+
+    /// A viewpoint square-on to a flat thing, close enough that it fills
+    /// `fill` of the view in whichever direction is tighter.
+    func viewpoint(facing centre: SIMD3<Float>, size: SIMD2<Float>, fill: Float = 0.84) -> Viewpoint {
+        let half = tan(fieldOfView * .pi / 360)
+        let forHeight = size.y / 2 / (fill * half)
+        let forWidth = size.x / 2 / (fill * half * max(viewAspect, 0.1))
+        return Viewpoint(eye: centre + [0, 0, max(forHeight, forWidth)], target: centre)
+    }
+
+    /// Close on the glass screen, for writing.
+    var screenViewpoint: Viewpoint {
+        viewpoint(facing: computer.root.position + computer.screenCentre, size: computer.screenSize)
+    }
+
+    private var screenCorners: [SIMD3<Float>] {
+        let c = computer.root.position + computer.screenCentre
+        let w = computer.screenSize.x / 2, h = computer.screenSize.y / 2
+        return [c + [-w, h, 0], c + [w, h, 0], c + [w, -h, 0], c + [-w, -h, 0]]
+    }
+
+    // MARK: - Per frame
+
+    func update(dt: Float) {
+        guard dt > 0 else { return }
+        time += dt
+        computer.update(dt: dt, time: time)
+
+        let follow = 1 - exp(-dt * 4)
+        smoothedPointer += (pointer - smoothedPointer) * follow
+
+        // Travel between viewpoints eases in and out.
+        travel = min(1, travel + dt / travelSeconds)
+        let eased = travel * travel * (3 - 2 * travel)
+        current = leaving.blended(to: arriving, eased)
+        focusBlend += ((isFocused ? 1 : 0) - focusBlend) * (1 - exp(-dt * 5))
+        lookBlend += ((lookAround && !isFocused ? 1 : 0) - lookBlend) * (1 - exp(-dt * 3))
+
+        let forward = simd_normalize(current.target - current.eye)
+        let right = simd_normalize(simd_cross(forward, [0, 1, 0]))
+
+        // Seated: the head shifts a few centimetres with the pointer. Close
+        // on something, it barely moves.
+        let lean = (right * smoothedPointer.x * 0.05 + SIMD3<Float>(0, 1, 0) * smoothedPointer.y * 0.03)
+            * (1 - lookBlend) * (1 - 0.9 * focusBlend)
+        // Looking around: the head turns instead.
+        // A painting has edges, so in the painted room it turns only a little.
+        let turn: Float = showsPlate ? 0.05 : 1
+        let yaw = simd_quatf(angle: -smoothedPointer.x * 1.25 * lookBlend * turn, axis: [0, 1, 0])
+        let pitch = simd_quatf(angle: smoothedPointer.y * 0.55 * lookBlend * turn, axis: right)
+        let gaze = yaw.act(pitch.act(forward))
+
+        let position = current.eye + lean
+        let reach = simd_length(current.target - current.eye)
+        camera.look(at: lookBlend > 0.001 ? position + gaze * reach : current.target, from: position, relativeTo: nil)
+        paint.set(view: camera.transformMatrix(relativeTo: nil).inverse, keepSharp: screenCorners)
+
+        // The valley drifts very slightly, and leans against the pointer.
+        let drift = sin(time * 0.07) * 0.004 - smoothedPointer.x * 0.003
+        outside.orientation = simd_quatf(angle: -cityYaw + drift, axis: [0, 1, 0])
+    }
+}
