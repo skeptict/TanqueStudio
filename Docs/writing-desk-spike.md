@@ -188,6 +188,12 @@ Three small fixes to weak points from the textures pass.
 
 Checked in the running app on 2026-11-12: seat view in chiaroscuro and dusk, zoomed in at dusk, paint on fine. 111 to 120 fps, 55,638 triangles. Not checked: paint off, anything in motion, and how long the first open pauses while the textures are painted.
 
+## Reflections from the city painting
+
+The image the room is lit by used to paint its windows as a mauve and orange stand-in, so the desk and floor took a purple cast that the real view does not have. It now draws a heavy blur of `city.png` there (`BackdropLoader.reflections(city:)`), with the blur's brightness evened to the old level so a bright or dark painting does not change the exposure. Reload backdrops rebuilds it. With no `city.png` the stand-in is used as before.
+
+Checked in the running app on 2026-11-13, seat view, paint on fine, 116 fps: the purple cast is gone in both moods and the desk reads as neutral wood. Chiaroscuro is a little darker overall, and the bookshelves, already faint there, are fainter. Not checked: Reload backdrops with a different painting, and the no-file stand-in.
+
 ## What looked good and what did not
 
 Good:
@@ -202,7 +208,6 @@ Not good:
 - **The enlarged type is slightly soft,** from the phosphor glow more than from resolution.
 - **The modelled parts paint less well than the backdrop.** Flat-coloured books and walls give the filter little to work with, so they still read as computer shapes with soft edges. Textured materials would help more than a stronger filter.
 - **The city image has a hard top edge.** Look up and it ends in a curved line against a flat mauve sky, because the painted sky and the generated sky do not match.
-- **The room's light does not match the backdrop.** The reflections are mauve from the stand-in dusk, while the real city image is green and gold. The desk and floor pick up a purple cast.
 - **The upper shelves do not match the lower ones.** A photographic painting sits above flat-coloured box books, and the painted lampshades float.
 - **The right-hand wall is blank,** and the upper bookshelf is black until `shelves.png` is present.
 - **The lamp shade reads as near-black,** not banker's green.

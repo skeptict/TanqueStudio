@@ -314,6 +314,11 @@ final class DenScene {
             shelfTexture = shelves.texture
         }
         tintBackdrops()
+        // A new city painting changes what the room reflects.
+        if environment != nil {
+            buildEnvironment()
+            lightFromEnvironment()
+        }
         triangleCount = Self.triangles(in: root)
     }
 
@@ -362,11 +367,24 @@ final class DenScene {
     }
 
     /// Gives the metal something to reflect, and the room its ambient light.
-    private func applyReflections() {
-        guard let image = BackdropLoader.reflections(),
+    /// Makes the image the room is lit by, from the city painting when there is one.
+    private func buildEnvironment() {
+        let city = BackdropLoader.image(named: "city.png", maxPixel: 256)
+        guard let image = BackdropLoader.reflections(city: city),
               let made = try? EnvironmentResource(equirectangular: image, withName: "desk-reflections")
         else { return }
         environment = made
+    }
+
+    private func lightFromEnvironment() {
+        guard let environment else { return }
+        reflections.components.set(ImageBasedLightComponent(
+            source: .single(environment), intensityExponent: isDark ? -0.7 : 1))
+    }
+
+    private func applyReflections() {
+        buildEnvironment()
+        guard environment != nil else { return }
         root.addChild(reflections)
         Self.visit(root) { entity in
             if entity.components.has(ModelComponent.self) {
@@ -411,10 +429,7 @@ final class DenScene {
         lampLight.components.set(PointLightComponent(cgColor: warm,
                                                      intensity: isDark ? 20_000 : 60_000,
                                                      attenuationRadius: 6))
-        if let environment {
-            reflections.components.set(ImageBasedLightComponent(
-                source: .single(environment), intensityExponent: isDark ? -0.7 : 1))
-        }
+        lightFromEnvironment()
         tintBackdrops()
         paint.vignette = isDark ? 0.35 : 0
     }

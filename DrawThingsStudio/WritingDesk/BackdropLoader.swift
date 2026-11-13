@@ -112,8 +112,13 @@ enum BackdropLoader {
     /// What the room is lit by and what the brass reflects: a warm, dim den
     /// with the dusk windows ahead and lamp glow either side. This image is
     /// most of the light in the scene, so its overall level sets the exposure.
-    static func reflections() -> CGImage? {
-        gradient(width: 1024, height: 512, stops: [
+    ///
+    /// Pass the city image and the windows show a blur of it, so the brass
+    /// picks up the colours that are really outside. Without it they show the
+    /// stand-in dusk.
+    static func reflections(city: CGImage? = nil) -> CGImage? {
+        let view = city.flatMap(blurred)
+        return gradient(width: 1024, height: 512, stops: [
             (0.00, 0.20, 0.13, 0.08),
             (0.45, 0.34, 0.25, 0.17),
             (0.55, 0.34, 0.25, 0.17),
@@ -129,13 +134,49 @@ enum BackdropLoader {
                     if ellipse { ctx.fillEllipse(in: shape) } else { ctx.fill(shape) }
                 }
             }
-            // Windows: mauve sky over a band of orange at the horizon.
-            soft(CGRect(x: 330, y: 250, width: 364, height: 170), 0.50, 0.38, 0.55)
-            soft(CGRect(x: 330, y: 222, width: 364, height: 26), 0.95, 0.55, 0.30)
+            if let view {
+                // Windows: the view outside, drawn in layers so its edge is soft too.
+                ctx.interpolationQuality = .high
+                ctx.setAlpha(0.22)
+                for i in 0..<10 {
+                    let grow = CGFloat(9 - i) * 5
+                    ctx.draw(view, in: CGRect(x: 330, y: 222, width: 364, height: 198).insetBy(dx: -grow, dy: -grow))
+                }
+                ctx.setAlpha(1)
+            } else {
+                // Windows: mauve sky over a band of orange at the horizon.
+                soft(CGRect(x: 330, y: 250, width: 364, height: 170), 0.50, 0.38, 0.55)
+                soft(CGRect(x: 330, y: 222, width: 364, height: 26), 0.95, 0.55, 0.30)
+            }
             // Lamp and bulbs: small warm sources either side.
             soft(CGRect(x: 120, y: 250, width: 90, height: 70), 1.0, 0.75, 0.42, ellipse: true)
             soft(CGRect(x: 820, y: 300, width: 60, height: 50), 1.0, 0.75, 0.42, ellipse: true)
         }
+    }
+
+    /// A very small copy of an image, which reads as a heavy blur once it is
+    /// drawn large. Its brightness is evened to the level of the stand-in
+    /// dusk, so a bright or dark painting does not change the room's exposure.
+    private static func blurred(_ image: CGImage) -> CGImage? {
+        let w = 48, h = 26
+        guard let space = CGColorSpace(name: CGColorSpace.sRGB),
+              let ctx = CGContext(data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w * 4,
+                                  space: space, bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue)
+        else { return nil }
+        ctx.interpolationQuality = .high
+        ctx.draw(image, in: CGRect(x: 0, y: 0, width: w, height: h))
+        guard let data = ctx.data else { return nil }
+        let bytes = data.bindMemory(to: UInt8.self, capacity: w * h * 4)
+        var sum = 0.0
+        for i in 0..<(w * h) {
+            sum += 0.2126 * Double(bytes[i * 4]) + 0.7152 * Double(bytes[i * 4 + 1]) + 0.0722 * Double(bytes[i * 4 + 2])
+        }
+        let mean = sum / Double(w * h) / 255
+        let gain = max(0.5, min(2.5, 0.42 / max(mean, 0.01)))
+        for i in 0..<(w * h * 4) where i % 4 != 3 {
+            bytes[i] = UInt8(max(0, min(255, Double(bytes[i]) * gain)))
+        }
+        return ctx.makeImage()
     }
 
     /// Dark floorboards with slight board-to-board variation.
