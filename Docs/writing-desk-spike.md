@@ -236,6 +236,17 @@ The cabinet is no longer one box. It is a low deck, a tower on the right that ca
 
 Seen only in off-screen renders (seat at rest, seat while typing, zoomed while typing). Not yet seen in the app, so the paint filter over it, the motion itself and the frame rate are unchecked.
 
+## Breakers in view when zoomed, close-up detail
+
+Ned, on first seeing the separate screen in the app: zoomed in, the breakers were out of view so Return showed nothing, and the machine looked computer-generated up close.
+
+- The breakers moved up the tower to sit level with the screen, and the zoom is a little looser (fill 0.76), so all three stay in view.
+- Each breaker has a small engraved brass tag (LINE, FEED, SHEET), and the bottom of the bezel carries a maker's plate. `SteamComputer.engravedPlate` draws the words into a texture.
+- The bezel gained a dark gasket where the glass meets the brass, a copper bead round the outside and slotted screws in place of round studs.
+- The tube image is slightly brighter in the middle and darker in the corners.
+
+Seen in off-screen renders only. This adds things to read up close; it does not fix the smooth, even surfaces, which are the main reason it looks generated. That needs finer surface textures with wear at the edges, or a modelled machine.
+
 ## What looked good and what did not
 
 Good:

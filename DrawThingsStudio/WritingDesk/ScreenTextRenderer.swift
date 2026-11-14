@@ -88,6 +88,16 @@ struct ScreenTextRenderer {
         ctx.setFillColor(CGColor(srgbRed: 0.055, green: 0.035, blue: 0.02, alpha: 1))
         ctx.fill(full)
 
+        // The tube is a little brighter in the middle and falls off into the corners.
+        let centre = CGPoint(x: full.midX, y: full.midY)
+        let falloff = [CGColor(srgbRed: 0.085, green: 0.058, blue: 0.035, alpha: 1),
+                       CGColor(srgbRed: 0.055, green: 0.035, blue: 0.02, alpha: 1),
+                       CGColor(srgbRed: 0.018, green: 0.012, blue: 0.008, alpha: 1)] as CFArray
+        if let glow = CGGradient(colorsSpace: space, colors: falloff, locations: [0, 0.6, 1]) {
+            ctx.drawRadialGradient(glow, startCenter: centre, startRadius: 0, endCenter: centre,
+                                   endRadius: full.width * 0.62, options: [.drawsAfterEndLocation])
+        }
+
         // Phosphor glow.
         ctx.setShadow(offset: .zero, blur: 10, color: amber.copy(alpha: 0.6))
 

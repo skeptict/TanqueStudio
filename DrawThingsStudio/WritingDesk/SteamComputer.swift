@@ -277,14 +277,94 @@ final class SteamComputer {
         // A brass band where the two boxes meet, and studs at the bezel's corners.
         _ = add(.deskBox(size: [w * 0.80, h * 0.80, 0.008], bevel: 0.003), DeskMaterials.brass,
                 at: [0, 0, -0.091], to: crt)
-        var studs = MeshBuilder()
-        for sx in [-1, 1] as [Float] {
+        // Close-up detail: a dark gasket where the glass meets the brass, a
+        // copper bead round the outside, slotted screws and a maker's plate.
+        let rubber = DeskMaterials.pbr(0.025, 0.022, 0.02, metallic: 0, roughness: 0.85)
+        let g: Float = 0.0045
+        let gasket: [(SIMD3<Float>, SIMD3<Float>)] = [
+            ([0, height / 2 - g / 2, 0.016], [width, g, 0.012]),
+            ([0, -height / 2 + g / 2, 0.016], [width, g, 0.012]),
+            ([-width / 2 + g / 2, 0, 0.016], [g, height, 0.012]),
+            ([width / 2 - g / 2, 0, 0.016], [g, height, 0.012]),
+        ]
+        for (position, size) in gasket {
+            _ = add(.deskBox(size: size, bevel: 0.0015), rubber, at: position, to: crt)
+        }
+        let bead: Float = 0.004
+        let outerW = width + 2 * t, outerH = height + 2 * t
+        let beads: [(SIMD3<Float>, SIMD3<Float>)] = [
+            ([0, outerH / 2 + bead / 2, 0.004], [outerW + 2 * bead, bead, 0.020]),
+            ([0, -outerH / 2 - bead / 2, 0.004], [outerW + 2 * bead, bead, 0.020]),
+            ([-outerW / 2 - bead / 2, 0, 0.004], [bead, outerH, 0.020]),
+            ([outerW / 2 + bead / 2, 0, 0.004], [bead, outerH, 0.020]),
+        ]
+        for (position, size) in beads {
+            _ = add(.deskBox(size: size, bevel: 0.0018), DeskMaterials.copper, at: position, to: crt)
+        }
+        let head = MeshResource.deskCylinder(height: 0.0026, radius: 0.0052, bevel: 0.0008)
+        let slot = MeshResource.generateBox(size: [0.0088, 0.0012, 0.0012])
+        var screwAt: [SIMD2<Float>] = []
+        for sx in [-1, 0, 1] as [Float] {
             for sy in [-1, 1] as [Float] {
-                studs.sphere(center: [sx * (width / 2 + t / 2), sy * (height / 2 + t / 2), 0.023], radius: 0.0045,
-                             segments: 8, rings: 5)
+                screwAt.append([sx * (width / 2 + t / 2), sy * (height / 2 + t / 2)])
             }
         }
-        if let mesh = try? studs.build(name: "bezel-studs") { _ = add(mesh, DeskMaterials.copper, at: .zero, to: crt) }
+        for sy in [-1, 1] as [Float] {
+            screwAt.append([-(width / 2 + t / 2), sy * height * 0.2])
+            screwAt.append([width / 2 + t / 2, sy * height * 0.2])
+        }
+        for at in screwAt {
+            // The bottom middle is taken by the maker's plate.
+            if at.x == 0, at.y < 0 { continue }
+            let screw = add(head, DeskMaterials.bronze, at: [at.x, at.y, 0.0238], to: crt)
+            screw.orientation = simd_quatf(angle: .pi / 2, axis: [1, 0, 0])
+            let cut = add(slot, rubber, at: [at.x, at.y, 0.0250], to: crt)
+            cut.orientation = simd_quatf(angle: rng.range(0, .pi), axis: [0, 0, 1])
+        }
+        if let plate = engravedPlate("TANQUE & CO.  ·  WRITING ENGINE No. 7", size: [0.105, 0.009]) {
+            plate.position = [0, -height / 2 - t / 2, 0.0236]
+            crt.addChild(plate)
+        }
+    }
+
+    /// A small brass plate with words cut into it, facing the writer.
+    private func engravedPlate(_ words: String, size: SIMD2<Float>) -> ModelEntity? {
+        let pixelsWide = 768
+        let pixelsHigh = max(16, Int((Float(pixelsWide) * size.y / size.x).rounded()))
+        guard let space = CGColorSpace(name: CGColorSpace.sRGB),
+              let ctx = CGContext(data: nil, width: pixelsWide, height: pixelsHigh, bitsPerComponent: 8, bytesPerRow: 0,
+                                  space: space, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+        else { return nil }
+        let full = CGRect(x: 0, y: 0, width: pixelsWide, height: pixelsHigh)
+        ctx.setFillColor(CGColor(srgbRed: 0.78, green: 0.62, blue: 0.34, alpha: 1))
+        ctx.fill(full)
+        // A scribed border, then the words, both dark as if filled with old ink.
+        let ink = CGColor(srgbRed: 0.10, green: 0.07, blue: 0.04, alpha: 1)
+        ctx.setStrokeColor(ink)
+        ctx.setLineWidth(max(1.5, CGFloat(pixelsHigh) * 0.04))
+        ctx.stroke(full.insetBy(dx: CGFloat(pixelsHigh) * 0.12, dy: CGFloat(pixelsHigh) * 0.12))
+        let font = CTFontCreateWithName("Copperplate" as CFString, CGFloat(pixelsHigh) * 0.52, nil)
+        let line = CTLineCreateWithAttributedString(NSAttributedString(string: words, attributes: [
+            NSAttributedString.Key(kCTFontAttributeName as String): font,
+            NSAttributedString.Key(kCTForegroundColorAttributeName as String): ink,
+            NSAttributedString.Key(kCTKernAttributeName as String): CGFloat(pixelsHigh) * 0.04,
+        ]))
+        let bounds = CTLineGetBoundsWithOptions(line, .useOpticalBounds)
+        // Shrink to fit a long line.
+        let fit = min(1, (CGFloat(pixelsWide) * 0.88) / max(bounds.width, 1))
+        ctx.translateBy(x: CGFloat(pixelsWide) / 2, y: CGFloat(pixelsHigh) / 2)
+        ctx.scaleBy(x: fit, y: fit)
+        ctx.textPosition = CGPoint(x: -bounds.midX, y: -bounds.midY)
+        CTLineDraw(line, ctx)
+        guard let image = ctx.makeImage(),
+              let texture = try? TextureResource(image: image, withName: "plate-\(words)", options: .init(semantic: .color))
+        else { return nil }
+        var material = DeskMaterials.pbr(1, 1, 1, metallic: 1, roughness: 0.38)
+        material.baseColor = .init(tint: .white, texture: .init(texture))
+        let plate = ModelEntity(mesh: .generatePlane(width: size.x, height: size.y, cornerRadius: size.y * 0.15),
+                                materials: [material])
+        plate.components.set(DynamicLightShadowComponent(castsShadow: false))
+        return plate
     }
 
     /// What carries the screen: two pistons under it, and a toothed rack down
@@ -431,14 +511,20 @@ final class SteamComputer {
         crt.addChild(bulbLight)
     }
 
-    private func breakerY(_ i: Int) -> Float { 0.245 - Float(i) * 0.06 }
+    /// Level with the screen, so they stay in view when zoomed in on it.
+    private func breakerY(_ i: Int) -> Float { 0.345 - Float(i) * 0.05 }
     private let breakerX: Float = 0.155
 
     private func buildBreakers() {
-        _ = add(.deskBox(size: [0.07, 0.20, 0.006], bevel: 0.002), DeskMaterials.iron,
-                at: [breakerX, 0.185, frontZ + 0.003])
+        _ = add(.deskBox(size: [0.07, 0.155, 0.006], bevel: 0.002), DeskMaterials.iron,
+                at: [breakerX, 0.295, frontZ + 0.003])
+        let tags = ["LINE", "FEED", "SHEET"]
         for i in 0..<3 {
             let y = breakerY(i)
+            if let tag = engravedPlate(tags[i], size: [0.024, 0.007]) {
+                tag.position = [breakerX - 0.018, y + 0.019, frontZ + 0.0065]
+                root.addChild(tag)
+            }
             _ = addAxial(radius: 0.012, length: 0.010, DeskMaterials.brass, at: [breakerX, y, frontZ + 0.010])
             let pivot = Entity()
             pivot.position = [breakerX, y, frontZ + 0.012]

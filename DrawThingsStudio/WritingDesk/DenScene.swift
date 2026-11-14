@@ -629,7 +629,8 @@ final class DenScene {
 
     /// Close on the glass screen, for writing.
     var screenViewpoint: Viewpoint {
-        viewpoint(facing: computer.root.position + computer.screenCentre, size: computer.screenSize)
+        // Loose enough that the breakers and the maker's plate stay in view.
+        viewpoint(facing: computer.root.position + computer.screenCentre, size: computer.screenSize, fill: 0.76)
     }
 
     private var screenCorners: [SIMD3<Float>] {
