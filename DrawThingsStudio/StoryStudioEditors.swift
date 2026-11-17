@@ -154,6 +154,10 @@ struct StoryProjectInfoEditor: View {
 
             Rectangle().fill(TanqueDS.Color.surfaceBorder).frame(height: 1)
 
+            BookFormatEditor(project: project)
+
+            Rectangle().fill(TanqueDS.Color.surfaceBorder).frame(height: 1)
+
             StoryLabeledTextEditor("Base Config (JSON)", text: $project.baseConfigJSON, minHeight: 100, maxHeight: 200) {
                 StoryUseSavedConfigMenu { json in
                     project.baseConfigJSON = json

@@ -22,6 +22,8 @@ final class StoryProject {
     var coverImageData: Data?
     var createdAt: Date
     var modifiedAt: Date
+    /// Page Layout book format (`BookFormat` as JSON). Nil = US comic, screen.
+    var bookFormatJSON: String? = nil
 
     @Relationship(deleteRule: .cascade, inverse: \StoryCharacter.project)
     var characters: [StoryCharacter] = []
@@ -274,6 +276,9 @@ final class StoryChapter {
     @Relationship(deleteRule: .cascade, inverse: \StoryScene.chapter)
     var scenes: [StoryScene] = []
 
+    @Relationship(deleteRule: .cascade, inverse: \StoryPage.chapter)
+    var pages: [StoryPage] = []
+
     init(
         id: UUID = UUID(),
         title: String,
@@ -285,6 +290,7 @@ final class StoryChapter {
     }
 
     var sortedScenes: [StoryScene] { scenes.sorted { $0.sortOrder < $1.sortOrder } }
+    var sortedPages: [StoryPage] { pages.sorted { $0.sortOrder < $1.sortOrder } }
 }
 
 // MARK: - Story Scene
@@ -308,6 +314,8 @@ final class StoryScene {
     var sortOrder: Int
     var variantImageIDs: [UUID]        // TSImage ids, newest last
     var approvedImageID: UUID?
+    /// Showcase 16:9 crop of the picked take (`PanelCrop` as JSON). Nil = centred.
+    var showcaseCropJSON: String? = nil
 
     var chapter: StoryChapter?
 

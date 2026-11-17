@@ -64,6 +64,35 @@ private func wipeSQLiteStore(_ modelConfiguration: ModelConfiguration) {
     }
 }
 
+/// Copies the SQLite store and its WAL/SHM siblings into
+/// `Application Support/TanqueStudio/StoreBackups/<label>-<timestamp>/` before a
+/// schema migration. The container-open path below wipes the store if opening
+/// fails, so this copy is the only way back from a bad migration. Never throws:
+/// a failed backup is logged and the launch carries on.
+private func backupSQLiteStore(_ modelConfiguration: ModelConfiguration, label: String) {
+    let storeURL = modelConfiguration.url
+    let fm = FileManager.default
+    print("[TanqueStudio] SwiftData store: \(storeURL.path)")
+    guard fm.fileExists(atPath: storeURL.path),
+          let appSupport = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else { return }
+    let stamp = ISO8601DateFormatter().string(from: Date()).replacingOccurrences(of: ":", with: "-")
+    let folder = appSupport
+        .appendingPathComponent("TanqueStudio", isDirectory: true)
+        .appendingPathComponent("StoreBackups", isDirectory: true)
+        .appendingPathComponent("\(label)-\(stamp)", isDirectory: true)
+    do {
+        try fm.createDirectory(at: folder, withIntermediateDirectories: true)
+        for suffix in ["", "-shm", "-wal"] {
+            let source = URL(fileURLWithPath: storeURL.path + suffix)
+            guard fm.fileExists(atPath: source.path) else { continue }
+            try fm.copyItem(at: source, to: folder.appendingPathComponent(source.lastPathComponent))
+        }
+        print("[TanqueStudio] Store backed up to \(folder.path)")
+    } catch {
+        print("[TanqueStudio] Store backup failed: \(error)")
+    }
+}
+
 // MARK: - App
 
 @main
@@ -75,7 +104,7 @@ struct TanqueStudioApp: App {
         // Schema versioning:
         // currentSchemaVersion — bump on every schema change
         // lastDestructiveVersion — bump only when a store wipe is required
-        let currentSchemaVersion = 3
+        let currentSchemaVersion = 4
         let lastDestructiveVersion = 1
         let schemaVersionKey = "tanqueStudio.schemaVersion"
 
@@ -89,11 +118,16 @@ struct TanqueStudioApp: App {
             SceneCharacterPresence.self,
             RenderQueueAxis.self,
             RenderQueueJob.self,
+            StoryPage.self,
+            PagePanel.self,
         ])
         let modelConfiguration = ModelConfiguration(
             "TanqueStudio", schema: schema, isStoredInMemoryOnly: false)
 
         let storedVersion = UserDefaults.standard.integer(forKey: schemaVersionKey)
+        if storedVersion > 0 && storedVersion < currentSchemaVersion {
+            backupSQLiteStore(modelConfiguration, label: "before-schema-v\(currentSchemaVersion)")
+        }
         if storedVersion < lastDestructiveVersion {
             wipeSQLiteStore(modelConfiguration)
             UserDefaults.standard.set(true, forKey: needsBackupRestoreKey)
@@ -105,6 +139,7 @@ struct TanqueStudioApp: App {
         do {
             return try ModelContainer(for: schema, configurations: [modelConfiguration])
         } catch {
+            print("[TanqueStudio] ModelContainer failed to open, wiping store: \(error)")
             wipeSQLiteStore(modelConfiguration)
             UserDefaults.standard.set(true, forKey: needsBackupRestoreKey)
             do {
