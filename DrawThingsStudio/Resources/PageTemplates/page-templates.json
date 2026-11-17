@@ -1,0 +1,117 @@
+[
+  { "id": "three-tiers", "name": "Three tiers", "kind": "page",
+    "orientations": ["portrait", "landscape"],
+    "grid": { "columns": 12, "rows": 12 },
+    "panels": [
+      { "id": "a", "cells": [0, 0, 12, 4] },
+      { "id": "b", "cells": [0, 4, 12, 4] },
+      { "id": "c", "cells": [0, 8, 12, 4] } ] },
+
+  { "id": "grid-2x3", "name": "Grid 2 × 3", "kind": "page",
+    "orientations": ["portrait"],
+    "partners": { "landscape": "grid-3x2" },
+    "grid": { "columns": 12, "rows": 12 },
+    "panels": [
+      { "id": "a", "cells": [0, 0, 6, 4] },
+      { "id": "b", "cells": [6, 0, 6, 4] },
+      { "id": "c", "cells": [0, 4, 6, 4] },
+      { "id": "d", "cells": [6, 4, 6, 4] },
+      { "id": "e", "cells": [0, 8, 6, 4] },
+      { "id": "f", "cells": [6, 8, 6, 4] } ] },
+
+  { "id": "splash", "name": "Splash", "kind": "page",
+    "orientations": ["portrait"],
+    "partners": { "landscape": "wide-splash" },
+    "grid": { "columns": 12, "rows": 12 },
+    "panels": [
+      { "id": "a", "cells": [0, 0, 12, 12], "bleed": ["top", "bottom", "left", "right"] } ] },
+
+  { "id": "inset", "name": "Inset", "kind": "page",
+    "orientations": ["portrait", "landscape"],
+    "grid": { "columns": 12, "rows": 12 },
+    "panels": [
+      { "id": "a", "cells": [0, 0, 12, 12], "bleed": ["top", "bottom", "left", "right"] },
+      { "id": "b", "cells": [6, 6, 5, 5] } ] },
+
+  { "id": "tall-strip", "name": "Tall strip", "kind": "page",
+    "orientations": ["portrait"],
+    "partners": { "landscape": "wide-strip" },
+    "grid": { "columns": 12, "rows": 12 },
+    "panels": [
+      { "id": "a", "cells": [0, 0, 6, 12] },
+      { "id": "b", "cells": [6, 0, 6, 4] },
+      { "id": "c", "cells": [6, 4, 6, 4] },
+      { "id": "d", "cells": [6, 8, 6, 4] } ] },
+
+  { "id": "panorama-spread", "name": "Panorama spread", "kind": "spread",
+    "orientations": ["portrait"],
+    "grid": { "columns": 24, "rows": 12 },
+    "panels": [
+      { "id": "pano", "cells": [0, 0, 24, 5], "bleed": ["top", "left", "right"], "crossesFold": true },
+      { "id": "l1", "cells": [0, 5, 12, 7] },
+      { "id": "r1", "cells": [12, 5, 6, 7] },
+      { "id": "r2", "cells": [18, 5, 6, 7] } ] },
+
+  { "id": "wide-splash", "name": "Wide splash", "kind": "page",
+    "orientations": ["landscape"],
+    "partners": { "portrait": "splash" },
+    "grid": { "columns": 12, "rows": 12 },
+    "panels": [
+      { "id": "a", "cells": [0, 0, 12, 12], "bleed": ["top", "bottom", "left", "right"] } ] },
+
+  { "id": "two-tiers", "name": "Two tiers", "kind": "page",
+    "orientations": ["landscape", "portrait"],
+    "grid": { "columns": 12, "rows": 12 },
+    "panels": [
+      { "id": "a", "cells": [0, 0, 12, 6] },
+      { "id": "b", "cells": [0, 6, 12, 6] } ] },
+
+  { "id": "wide-strip", "name": "Wide strip", "kind": "page",
+    "orientations": ["landscape"],
+    "partners": { "portrait": "tall-strip" },
+    "grid": { "columns": 12, "rows": 12 },
+    "panels": [
+      { "id": "a", "cells": [0, 0, 12, 6] },
+      { "id": "b", "cells": [0, 6, 4, 6] },
+      { "id": "c", "cells": [4, 6, 4, 6] },
+      { "id": "d", "cells": [8, 6, 4, 6] } ] },
+
+  { "id": "grid-3x2", "name": "Grid 3 × 2", "kind": "page",
+    "orientations": ["landscape"],
+    "partners": { "portrait": "grid-2x3" },
+    "grid": { "columns": 12, "rows": 12 },
+    "panels": [
+      { "id": "a", "cells": [0, 0, 4, 6] },
+      { "id": "b", "cells": [4, 0, 4, 6] },
+      { "id": "c", "cells": [8, 0, 4, 6] },
+      { "id": "d", "cells": [0, 6, 4, 6] },
+      { "id": "e", "cells": [4, 6, 4, 6] },
+      { "id": "f", "cells": [8, 6, 4, 6] } ] },
+
+  { "id": "scroll-tall", "name": "Tall tier", "kind": "scroll",
+    "orientations": ["scroll"],
+    "grid": { "columns": 12, "rows": 16 },
+    "panels": [
+      { "id": "a", "cells": [0, 0, 12, 16] } ] },
+
+  { "id": "scroll-tiers-1", "name": "One tier", "kind": "scroll",
+    "orientations": ["scroll"],
+    "grid": { "columns": 12, "rows": 7 },
+    "panels": [
+      { "id": "a", "cells": [0, 0, 12, 7] } ] },
+
+  { "id": "scroll-tiers-2", "name": "Two tiers", "kind": "scroll",
+    "orientations": ["scroll"],
+    "grid": { "columns": 12, "rows": 14 },
+    "panels": [
+      { "id": "a", "cells": [0, 0, 12, 7] },
+      { "id": "b", "cells": [0, 7, 12, 7] } ] },
+
+  { "id": "scroll-tiers-3", "name": "Three tiers", "kind": "scroll",
+    "orientations": ["scroll"],
+    "grid": { "columns": 12, "rows": 21 },
+    "panels": [
+      { "id": "a", "cells": [0, 0, 12, 7] },
+      { "id": "b", "cells": [0, 7, 12, 7] },
+      { "id": "c", "cells": [0, 14, 12, 7] } ] }
+]
