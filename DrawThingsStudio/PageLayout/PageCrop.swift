@@ -10,7 +10,7 @@
 import Foundation
 import CoreGraphics
 
-struct PanelCrop: Codable, Equatable {
+nonisolated struct PanelCrop: Codable, Equatable, Sendable {
     var x: Double
     var y: Double
     var w: Double
