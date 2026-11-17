@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import SwiftData
 
 struct BookFormatEditor: View {
     @Bindable var project: StoryProject
@@ -13,19 +14,47 @@ struct BookFormatEditor: View {
     /// propose template swaps first. Nil applies the change immediately.
     var onRequestPresetChange: ((BookFormat) -> Void)? = nil
 
+    @Environment(\.modelContext) private var modelContext
+    @State private var pendingSwitch: PendingSwitch?
+
+    private struct PendingSwitch: Identifiable {
+        let id = UUID()
+        let from: BookFormat
+        let to: BookFormat
+        let proposals: [PageLayoutController.SwapProposal]
+    }
+
     private var format: BookFormat { BookFormat.decode(project.bookFormatJSON) }
 
+    /// Every change goes through `applyFormat`, so existing pages recentre
+    /// their crops and update re-render flags for the new panel shapes.
     private func update(_ change: (inout BookFormat) -> Void) {
         var f = format
         change(&f)
-        project.bookFormatJSON = f.json
-        project.modifiedAt = Date()
+        guard f != format else { return }
+        PageLayoutController.applyFormat(f, to: project, context: modelContext)
     }
 
     private func choose(_ preset: BookFormat.Preset) {
         guard preset != format.preset else { return }
         let next = format.switching(to: preset)
-        if let onRequestPresetChange { onRequestPresetChange(next) } else { update { $0 = next } }
+        if let onRequestPresetChange { onRequestPresetChange(next); return }
+        let library = PageTemplateLibrary.all().templates
+        let proposals = PageLayoutController.swapProposals(for: project, to: next, library: library)
+        if proposals.isEmpty {
+            update { $0 = next }
+        } else {
+            pendingSwitch = PendingSwitch(from: format, to: next, proposals: proposals)
+        }
+    }
+
+    private func perform(_ pending: PendingSwitch, swap: Bool) {
+        var swaps: [UUID: PageTemplate] = [:]
+        if swap {
+            for p in pending.proposals { if let t = p.to { swaps[p.page.id] = t } }
+        }
+        PageLayoutController.applyFormat(pending.to, to: project, swaps: swaps, context: modelContext)
+        try? modelContext.save()
     }
 
     var body: some View {
@@ -111,6 +140,11 @@ struct BookFormatEditor: View {
                 .font(TanqueDS.Font.bodySmall)
                 .foregroundStyle(TanqueDS.Color.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
+        }
+        .sheet(item: $pendingSwitch) { pending in
+            FormatSwitchSheet(from: pending.from, to: pending.to, proposals: pending.proposals) { swap in
+                perform(pending, swap: swap)
+            }
         }
     }
 
