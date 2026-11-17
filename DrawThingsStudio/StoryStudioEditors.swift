@@ -291,6 +291,7 @@ struct StoryChapterEditor: View {
 
     @Environment(\.modelContext) private var modelContext
     @State private var showingExport = false
+    @State private var importSummary: String?
 
     var body: some View {
         StoryEditorPage(icon: "book.closed", title: "Chapter") {
@@ -329,12 +330,50 @@ struct StoryChapterEditor: View {
                 .disabled(chapter.scenes.isEmpty)
                 .accessibilityLabel("Export Contact Sheet")
             }
+
+            Button {
+                chooseImagesAsScenes()
+            } label: {
+                Label("Add Images as Scenes…", systemImage: "photo.on.rectangle.angled")
+                    .font(TanqueDS.Font.bodyMedium)
+            }
+            .buttonStyle(.borderless)
+            .foregroundStyle(TanqueDS.Color.brass)
+            .accessibilityLabel("Add Images as Scenes")
+            Text("Each image becomes a scene, in filename order, with its embedded prompt and the image as its approved take.")
+                .font(TanqueDS.Font.bodySmall)
+                .foregroundStyle(TanqueDS.Color.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+            if let importSummary {
+                Text(importSummary)
+                    .font(TanqueDS.Font.bodySmall)
+                    .foregroundStyle(TanqueDS.Color.textPrimary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
         .sheet(isPresented: $showingExport) {
             StoryExportSheet(
                 scenes: chapter.sortedScenes,
                 title: chapter.title.isEmpty ? "Chapter" : chapter.title
             )
+        }
+    }
+}
+
+extension StoryChapterEditor {
+    fileprivate func chooseImagesAsScenes() {
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = true
+        panel.canChooseDirectories = false
+        panel.allowedContentTypes = [.png, .jpeg]
+        panel.prompt = "Add as Scenes"
+        panel.message = "Choose images. Each becomes a scene in \(chapter.title.isEmpty ? "this chapter" : chapter.title), in filename order."
+        panel.begin { response in
+            guard response == .OK else { return }
+            let result = PageImageImporter.addImagesAsScenes(panel.urls, to: chapter, context: modelContext)
+            var text = "Added \(result.added) scene(s)."
+            if !result.skipped.isEmpty { text += " Skipped: \(result.skipped.joined(separator: ", "))." }
+            importSummary = text
         }
     }
 }

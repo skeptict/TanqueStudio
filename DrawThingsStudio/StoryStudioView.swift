@@ -44,6 +44,8 @@ struct StoryStudioView: View {
 enum StoryOutlineSelection: Hashable {
     case project
     case chapter(UUID)
+    /// A chapter's Pages view (Page Layout).
+    case pages(UUID)
     case scene(UUID)
     case character(UUID)
     case setting(UUID)
@@ -107,6 +109,13 @@ struct StoryStudioWorkspaceView: View {
                 StoryChapterEditor(chapter: chapter, project: project) { scene in
                     selection = .scene(scene.id)
                 }
+            } else {
+                editorPlaceholder
+            }
+        case .pages(let id):
+            if let chapter = project.chapters.first(where: { $0.id == id }) {
+                PagesView(chapter: chapter, project: project)
+                    .id(chapter.id)
             } else {
                 editorPlaceholder
             }
@@ -297,6 +306,7 @@ struct StoryOutlineColumn: View {
         Section {
             ForEach(project.sortedChapters) { chapter in
                 chapterRow(chapter)
+                pagesRow(chapter)
                 ForEach(chapter.sortedScenes) { scene in
                     sceneRow(scene, in: chapter)
                 }
@@ -359,10 +369,19 @@ struct StoryOutlineColumn: View {
             }
     }
 
+    private func pagesRow(_ chapter: StoryChapter) -> some View {
+        let count = chapter.pages.count
+        return outlineRow(icon: "rectangle.split.3x1", title: count == 0 ? "Pages" : "Pages (\(count))")
+            .padding(.leading, TanqueDS.Spacing.lg)
+            .tag(StoryOutlineSelection.pages(chapter.id))
+    }
+
     private func sceneRow(_ scene: StoryScene, in chapter: StoryChapter) -> some View {
         outlineRow(icon: "film", title: scene.title.isEmpty ? "Untitled" : scene.title)
             .padding(.leading, TanqueDS.Spacing.lg)
             .tag(StoryOutlineSelection.scene(scene.id))
+            // Drag onto a page panel. A URL payload so panels need only one drop API.
+            .draggable(PageImageImporter.sceneURL(scene))
             .contextMenu {
                 moveButtons(for: scene, in: chapter.sortedScenes)
                 Divider()
@@ -470,7 +489,7 @@ struct StoryOutlineColumn: View {
         case .setting(let id):
             guard let setting = project.settings.first(where: { $0.id == id }) else { return nil }
             return actions(setting, sortedSettings, .setting(setting))
-        case .project, nil:
+        case .project, .pages, nil:
             return nil
         }
     }
@@ -637,6 +656,7 @@ struct StoryOutlineColumn: View {
         case .chapter(let chapter):
             let sceneIDs = Set(chapter.scenes.map(\.id))
             if case .chapter(chapter.id) = selection { selection = nil }
+            if case .pages(chapter.id) = selection { selection = nil }
             if case .scene(let id) = selection, sceneIDs.contains(id) { selection = nil }
             chapter.project = nil
             project.chapters.removeAll { $0.id == chapter.id }
@@ -644,6 +664,15 @@ struct StoryOutlineColumn: View {
 
         case .scene(let scene):
             if case .scene(scene.id) = selection { selection = nil }
+            for chapter in project.chapters {
+                for page in chapter.pages {
+                    for panel in page.panels where panel.sceneID == scene.id {
+                        panel.sceneID = nil
+                        panel.cropImageID = nil
+                        panel.needsRerender = false
+                    }
+                }
+            }
             if let chapter = scene.chapter {
                 chapter.scenes.removeAll { $0.id == scene.id }
             }

@@ -565,7 +565,7 @@ enum ImageStorageManager {
     /// Encodes config + prompt into a JSON string for storage in TSImage.configJSON.
     /// Separate from buildDTMetadataJSON: this uses camelCase throughout and is
     /// read by the app's gallery metadata display, not by external tools.
-    private static func encodeConfig(
+    static func encodeConfig(
         _ config: DrawThingsGenerationConfig,
         prompt: String?
     ) -> String? {
