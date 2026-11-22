@@ -29,4 +29,13 @@ final class LLMServiceURLTests: XCTestCase {
             LLMService.normalizedURL("http://host:8080/apiv1", path: "v1/models", provider: .lmStudio),
             "http://host:8080/apiv1/v1/models")
     }
+
+    func testSplashBareHostGetsPort8000() {
+        XCTAssertEqual(
+            LLMService.normalizedURL("192.168.0.52", path: "v1/models", provider: .splash),
+            "http://192.168.0.52:8000/v1/models")
+        XCTAssertEqual(
+            LLMService.normalizedURL(LLMProvider.splash.defaultBaseURL, path: "v1/chat/completions", provider: .splash),
+            "http://127.0.0.1:8000/v1/chat/completions")
+    }
 }
