@@ -5,6 +5,8 @@ import SwiftUI
 // The MODEL row shared by Assist and Compose: a menu of the models the configured
 // LLM server reports, falling back to a text field when it reports none. Both hosts
 // bind it to `AppSettings.llmModelName`, so a pick in either place is a pick in both.
+// Only a pick changes it: a model the server doesn't list is kept and flagged, never
+// swapped for the server's first one.
 
 struct LLMModelPicker: View {
     @Binding var modelName: String
@@ -30,7 +32,9 @@ struct LLMModelPicker: View {
                     .font(.caption)
             } else {
                 Picker("", selection: $modelName) {
-                    ForEach(availableModels, id: \.self) { Text($0).tag($0) }
+                    ForEach(Self.menuEntries(serverModels: availableModels, saved: modelName), id: \.self) { name in
+                        Text(availableModels.contains(name) ? name : "\(name) (not on server)").tag(name)
+                    }
                 }
                 .labelsHidden()
                 .pickerStyle(.menu)
@@ -50,6 +54,13 @@ struct LLMModelPicker: View {
         }
     }
 
+    /// The menu's entries: the server's models, with the saved choice first when the
+    /// server doesn't list it, so the Picker always has a tag for its selection.
+    static func menuEntries(serverModels: [String], saved: String) -> [String] {
+        guard !saved.isEmpty, !serverModels.contains(saved) else { return serverModels }
+        return [saved] + serverModels
+    }
+
     private func fetchModels() {
         guard !isFetching else { return }
         isFetching = true
@@ -65,9 +76,16 @@ struct LLMModelPicker: View {
                 availableModels = models
                 if models.isEmpty {
                     fetchHint = "No \(provider.displayName) models found — pull one (e.g. `ollama pull llama3`), then refresh."
+                } else if modelName.isEmpty {
+                    fetchHint = nil
+                    modelName = models[0]
+                } else if !models.contains(modelName) {
+                    // Keep the saved choice. Replacing it here used to discard the user's
+                    // model the moment Assist opened against a different provider, and
+                    // nothing said so. A request with it will fail visibly instead.
+                    fetchHint = "\(modelName) isn't on this \(provider.displayName) server. Pick one of its models above."
                 } else {
                     fetchHint = nil
-                    if !models.contains(modelName) { modelName = models[0] }
                 }
             } catch {
                 availableModels = []
