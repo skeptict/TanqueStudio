@@ -197,8 +197,19 @@ struct ModelSection: View {
         }
     }
 
+    /// The model the config will send, looked up in Draw Things' list. Nil when nothing is
+    /// selected, or when a pasted/loaded config names a model DT didn't list.
+    private var selectedModel: DrawThingsModel? {
+        vm.models.first { $0.filename == vm.config.model }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
+            // The list below is long and lays out inline in the drawer's ScrollView,
+            // so the selection used to be found by scrolling. Pin it above the search
+            // field instead: the list keeps its order and highlight, nothing jumps.
+            selectedModelHeader
+
             if vm.models.isEmpty {
                 Text("No models loaded \u{2014} check Draw Things connection")
                     .font(TanqueDS.Font.mono(11))
@@ -235,20 +246,7 @@ struct ModelSection: View {
             ForEach(filteredModels) { model in
                 let selected = vm.config.model == model.filename
                 Button { vm.config.selectModel(model.filename) } label: {
-                    HStack(spacing: 10) {
-                        RoundedRectangle(cornerRadius: 7)
-                            .fill(LinearGradient(colors: [DashboardDS.brass, Color(hex: "#cbb98f")],
-                                                  startPoint: .topLeading, endPoint: .bottomTrailing))
-                            .frame(width: 30, height: 30)
-                        Text(model.name).font(TanqueDS.Font.mono(12)).foregroundStyle(DashboardDS.text).lineLimit(1)
-                        Spacer()
-                    }
-                    .padding(9)
-                    .background(selected ? DashboardDS.brassSubtle : .clear, in: RoundedRectangle(cornerRadius: 9))
-                    .overlay(RoundedRectangle(cornerRadius: 9)
-                        .strokeBorder(selected ? DashboardDS.brass : DashboardDS.border, lineWidth: 1))
-                    // An unselected row's fill is clear, which isn't hit-testable.
-                    .contentShape(RoundedRectangle(cornerRadius: 9))
+                    modelRow(name: model.name, selected: selected)
                 }
                 .buttonStyle(.plain)
                 .help(model.name)
@@ -290,6 +288,52 @@ struct ModelSection: View {
                 .tint(DashboardDS.brass)
                 .help("Fraction of steps after which the refiner takes over. Applies only when a refiner is set.")
         }
+    }
+
+    @ViewBuilder
+    private var selectedModelHeader: some View {
+        let filename = vm.config.model.trimmingCharacters(in: .whitespaces)
+        VStack(alignment: .leading, spacing: 4) {
+            Text("SELECTED")
+                .font(TanqueDS.Font.monoSemiBold(10))
+                .tracking(0.6)
+                .foregroundStyle(DashboardDS.muted)
+            if filename.isEmpty {
+                Text("No model selected")
+                    .font(TanqueDS.Font.mono(11))
+                    .foregroundStyle(DashboardDS.muted)
+                    .padding(.vertical, 4)
+            } else {
+                modelRow(name: selectedModel?.name ?? filename, selected: true)
+                    .help(selectedModel?.name ?? filename)
+                // A pasted or loaded config can name a model DT didn't list, and DT
+                // renders with a different model rather than failing. Say so here,
+                // where the name is, rather than leaving the list with no highlight.
+                if selectedModel == nil && !vm.models.isEmpty {
+                    Text("Not in Draw Things\u{2019} model list")
+                        .font(TanqueDS.Font.mono(10.5))
+                        .foregroundStyle(DashboardDS.muted)
+                }
+            }
+        }
+        .padding(.bottom, 6)
+    }
+
+    private func modelRow(name: String, selected: Bool) -> some View {
+        HStack(spacing: 10) {
+            RoundedRectangle(cornerRadius: 7)
+                .fill(LinearGradient(colors: [DashboardDS.brass, Color(hex: "#cbb98f")],
+                                      startPoint: .topLeading, endPoint: .bottomTrailing))
+                .frame(width: 30, height: 30)
+            Text(name).font(TanqueDS.Font.mono(12)).foregroundStyle(DashboardDS.text).lineLimit(1)
+            Spacer()
+        }
+        .padding(9)
+        .background(selected ? DashboardDS.brassSubtle : .clear, in: RoundedRectangle(cornerRadius: 9))
+        .overlay(RoundedRectangle(cornerRadius: 9)
+            .strokeBorder(selected ? DashboardDS.brass : DashboardDS.border, lineWidth: 1))
+        // An unselected row's fill is clear, which isn't hit-testable.
+        .contentShape(RoundedRectangle(cornerRadius: 9))
     }
 }
 
