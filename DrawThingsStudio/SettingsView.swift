@@ -252,7 +252,7 @@ struct SettingsView: View {
                             .textFieldStyle(.plain)
                             .font(TanqueDS.Font.body)
                             .foregroundStyle(DashboardDS.text)
-                            .help("Sent as a Bearer token. Required by Jan and by Msty Nexus, which issues its own local tokens.")
+                            .help("Sent as a Bearer token. Required by Jan, by Msty Nexus (which issues its own local tokens), and by Splash when it was started with --api-key.")
                             .padding(.horizontal, TanqueDS.Spacing.md)
                             .padding(.vertical, TanqueDS.Spacing.sm)
                             .background(DashboardDS.surf1)

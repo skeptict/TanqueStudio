@@ -7,12 +7,17 @@ enum LLMProvider: String, CaseIterable, Codable {
     case ollama   = "ollama"
     case lmStudio = "lmStudio"
     case jan      = "jan"
+    /// Inco AI's Splash (github.com/incoai/splash): OpenAI-compatible on
+    /// `/v1/chat/completions` and `/v1/models`, auth off unless started with
+    /// `--api-key` (then Bearer). Binds 127.0.0.1 only unless `--host 0.0.0.0`.
+    case splash   = "splash"
 
     var displayName: String {
         switch self {
         case .ollama:   return "Ollama"
         case .lmStudio: return "LM Studio"
         case .jan:      return "Jan"
+        case .splash:   return "Splash"
         }
     }
 
@@ -21,6 +26,8 @@ enum LLMProvider: String, CaseIterable, Codable {
         case .ollama:   return "http://localhost:11434"
         case .lmStudio: return "http://localhost:1234"
         case .jan:      return "http://localhost:1337"
+        // 127.0.0.1, not localhost: Splash listens on IPv4 only, and its docs use this form.
+        case .splash:   return "http://127.0.0.1:8000"
         }
     }
 }
