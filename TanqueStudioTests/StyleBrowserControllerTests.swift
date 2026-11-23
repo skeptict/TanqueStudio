@@ -278,7 +278,51 @@ final class StyleBrowserControllerTests: XCTestCase {
         XCTAssertEqual(client.prompts.count, 2)
     }
 
+    func testAFailedReRenderKeepsTheImageItWasReplacingAndShowsTheError() async throws {
+        let (controller, set) = try makeController()
+        await controller.render(Array(styles.prefix(1)), inSet: set.id)?.value
+        let good = try XCTUnwrap(renders(controller, set)["Alpha"])
+        XCTAssertNotNil(good.file)
+
+        client.failingMarkers = ["alpha prose"]
+        await controller.render(Array(styles.prefix(1)), inSet: set.id, force: true)?.value
+
+        let afterFailure = try XCTUnwrap(renders(controller, set)["Alpha"])
+        XCTAssertEqual(afterFailure.file, good.file)
+        XCTAssertEqual(afterFailure.thumb, good.thumb)
+        XCTAssertEqual(afterFailure.renderedAt, good.renderedAt, "Unchanged, so the image isn't reloaded")
+        XCTAssertEqual(afterFailure.errorMessage, "deliberate test failure")
+        let current = try XCTUnwrap(controller.sets.first { $0.id == set.id })
+        XCTAssertTrue(controller.isRendered(styles[0], in: current))
+        // Persisted too, not just held in memory.
+        XCTAssertEqual(controller.store.loadSets().first { $0.id == set.id }?.renders["Alpha"]?.file, good.file)
+
+        client.failingMarkers = []
+        await controller.render(Array(styles.prefix(1)), inSet: set.id, force: true)?.value
+        let afterSuccess = try XCTUnwrap(renders(controller, set)["Alpha"])
+        XCTAssertNil(afterSuccess.errorMessage)
+        XCTAssertGreaterThan(afterSuccess.renderedAt, good.renderedAt)
+    }
+
     // MARK: - Queueing while a batch runs
+
+    func testAReRenderMidRunJoinsTheQueueEvenThoughTheStyleIsRendered() async throws {
+        let (controller, set) = try makeController()
+        await controller.render([styles[0]], inSet: set.id)?.value
+        var position: Int?
+        client.afterGenerate = { prompt in
+            if prompt.contains("bravo prose") {
+                controller.render([self.styles[0]], inSet: set.id, force: true)
+                position = controller.queuePosition(of: self.styles[0])
+            }
+        }
+        await controller.render([styles[1]], inSet: set.id)?.value
+
+        XCTAssertEqual(position, 1)
+        XCTAssertEqual(client.prompts.map { String($0.prefix(13)) },
+                       ["Style: Alpha:", "Style: Bravo:", "Style: Alpha:"])
+        XCTAssertNil(controller.refusal)
+    }
 
     func testStylesAddedMidRunJoinTheEndOfTheQueue() async throws {
         let (controller, set) = try makeController()
