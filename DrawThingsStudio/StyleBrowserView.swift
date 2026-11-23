@@ -715,6 +715,28 @@ struct StyleBrowserView: View {
 
 // MARK: - Card
 
+/// Shown over an image that's being replaced, on the card and in the detail sheet:
+/// rendering now, or waiting in the queue when `queuePosition` is set.
+private struct StyleRenderingBadge: View {
+    var queuePosition: Int? = nil
+
+    var body: some View {
+        HStack(spacing: 6) {
+            if let queuePosition {
+                Image(systemName: "clock").foregroundStyle(DashboardDS.brass)
+                Text(verbatim: "Queued · \(StyleCard.ordinal(queuePosition))")
+                    .font(TanqueDS.Font.mono(10)).foregroundStyle(DashboardDS.brass)
+            } else {
+                ProgressView().controlSize(.small)
+                Text("Rendering…").font(TanqueDS.Font.mono(10)).foregroundStyle(DashboardDS.text)
+            }
+        }
+        .padding(.horizontal, 10).padding(.vertical, 6)
+        .background(DashboardDS.bg.opacity(0.88), in: RoundedRectangle(cornerRadius: 6))
+        .environment(\.colorScheme, .light)
+    }
+}
+
 private struct StyleCard: View {
     let style: StyleEntry
     let render: StyleRender?
@@ -734,6 +756,14 @@ private struct StyleCard: View {
                 preview
                     .aspectRatio(aspect, contentMode: .fit)
                     .frame(maxWidth: .infinity)
+                    // A Re-render keeps the old thumbnail up, so say so over it. After
+                    // .aspectRatio, or a scaledToFill image pushes the badge off-centre.
+                    .overlay {
+                        if thumbnail != nil {
+                            if isRendering { StyleRenderingBadge() }
+                            else if let queuePosition { StyleRenderingBadge(queuePosition: queuePosition) }
+                        }
+                    }
                     .clipShape(RoundedRectangle(cornerRadius: 8))
                     .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(DashboardDS.border, lineWidth: 1))
                 Text(style.name)
@@ -843,6 +873,7 @@ private struct StyleDetailSheet: View {
     @State private var copied: String?
     @State private var showCollections = false
     @State private var newCollectionName = ""
+    @State private var askedToRender = false
 
     private var currentSet: StyleBrowserSet { controller.sets.first { $0.id == set.id } ?? set }
     private var render: StyleRender? { currentSet.renders[style.name] }
@@ -850,7 +881,31 @@ private struct StyleDetailSheet: View {
         guard controller.isRendered(style, in: currentSet), let file = render?.file else { return nil }
         return controller.store.url(for: file, in: currentSet)
     }
-    private var isRendering: Bool { controller.isRunning && controller.currentStyle == style }
+    private var isRendering: Bool {
+        controller.isRunning && controller.currentStyle == style && controller.runningSetID == set.id
+    }
+    private var queuePosition: Int? {
+        controller.runningSetID == set.id ? controller.queuePosition(of: style) : nil
+    }
+    /// A batch running or paused on another set; a queue belongs to one set.
+    private var busyElsewhere: Bool {
+        (controller.isRunning || controller.isPaused) && controller.runningSetID != set.id
+    }
+    private var reRenderTitle: String {
+        if isRendering { return "Rendering…" }
+        if let queuePosition { return "Queued · \(StyleCard.ordinal(queuePosition))" }
+        return "Re-render"
+    }
+    private var reRenderHelp: String {
+        if busyElsewhere { return "Another set is rendering. Wait for it to finish, or cancel it." }
+        if queuePosition != nil {
+            return controller.isPaused
+                ? "Queued behind a paused batch — Resume to render it. Click to take it out of the queue."
+                : "Queued. Click to take it out of the queue."
+        }
+        if controller.isRunning { return "Add this style to the end of the queue, rendered again with the set's seed and settings." }
+        return "Render this style again with the set's seed and settings."
+    }
 
     var body: some View {
         HStack(alignment: .top, spacing: TanqueDS.Spacing.lg) {
@@ -862,9 +917,11 @@ private struct StyleDetailSheet: View {
                         // it reads the embedded settings only through Select From Files.
                         .onDrag { imageURL.flatMap { NSItemProvider(contentsOf: $0) } ?? NSItemProvider() }
                         .help("Drag onto Draw Things' canvas to use the image. To load its settings too, use Show in Finder and open the file in Draw Things with Select From Files.")
-                } else if isRendering {
-                    ProgressView().controlSize(.small)
                 }
+                // Over the old image too: a Re-render takes about a minute and otherwise
+                // only the button's title would say anything was happening.
+                if isRendering { StyleRenderingBadge() }
+                else if let queuePosition { StyleRenderingBadge(queuePosition: queuePosition) }
             }
             .frame(minWidth: 420, maxWidth: .infinity, minHeight: 420, maxHeight: .infinity)
             .clipShape(RoundedRectangle(cornerRadius: 8))
@@ -883,6 +940,10 @@ private struct StyleDetailSheet: View {
                 if let error = render?.errorMessage {
                     Text("Last attempt failed: \(error)")
                         .font(TanqueDS.Font.bodySmall).foregroundStyle(DashboardDS.red)
+                }
+                // A refusal (no model, a video model) is otherwise shown only behind this sheet.
+                if askedToRender, let refusal = controller.refusal {
+                    Text(refusal).font(TanqueDS.Font.bodySmall).foregroundStyle(DashboardDS.red)
                 }
                 if let copied {
                     Text(copied).font(TanqueDS.Font.bodySmall).foregroundStyle(DashboardDS.green)
@@ -924,12 +985,19 @@ private struct StyleDetailSheet: View {
                 .disabled(imageURL == nil)
                 .help("Show the PNG in Finder. To load its prompt and settings in Draw Things, open it there with Select From Files.")
                 HStack(spacing: TanqueDS.Spacing.sm) {
-                    Button(isRendering ? "Rendering…" : "Re-render") {
-                        controller.render([style], inSet: set.id, force: true)
+                    // While this set is rendering, a Re-render joins its queue, and
+                    // clicking again takes it back out — the same as a queued card.
+                    Button(reRenderTitle) {
+                        if queuePosition != nil {
+                            controller.dequeue(style)
+                        } else {
+                            askedToRender = true
+                            controller.render([style], inSet: set.id, force: true)
+                        }
                     }
                     .buttonStyle(DashboardGhostButtonStyle())
-                    .disabled(controller.isRunning)
-                    .help(controller.isRunning ? "Wait for the batch to finish." : "Render this style again with the set's seed and settings.")
+                    .disabled(isRendering || busyElsewhere)
+                    .help(reRenderHelp)
                     Button("Send to Generate", action: onSendToGenerate)
                         .buttonStyle(DashboardPrimaryButtonStyle())
                 }

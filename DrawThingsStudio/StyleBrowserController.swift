@@ -370,8 +370,15 @@ final class StyleBrowserController {
     }
 
     /// Writes set.json after every render, so a crash loses at most the style in flight.
+    /// A failed Re-render keeps the image it was replacing — the PNG is untouched on
+    /// disk, so dropping its record would only hide a good render behind the error.
     private func record(_ render: StyleRender, for style: StyleEntry, inSet setID: UUID) {
         guard let index = sets.firstIndex(where: { $0.id == setID }) else { return }
+        var render = render
+        if render.file == nil, var previous = sets[index].renders[style.name], previous.file != nil {
+            previous.errorMessage = render.errorMessage
+            render = previous
+        }
         sets[index].renders[style.name] = render
         do {
             try store.save(sets[index])
