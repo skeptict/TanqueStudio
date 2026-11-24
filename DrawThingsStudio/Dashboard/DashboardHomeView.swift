@@ -57,6 +57,8 @@ private let featureTiles: [FeatureTile] = [
           icon: "paintpalette", destination: .labs(.styleBrowser)),
     .init(name: "Writing Desk", description: "Write in a 3D den",
           icon: "keyboard", destination: .labs(.writingDesk)),
+    .init(name: "Film Finish", description: "Halation and LUTs",
+          icon: "camera.filters", destination: .labs(.filmFinish)),
 ].filter { tile in
     if case .labs(let tab) = tile.destination { return DashboardLabsPage.LabsTab.available.contains(tab) }
     return true

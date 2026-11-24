@@ -32,6 +32,7 @@ struct DashboardLabsPage: View {
         case renderQueue = "Render Queue"
         case styleBrowser = "Style Browser"
         case writingDesk = "Writing Desk"
+        case filmFinish = "Film Finish"
 
         /// The tabs to offer. Writing Desk is built on `RealityView`, which
         /// needs macOS 15, so it is left out on macOS 14.
@@ -89,6 +90,8 @@ struct DashboardLabsPage: View {
                     if #available(macOS 15, *) {
                         WritingDeskView()
                     }
+                case .filmFinish:
+                    FilmFinishLabView()
                 }
             }
         }
